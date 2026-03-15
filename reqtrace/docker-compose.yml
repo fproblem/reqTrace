@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: reqtrace
+      POSTGRES_USER: reqtrace
+      POSTGRES_PASSWORD: reqtrace_secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reqtrace"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://reqtrace:reqtrace_secret@postgres:5432/reqtrace
+      DATABASE_URL_SYNC: postgresql://reqtrace:reqtrace_secret@postgres:5432/reqtrace
+      CONFLUENCE_BASE_URL: ${CONFLUENCE_BASE_URL:-http://confluence.local}
+      CONFLUENCE_USERNAME: ${CONFLUENCE_USERNAME:-}
+      CONFLUENCE_PASSWORD: ${CONFLUENCE_PASSWORD:-}
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-http://jira.local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

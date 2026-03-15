@@ -1,0 +1,111 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.database import get_db
+from app.models.page import Page
+from app.models.snapshot import PageSnapshot
+from app.models.highlight import Highlight
+from app.models.highlight_test import HighlightTest
+from app.schemas.highlight import (
+    HighlightCreate, HighlightResponse,
+    TestLinkCreate, TestLinkResponse,
+)
+
+router = APIRouter(tags=["highlights"])
+
+
+@router.post("/api/pages/{page_id}/highlights", response_model=HighlightResponse)
+async def create_highlight(
+    page_id: UUID,
+    data: HighlightCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    page = await db.get(Page, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    snap_result = await db.execute(
+        select(PageSnapshot)
+        .where(PageSnapshot.page_id == page.id)
+        .order_by(PageSnapshot.fetched_at.desc())
+        .limit(1)
+    )
+    latest_snapshot = snap_result.scalar_one_or_none()
+    if not latest_snapshot:
+        raise HTTPException(status_code=400, detail="No snapshot available")
+
+    highlight = Highlight(
+        page_id=page.id,
+        snapshot_id=latest_snapshot.id,
+        start_xpath=data.start_xpath,
+        start_offset=data.start_offset,
+        end_xpath=data.end_xpath,
+        end_offset=data.end_offset,
+        text_content=data.text_content,
+        text_before=data.text_before or "",
+        text_after=data.text_after or "",
+        status="active",
+        created_by=data.user_id,
+    )
+    db.add(highlight)
+    await db.flush()
+    await db.refresh(highlight, ["tests"])
+
+    return highlight
+
+
+@router.get("/api/pages/{page_id}/highlights", response_model=list[HighlightResponse])
+async def list_highlights(page_id: UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Highlight)
+        .where(Highlight.page_id == page_id)
+        .options(selectinload(Highlight.tests))
+        .order_by(Highlight.created_at)
+    )
+    return result.scalars().all()
+
+
+@router.delete("/api/highlights/{highlight_id}", status_code=204)
+async def delete_highlight(highlight_id: UUID, db: AsyncSession = Depends(get_db)):
+    highlight = await db.get(Highlight, highlight_id)
+    if not highlight:
+        raise HTTPException(status_code=404, detail="Highlight not found")
+
+    await db.delete(highlight)
+    await db.flush()
+
+
+@router.post("/api/highlights/{highlight_id}/tests", response_model=TestLinkResponse)
+async def add_test_link(
+    highlight_id: UUID,
+    data: TestLinkCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    highlight = await db.get(Highlight, highlight_id)
+    if not highlight:
+        raise HTTPException(status_code=404, detail="Highlight not found")
+
+    link = HighlightTest(
+        highlight_id=highlight_id,
+        test_key=data.test_key.strip().upper(),
+        created_by=data.user_id,
+    )
+    db.add(link)
+    await db.flush()
+    await db.refresh(link)
+
+    return link
+
+
+@router.delete("/api/highlight-tests/{link_id}", status_code=204)
+async def remove_test_link(link_id: UUID, db: AsyncSession = Depends(get_db)):
+    link = await db.get(HighlightTest, link_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="Test link not found")
+
+    await db.delete(link)
+    await db.flush()

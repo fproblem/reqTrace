@@ -1,0 +1,4 @@
+CONFLUENCE_BASE_URL=https://confluence.example.com
+CONFLUENCE_USERNAME=qa_user
+CONFLUENCE_PASSWORD=secret_password
+JIRA_BASE_URL=https://jira.example.com

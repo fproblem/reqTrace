@@ -21,6 +21,7 @@ _PLACEHOLDER_VALUES = {
     "your_username",
     "your_password",
     "secret_password",
+    "qa_user",
 }
 
 

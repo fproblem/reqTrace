@@ -1,0 +1,7 @@
+{
+  "venvPath": "./reqtrace/backend",
+  "venv": ".venv",
+  "include": [
+    "reqtrace/backend/app"
+  ]
+}

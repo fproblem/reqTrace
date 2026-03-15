@@ -259,19 +259,8 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
         if conn.username and conn.password:
             auth = httpx.BasicAuth(conn.username, conn.password)
 
-        try:
-            response = await client.get(api_url, params=params, auth=auth)
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 401:
-                raise ValueError(
-                    "Confluence returned 401 Unauthorized. Configure valid Confluence credentials in Settings."
-                ) from exc
-            if exc.response.status_code == 403:
-                raise ValueError(
-                    "Confluence returned 403 Forbidden. Check account permissions for this page."
-                ) from exc
-            raise
+        response = await client.get(api_url, params=params, auth=auth)
+        response.raise_for_status()
 
         data = response.json()
 

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { colors, radii, shadows, glassmorphism, fonts } from '../../styles/tokens';
+import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,6 +12,8 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, userName, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const currentVersion = useCurrentVersion();
 
   return (
     <div style={{
@@ -59,18 +62,50 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, onLogout }) 
         position: 'relative',
         zIndex: 1,
       }}>
-        <div
-          style={{
-            fontSize: '22px',
-            fontWeight: 700,
-            color: colors.greenDark,
-            marginBottom: '32px',
-            cursor: 'pointer',
-            letterSpacing: '-0.5px',
-          }}
-          onClick={() => navigate('/')}
-        >
-          ReqTrace
+        <div style={{ marginBottom: '32px' }}>
+          <div
+            style={{
+              fontSize: '22px',
+              fontWeight: 700,
+              color: colors.greenDark,
+              cursor: 'pointer',
+              letterSpacing: '-0.5px',
+            }}
+            onClick={() => navigate('/')}
+          >
+            ReqTrace
+          </div>
+          {currentVersion && (
+            <button
+              onClick={() => setChangelogOpen(true)}
+              style={{
+                marginTop: '6px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: radii.pill,
+                border: `1px solid ${colors.border}`,
+                background: 'rgba(122, 224, 90, 0.08)',
+                color: colors.textSecondary,
+                fontSize: '11px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = colors.greenAccent;
+                e.currentTarget.style.color = colors.greenDark;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+            >
+              v{currentVersion}
+            </button>
+          )}
         </div>
 
         <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -133,6 +168,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, onLogout }) 
       }}>
         {children}
       </main>
+
+      <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </div>
   );
 };

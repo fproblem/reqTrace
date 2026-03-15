@@ -22,13 +22,13 @@ export function useHighlights(pageId: string | undefined) {
   useEffect(() => { load(); }, [load]);
 
   const createHighlight = useCallback(async (data: {
-    start_xpath: string;
-    start_offset: number;
-    end_xpath: string;
-    end_offset: number;
     text_content: string;
     text_before: string;
     text_after: string;
+    anchor_block_start: number;
+    anchor_block_end: number;
+    start_char_offset: number;
+    end_char_offset: number;
     user_id: string;
   }) => {
     if (!pageId) return;

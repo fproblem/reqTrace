@@ -129,6 +129,55 @@ def _find_text_in_content_legacy(
     return "lost", 0.0
 
 
+def extract_text_at_anchor(
+    html: str,
+    anchor_block_start: int,
+    anchor_block_end: int | None,
+    start_char_offset: int,
+    end_char_offset: int,
+) -> dict:
+    """Extract text_content, text_before, text_after at the given anchor positions."""
+    blocks = extract_blocks(html)
+    if anchor_block_end is None:
+        anchor_block_end = anchor_block_start
+
+    if anchor_block_start >= len(blocks):
+        return {"text_content": "", "text_before": "", "text_after": ""}
+
+    anchor_block_end = min(anchor_block_end, len(blocks) - 1)
+
+    parts: list[str] = []
+    for bi in range(anchor_block_start, anchor_block_end + 1):
+        block_text = blocks[bi]
+        if bi == anchor_block_start and bi == anchor_block_end:
+            s = min(start_char_offset, len(block_text))
+            e = min(end_char_offset, len(block_text))
+            parts.append(block_text[s:e])
+        elif bi == anchor_block_start:
+            s = min(start_char_offset, len(block_text))
+            parts.append(block_text[s:])
+        elif bi == anchor_block_end:
+            e = min(end_char_offset, len(block_text))
+            parts.append(block_text[:e])
+        else:
+            parts.append(block_text)
+
+    text_content = "".join(parts)
+
+    full_text = "".join(blocks)
+    prefix_len = sum(len(blocks[i]) for i in range(anchor_block_start))
+    abs_start = prefix_len + min(start_char_offset, len(blocks[anchor_block_start]))
+    text_before = full_text[max(0, abs_start - 100):abs_start]
+    abs_end = abs_start + len(text_content)
+    text_after = full_text[abs_end:abs_end + 100]
+
+    return {
+        "text_content": text_content,
+        "text_before": text_before,
+        "text_after": text_after,
+    }
+
+
 def project_highlights(
     highlights: list[dict],
     new_content_html: str,

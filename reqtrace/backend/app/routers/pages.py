@@ -379,13 +379,6 @@ async def set_baseline(page_id: UUID, data: BaselineCreate, db: AsyncSession = D
     )
     db.add(baseline)
 
-    hl_result = await db.execute(
-        select(Highlight)
-        .where(Highlight.page_id == page.id, Highlight.status == "outdated")
-    )
-    for h in hl_result.scalars().all():
-        h.status = "active"
-
     await db.flush()
     await db.refresh(baseline)
 

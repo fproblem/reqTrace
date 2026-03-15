@@ -20,6 +20,10 @@ class HighlightCreate(BaseModel):
     user_id: UUID
 
 
+class ReanchorRequest(BaseModel):
+    user_id: UUID
+
+
 class TestLinkCreate(BaseModel):
     test_key: str
     user_id: UUID
@@ -51,7 +55,11 @@ class HighlightResponse(BaseModel):
     end_char_offset: Optional[int] = None
     status: str
     created_by: UUID
+    created_by_name: str = ""
     created_at: datetime
+    reanchored_by: Optional[UUID] = None
+    reanchored_by_name: Optional[str] = None
+    reanchored_at: Optional[datetime] = None
     tests: list[TestLinkResponse] = []
 
     model_config = {"from_attributes": True}

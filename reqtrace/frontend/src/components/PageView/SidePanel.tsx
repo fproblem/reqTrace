@@ -10,6 +10,7 @@ interface SidePanelProps {
   onAddTest: (highlightId: string, testKey: string) => Promise<void>;
   onRemoveTest: (linkId: string) => Promise<void>;
   onDeleteHighlight: (highlightId: string) => Promise<void>;
+  onReanchor?: (highlightId: string) => Promise<void>;
   onNavigate: (highlight: Highlight) => void;
 }
 
@@ -32,10 +33,11 @@ function sortedByPosition(highlights: Highlight[]): Highlight[] {
 
 export const SidePanel: React.FC<SidePanelProps> = ({
   highlight, allHighlights, jiraBaseUrl, onClose,
-  onAddTest, onRemoveTest, onDeleteHighlight, onNavigate,
+  onAddTest, onRemoveTest, onDeleteHighlight, onReanchor, onNavigate,
 }) => {
   const [testKey, setTestKey] = useState('');
   const [adding, setAdding] = useState(false);
+  const [reanchoring, setReanchoring] = useState(false);
 
   if (!highlight) return null;
 
@@ -172,6 +174,47 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           {statusInfo.label}
         </div>
 
+        {/* Reanchor button for outdated highlights */}
+        {highlight.status === 'outdated' && onReanchor && (
+          <button
+            onClick={async () => {
+              setReanchoring(true);
+              try {
+                await onReanchor(highlight.id);
+              } finally {
+                setReanchoring(false);
+              }
+            }}
+            disabled={reanchoring}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              width: '100%',
+              padding: '10px 14px',
+              marginBottom: '16px',
+              borderRadius: radii.sm,
+              border: `1px solid rgba(245,158,11,0.3)`,
+              background: 'rgba(245,158,11,0.06)',
+              color: colors.statusOutdated,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: reanchoring ? 'wait' : 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+              opacity: reanchoring ? 0.7 : 1,
+            }}
+            onMouseEnter={e => {
+              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
+            }}
+          >
+            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
+          </button>
+        )}
+
         {/* Text excerpt */}
         <div style={{
           background: 'rgba(0,0,0,0.02)',
@@ -289,9 +332,29 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
         {/* Meta info */}
         <div style={{
-          fontSize: '12px', color: colors.textTertiary, lineHeight: '1.6',
+          fontSize: '12px', color: colors.textTertiary,
+          display: 'flex', flexDirection: 'column', gap: '10px',
         }}>
-          Создано: {formatDate(highlight.created_at)}
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: '2px' }}>Создано:</div>
+            <div>
+              {formatDate(highlight.created_at)}
+              {highlight.created_by_name && (
+                <span style={{ color: colors.textSecondary }}> — {highlight.created_by_name}</span>
+              )}
+            </div>
+          </div>
+          {highlight.reanchored_at && (
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: '2px' }}>Актуализировано:</div>
+              <div>
+                {formatDate(highlight.reanchored_at)}
+                {highlight.reanchored_by_name && (
+                  <span style={{ color: colors.textSecondary }}> — {highlight.reanchored_by_name}</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Delete button */}

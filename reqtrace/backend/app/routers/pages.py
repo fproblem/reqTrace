@@ -329,16 +329,26 @@ async def refresh_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = D
                 "text_content": h.text_content,
                 "text_before": h.text_before or "",
                 "text_after": h.text_after or "",
+                "anchor_block_start": h.anchor_block_start,
+                "anchor_block_end": h.anchor_block_end,
+                "start_char_offset": h.start_char_offset,
+                "end_char_offset": h.end_char_offset,
             }
             for h in highlights
         ]
 
-        projected = project_highlights(hl_dicts, page_data.content_html)
+        old_html = latest_snapshot.content_html if latest_snapshot else None
+        projected = project_highlights(hl_dicts, page_data.content_html, old_html)
 
         for proj in projected:
             for h in highlights:
                 if h.id == proj["id"]:
                     h.status = proj["projected_status"]
+                    if "new_anchor_block_start" in proj:
+                        h.anchor_block_start = proj["new_anchor_block_start"]
+                        h.anchor_block_end = proj["new_anchor_block_end"]
+                        h.start_char_offset = proj["new_start_char_offset"]
+                        h.end_char_offset = proj["new_end_char_offset"]
                     break
 
     await db.flush()

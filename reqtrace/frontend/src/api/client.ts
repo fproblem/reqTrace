@@ -64,13 +64,13 @@ export const api = {
 
   // Highlights
   createHighlight: (pageId: string, data: {
-    start_xpath: string;
-    start_offset: number;
-    end_xpath: string;
-    end_offset: number;
     text_content: string;
     text_before: string;
     text_after: string;
+    anchor_block_start: number;
+    anchor_block_end: number;
+    start_char_offset: number;
+    end_char_offset: number;
     user_id: string;
   }) =>
     request<Highlight>(`/pages/${pageId}/highlights`, {

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
-import { HighlightLayer } from '../components/PageView/HighlightLayer';
+import { HighlightLayer, getContentBlocks } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -33,8 +33,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const contentContainerRef = useRef<HTMLDivElement | null>(null);
-  const selectionContextRef = useRef<{ textBefore: string; textAfter: string }>({
+  const selectionContextRef = useRef<{
+    textBefore: string;
+    textAfter: string;
+    anchorBlockStart: number;
+    anchorBlockEnd: number;
+    startCharOffset: number;
+    endCharOffset: number;
+  }>({
     textBefore: '', textAfter: '',
+    anchorBlockStart: -1, anchorBlockEnd: -1,
+    startCharOffset: 0, endCharOffset: 0,
   });
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -84,7 +93,24 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
 
   const handleHighlightClick = useCallback((h: Highlight) => {
     setSelectedHighlight(h);
+    scrollToHighlight(h.id);
   }, []);
+
+  const scrollToHighlight = useCallback((highlightId: string) => {
+    setTimeout(() => {
+      const el = contentAreaRef.current?.querySelector(
+        `[data-highlight-id="${highlightId}"]`,
+      );
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
+  }, []);
+
+  const handleNavigate = useCallback((h: Highlight) => {
+    setSelectedHighlight(h);
+    scrollToHighlight(h.id);
+  }, [scrollToHighlight]);
 
   const handleAddTest = async (highlightId: string, testKey: string) => {
     await api.addTestLink(highlightId, testKey, userId);
@@ -162,15 +188,64 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       const offsetInContainer = preRange.toString().length + leadingTrimmed;
       preRange.detach();
 
+      const textBefore = fullText.substring(Math.max(0, offsetInContainer - 100), offsetInContainer);
+      const textAfter = fullText.substring(
+        offsetInContainer + text.length,
+        offsetInContainer + text.length + 100,
+      );
+
+      const blocks = getContentBlocks(container);
+      let anchorBlockStart = -1;
+      let anchorBlockEnd = -1;
+      let startCharOffset = 0;
+      let endCharOffset = 0;
+
+      for (let i = 0; i < blocks.length; i++) {
+        if (anchorBlockStart === -1 && blocks[i].contains(range.startContainer)) {
+          anchorBlockStart = i;
+          const pre = document.createRange();
+          pre.selectNodeContents(blocks[i]);
+          pre.setEnd(range.startContainer, range.startOffset);
+          startCharOffset = pre.toString().length;
+          const trimDelta = rawText.length - rawText.trimStart().length;
+          startCharOffset += trimDelta;
+          pre.detach();
+        }
+        if (blocks[i].contains(range.endContainer)) {
+          anchorBlockEnd = i;
+          const pre = document.createRange();
+          pre.selectNodeContents(blocks[i]);
+          pre.setEnd(range.endContainer, range.endOffset);
+          let rawEndOffset = pre.toString().length;
+          const trailingTrimmed = rawText.length - rawText.trimEnd().length;
+          rawEndOffset -= trailingTrimmed;
+          endCharOffset = Math.max(0, rawEndOffset);
+          pre.detach();
+          break;
+        }
+      }
+
+      if (anchorBlockStart === -1) {
+        anchorBlockStart = 0;
+        anchorBlockEnd = 0;
+        startCharOffset = 0;
+        endCharOffset = text.length;
+      }
+
       selectionContextRef.current = {
-        textBefore: fullText.substring(Math.max(0, offsetInContainer - 100), offsetInContainer),
-        textAfter: fullText.substring(
-          offsetInContainer + text.length,
-          offsetInContainer + text.length + 100,
-        ),
+        textBefore,
+        textAfter,
+        anchorBlockStart,
+        anchorBlockEnd,
+        startCharOffset,
+        endCharOffset,
       };
     } else {
-      selectionContextRef.current = { textBefore: '', textAfter: '' };
+      selectionContextRef.current = {
+        textBefore: '', textAfter: '',
+        anchorBlockStart: -1, anchorBlockEnd: -1,
+        startCharOffset: 0, endCharOffset: 0,
+      };
     }
 
     setSelectionText(text);
@@ -184,23 +259,28 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const handleCreateHighlight = async () => {
     if (!pageId || !selectionText) return;
 
-    const { textBefore, textAfter } = selectionContextRef.current;
+    const { textBefore, textAfter, anchorBlockStart, anchorBlockEnd, startCharOffset, endCharOffset } =
+      selectionContextRef.current;
 
     try {
       await api.createHighlight(pageId, {
-        start_xpath: '',
-        start_offset: 0,
-        end_xpath: '',
-        end_offset: 0,
         text_content: selectionText,
         text_before: textBefore,
         text_after: textAfter,
+        anchor_block_start: anchorBlockStart,
+        anchor_block_end: anchorBlockEnd,
+        start_char_offset: startCharOffset,
+        end_char_offset: endCharOffset,
         user_id: userId,
       });
       window.getSelection()?.removeAllRanges();
       setShowSelectionPopup(false);
       setSelectionText('');
-      selectionContextRef.current = { textBefore: '', textAfter: '' };
+      selectionContextRef.current = {
+        textBefore: '', textAfter: '',
+        anchorBlockStart: -1, anchorBlockEnd: -1,
+        startCharOffset: 0, endCharOffset: 0,
+      };
       await loadPage();
     } catch (e) {
       console.error('Failed to create highlight', e);
@@ -504,11 +584,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         {selectedHighlight && (
           <SidePanel
             highlight={selectedHighlight}
+            allHighlights={highlights}
             jiraBaseUrl={jiraBaseUrl}
             onClose={() => setSelectedHighlight(null)}
             onAddTest={handleAddTest}
             onRemoveTest={handleRemoveTest}
             onDeleteHighlight={handleDeleteHighlight}
+            onNavigate={handleNavigate}
           />
         )}
       </div>

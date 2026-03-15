@@ -49,6 +49,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [showBaselineWarning, setShowBaselineWarning] = useState(false);
 
   const loadPage = useCallback(async () => {
     if (!pageId) return;
@@ -81,8 +82,19 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     }
   };
 
+  const handleSetBaselineClick = () => {
+    if (!pageId) return;
+    const hasOutdated = highlights.some(h => h.status === 'outdated');
+    if (hasOutdated) {
+      setShowBaselineWarning(true);
+    } else {
+      handleSetBaseline();
+    }
+  };
+
   const handleSetBaseline = async () => {
     if (!pageId) return;
+    setShowBaselineWarning(false);
     try {
       await api.setBaseline(pageId, userId);
       await loadPage();
@@ -130,6 +142,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);
       setSelectedHighlight(refreshed.find(h => h.id === selectedHighlight.id) || null);
+    }
+  };
+
+  const handleReanchor = async (highlightId: string) => {
+    await api.reanchorHighlight(highlightId, userId);
+    await loadPage();
+    if (pageId) {
+      const refreshed = await api.listHighlights(pageId);
+      setHighlights(refreshed);
+      setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
     }
   };
 
@@ -308,9 +330,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     );
   }
 
-  const activeHighlights = highlights.filter(h => h.status === 'active');
-  const outdatedHighlights = highlights.filter(h => h.status === 'outdated');
-  const lostHighlights = highlights.filter(h => h.status === 'lost');
+  const sortByPosition = (a: Highlight, b: Highlight) => {
+    const aBlock = a.anchor_block_start ?? Infinity;
+    const bBlock = b.anchor_block_start ?? Infinity;
+    if (aBlock !== bBlock) return aBlock - bBlock;
+    return (a.start_char_offset ?? 0) - (b.start_char_offset ?? 0);
+  };
+
+  const activeHighlights = highlights.filter(h => h.status === 'active').sort(sortByPosition);
+  const outdatedHighlights = highlights.filter(h => h.status === 'outdated').sort(sortByPosition);
+  const lostHighlights = highlights.filter(h => h.status === 'lost').sort(sortByPosition);
   const coveredCount = highlights.filter(h => h.tests.length > 0).length;
   const coveragePercent = highlights.length > 0
     ? Math.round((coveredCount / highlights.length) * 100)
@@ -338,21 +367,28 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         justifyContent: 'space-between',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
           <button
             onClick={() => navigate('/')}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '16px', color: colors.textSecondary, padding: '4px 8px',
+              flexShrink: 0,
             }}
           >
             ←
           </button>
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: 600, color: colors.textPrimary }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
               {page.title}
             </div>
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '2px' }}>
+            <div style={{
+              fontSize: '12px', color: colors.textTertiary, marginTop: '2px',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
               v{page.current_snapshot?.confluence_version || '?'}
               {' · Снимок: '}{formatDate(page.current_snapshot?.fetched_at)}
               {' · Baseline: '}{formatDate(page.baseline?.confirmed_at)}
@@ -360,7 +396,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {/* Coverage indicator */}
           <div style={{
             padding: '4px 12px',
@@ -378,29 +414,47 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
             display: 'flex', gap: '6px', fontSize: '12px',
           }}>
             {activeHighlights.length > 0 && (
-              <span style={{
-                padding: '2px 8px', borderRadius: radii.pill,
-                background: 'rgba(122,224,90,0.1)', color: colors.statusActive,
-                fontWeight: 600,
-              }}>
+              <span
+                onClick={() => handleHighlightClick(activeHighlights[0])}
+                style={{
+                  padding: '2px 8px', borderRadius: radii.pill,
+                  background: 'rgba(122,224,90,0.1)', color: colors.statusActive,
+                  fontWeight: 600, cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(122,224,90,0.25)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(122,224,90,0.1)'; }}
+              >
                 {activeHighlights.length} актуальных
               </span>
             )}
             {outdatedHighlights.length > 0 && (
-              <span style={{
-                padding: '2px 8px', borderRadius: radii.pill,
-                background: 'rgba(245,158,11,0.1)', color: colors.statusOutdated,
-                fontWeight: 600,
-              }}>
+              <span
+                onClick={() => handleHighlightClick(outdatedHighlights[0])}
+                style={{
+                  padding: '2px 8px', borderRadius: radii.pill,
+                  background: 'rgba(245,158,11,0.1)', color: colors.statusOutdated,
+                  fontWeight: 600, cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.25)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.1)'; }}
+              >
                 {outdatedHighlights.length} требуют проверки
               </span>
             )}
             {lostHighlights.length > 0 && (
-              <span style={{
-                padding: '2px 8px', borderRadius: radii.pill,
-                background: 'rgba(239,68,68,0.1)', color: colors.statusLost,
-                fontWeight: 600,
-              }}>
+              <span
+                onClick={() => setSelectedHighlight(lostHighlights[0])}
+                style={{
+                  padding: '2px 8px', borderRadius: radii.pill,
+                  background: 'rgba(239,68,68,0.1)', color: colors.statusLost,
+                  fontWeight: 600, cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.25)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+              >
                 {lostHighlights.length} утрачено
               </span>
             )}
@@ -453,7 +507,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
           </button>
 
           <button
-            onClick={handleSetBaseline}
+            onClick={handleSetBaselineClick}
             style={{
               padding: '7px 16px',
               borderRadius: radii.pill,
@@ -590,6 +644,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
             onAddTest={handleAddTest}
             onRemoveTest={handleRemoveTest}
             onDeleteHighlight={handleDeleteHighlight}
+            onReanchor={handleReanchor}
             onNavigate={handleNavigate}
           />
         )}
@@ -623,6 +678,99 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
           >
             Привязать тесты
           </button>
+        </div>
+      )}
+
+      {/* Baseline warning modal */}
+      {showBaselineWarning && (
+        <div
+          onClick={() => setShowBaselineWarning(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.4)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: colors.white,
+              borderRadius: radii.lg,
+              padding: '28px 32px',
+              width: '440px',
+              maxWidth: '90vw',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+            }}
+          >
+            <div style={{
+              fontSize: '17px',
+              fontWeight: 700,
+              color: colors.textPrimary,
+              marginBottom: '8px',
+            }}>
+              Непроверенные привязки
+            </div>
+            <div style={{
+              fontSize: '13px',
+              color: colors.textSecondary,
+              lineHeight: 1.6,
+              marginBottom: '20px',
+            }}>
+              На странице {highlights.filter(h => h.status === 'outdated').length} {' '}
+              привяз{(() => {
+                const n = highlights.filter(h => h.status === 'outdated').length;
+                if (n === 1) return 'ка требует';
+                if (n >= 2 && n <= 4) return 'ки требуют';
+                return 'ок требуют';
+              })()} проверки. Рекомендуется сначала актуализировать их,
+              чтобы убедиться в корректности привязанных тестов.
+              Вы можете закрепить baseline сейчас, но непроверенные привязки
+              останутся в статусе «Требует проверки».
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: '10px',
+              justifyContent: 'flex-end',
+            }}>
+              <button
+                onClick={() => setShowBaselineWarning(false)}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: radii.pill,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.white,
+                  color: colors.textPrimary,
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSetBaseline}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: radii.pill,
+                  border: 'none',
+                  background: colors.greenAccent,
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Закрепить всё равно
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -28,6 +28,18 @@ class Highlight(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reanchored_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reanchored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     page = relationship("Page", back_populates="highlights")
     tests = relationship("HighlightTest", back_populates="highlight", cascade="all, delete-orphan")
+    created_by_user = relationship("User", foreign_keys=[created_by])
+    reanchored_by_user = relationship("User", foreign_keys=[reanchored_by])
+
+    @property
+    def created_by_name(self) -> str:
+        return self.created_by_user.name if self.created_by_user else ""
+
+    @property
+    def reanchored_by_name(self) -> str | None:
+        return self.reanchored_by_user.name if self.reanchored_by_user else None

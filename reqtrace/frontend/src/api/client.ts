@@ -84,6 +84,12 @@ export const api = {
   deleteHighlight: (highlightId: string) =>
     request<void>(`/highlights/${highlightId}`, { method: 'DELETE' }),
 
+  reanchorHighlight: (highlightId: string, user_id: string) =>
+    request<Highlight>(`/highlights/${highlightId}/reanchor`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+
   // Test links
   addTestLink: (highlightId: string, test_key: string, user_id: string) =>
     request<TestLink>(`/highlights/${highlightId}/tests`, {

@@ -66,7 +66,11 @@ export interface Highlight {
   end_char_offset: number | null;
   status: 'active' | 'outdated' | 'lost';
   created_by: string;
+  created_by_name: string;
   created_at: string;
+  reanchored_by: string | null;
+  reanchored_by_name: string | null;
+  reanchored_at: string | null;
   tests: TestLink[];
 }
 

@@ -4,11 +4,13 @@ import { colors, radii, shadows } from '../../styles/tokens';
 
 interface SidePanelProps {
   highlight: Highlight | null;
+  allHighlights: Highlight[];
   jiraBaseUrl: string;
   onClose: () => void;
   onAddTest: (highlightId: string, testKey: string) => Promise<void>;
   onRemoveTest: (linkId: string) => Promise<void>;
   onDeleteHighlight: (highlightId: string) => Promise<void>;
+  onNavigate: (highlight: Highlight) => void;
 }
 
 const statusLabels: Record<string, { label: string; color: string }> = {
@@ -17,13 +19,30 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   lost: { label: 'Утрачено', color: colors.statusLost },
 };
 
+function sortedByPosition(highlights: Highlight[]): Highlight[] {
+  return [...highlights].sort((a, b) => {
+    const aBlock = a.anchor_block_start ?? Infinity;
+    const bBlock = b.anchor_block_start ?? Infinity;
+    if (aBlock !== bBlock) return aBlock - bBlock;
+    const aOff = a.start_char_offset ?? 0;
+    const bOff = b.start_char_offset ?? 0;
+    return aOff - bOff;
+  });
+}
+
 export const SidePanel: React.FC<SidePanelProps> = ({
-  highlight, jiraBaseUrl, onClose, onAddTest, onRemoveTest, onDeleteHighlight,
+  highlight, allHighlights, jiraBaseUrl, onClose,
+  onAddTest, onRemoveTest, onDeleteHighlight, onNavigate,
 }) => {
   const [testKey, setTestKey] = useState('');
   const [adding, setAdding] = useState(false);
 
   if (!highlight) return null;
+
+  const sorted = sortedByPosition(allHighlights);
+  const currentIndex = sorted.findIndex(h => h.id === highlight.id);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < sorted.length - 1;
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
 
@@ -36,6 +55,14 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     } finally {
       setAdding(false);
     }
+  };
+
+  const handlePrev = () => {
+    if (hasPrev) onNavigate(sorted[currentIndex - 1]);
+  };
+
+  const handleNext = () => {
+    if (hasNext) onNavigate(sorted[currentIndex + 1]);
   };
 
   const formatDate = (d: string) =>
@@ -55,7 +82,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Header */}
+      {/* Header with navigation */}
       <div style={{
         padding: '16px 20px',
         borderBottom: `1px solid ${colors.border}`,
@@ -63,18 +90,65 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        <span style={{ fontWeight: 600, fontSize: '15px', color: colors.textPrimary }}>
-          Выделение
-        </span>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: '18px', color: colors.textSecondary, padding: '4px',
-          }}
-        >
-          ✕
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 600, fontSize: '15px', color: colors.textPrimary }}>
+            Выделение
+          </span>
+          {sorted.length > 1 && (
+            <span style={{
+              fontSize: '12px', color: colors.textTertiary, fontWeight: 400,
+            }}>
+              {currentIndex + 1} из {sorted.length}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {sorted.length > 1 && (
+            <>
+              <button
+                onClick={handlePrev}
+                disabled={!hasPrev}
+                title="Предыдущее выделение"
+                style={{
+                  background: 'none', border: `1px solid ${colors.border}`,
+                  cursor: hasPrev ? 'pointer' : 'default',
+                  fontSize: '14px', padding: '3px 8px',
+                  borderRadius: radii.sm,
+                  color: hasPrev ? colors.textPrimary : colors.textTertiary,
+                  opacity: hasPrev ? 1 : 0.4,
+                  transition: 'all 0.15s',
+                }}
+              >
+                ↑
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={!hasNext}
+                title="Следующее выделение"
+                style={{
+                  background: 'none', border: `1px solid ${colors.border}`,
+                  cursor: hasNext ? 'pointer' : 'default',
+                  fontSize: '14px', padding: '3px 8px',
+                  borderRadius: radii.sm,
+                  color: hasNext ? colors.textPrimary : colors.textTertiary,
+                  opacity: hasNext ? 1 : 0.4,
+                  transition: 'all 0.15s',
+                }}
+              >
+                ↓
+              </button>
+            </>
+          )}
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '18px', color: colors.textSecondary, padding: '4px',
+            }}
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div style={{ padding: '20px', flex: 1 }}>

@@ -1,6 +1,13 @@
 import React, { useEffect, useCallback } from 'react';
 import { Highlight } from '../../types';
 
+const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
+
+export function getContentBlocks(container: HTMLElement): HTMLElement[] {
+  const all = Array.from(container.querySelectorAll(BLOCK_SELECTOR)) as HTMLElement[];
+  return all.filter(el => !el.querySelector(BLOCK_SELECTOR));
+}
+
 interface HighlightLayerProps {
   container: HTMLDivElement | null;
   highlights: Highlight[];
@@ -28,64 +35,16 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
     });
     container.normalize();
 
+    const blocks = getContentBlocks(container);
+
     for (const highlight of highlights) {
       if (highlight.status === 'lost') continue;
 
       try {
-        const textContent = highlight.text_content;
-        if (!textContent) continue;
-
-        const fullText = container.textContent || '';
-        const idx = findBestMatchIndex(
-          fullText, textContent, highlight.text_before, highlight.text_after,
-        );
-        if (idx === -1) continue;
-
-        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-        let charCount = 0;
-        let startNode: Text | null = null;
-        let startOffset = 0;
-        let endNode: Text | null = null;
-        let endOffset = 0;
-        let node: Node | null;
-
-        while ((node = walker.nextNode())) {
-          const len = (node.textContent || '').length;
-          if (!startNode && charCount + len > idx) {
-            startNode = node as Text;
-            startOffset = idx - charCount;
-          }
-          if (startNode && charCount + len >= idx + textContent.length) {
-            endNode = node as Text;
-            endOffset = idx + textContent.length - charCount;
-            break;
-          }
-          charCount += len;
-        }
-
-        if (!startNode || !endNode) continue;
-
-        const range = document.createRange();
-        range.setStart(startNode, startOffset);
-        range.setEnd(endNode, endOffset);
-
-        const mark = document.createElement('mark');
-        mark.className = `highlight-mark highlight-mark--${highlight.status}`;
-        if (highlight.id === selectedHighlightId) {
-          mark.classList.add('highlight-mark--selected');
-        }
-        mark.dataset.highlightId = highlight.id;
-        mark.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onHighlightClick(highlight);
-        });
-
-        if (startNode === endNode) {
-          range.surroundContents(mark);
+        if (highlight.anchor_block_start != null) {
+          applyBlockAnchored(container, blocks, highlight, selectedHighlightId, onHighlightClick);
         } else {
-          const fragment = range.extractContents();
-          mark.appendChild(fragment);
-          range.insertNode(mark);
+          applyLegacyTextSearch(container, highlight, selectedHighlightId, onHighlightClick);
         }
       } catch (err) {
         console.warn('Failed to apply highlight:', highlight.id, err);
@@ -99,6 +58,151 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
 
   return null;
 };
+
+function applyBlockAnchored(
+  container: HTMLElement,
+  blocks: HTMLElement[],
+  highlight: Highlight,
+  selectedId: string | null,
+  onClick: (h: Highlight) => void,
+) {
+  const startBlockIdx = highlight.anchor_block_start!;
+  const endBlockIdx = highlight.anchor_block_end ?? startBlockIdx;
+  const startCharOffset = highlight.start_char_offset ?? 0;
+  const endCharOffset = highlight.end_char_offset ?? 0;
+
+  if (startBlockIdx >= blocks.length) return;
+
+  if (startBlockIdx === endBlockIdx) {
+    const block = blocks[startBlockIdx];
+    const blockText = block.textContent || '';
+    const clampedStart = Math.min(startCharOffset, blockText.length);
+    const clampedEnd = Math.min(endCharOffset, blockText.length);
+    if (clampedStart >= clampedEnd) return;
+
+    const { startNode, startOff, endNode, endOff } = findNodesForOffsets(
+      block, clampedStart, clampedEnd,
+    );
+    if (!startNode || !endNode) return;
+
+    wrapRange(startNode, startOff, endNode, endOff, highlight, selectedId, onClick);
+  } else {
+    const clampedEndBlockIdx = Math.min(endBlockIdx, blocks.length - 1);
+
+    for (let bi = startBlockIdx; bi <= clampedEndBlockIdx; bi++) {
+      const block = blocks[bi];
+      const blockText = block.textContent || '';
+      let bStart: number;
+      let bEnd: number;
+
+      if (bi === startBlockIdx) {
+        bStart = Math.min(startCharOffset, blockText.length);
+        bEnd = blockText.length;
+      } else if (bi === clampedEndBlockIdx) {
+        bStart = 0;
+        bEnd = Math.min(endCharOffset, blockText.length);
+      } else {
+        bStart = 0;
+        bEnd = blockText.length;
+      }
+
+      if (bStart >= bEnd) continue;
+
+      const { startNode, startOff, endNode, endOff } = findNodesForOffsets(
+        block, bStart, bEnd,
+      );
+      if (!startNode || !endNode) continue;
+
+      wrapRange(startNode, startOff, endNode, endOff, highlight, selectedId, onClick);
+    }
+  }
+}
+
+function applyLegacyTextSearch(
+  container: HTMLElement,
+  highlight: Highlight,
+  selectedId: string | null,
+  onClick: (h: Highlight) => void,
+) {
+  const textContent = highlight.text_content;
+  if (!textContent) return;
+
+  const fullText = container.textContent || '';
+  const idx = findBestMatchIndex(
+    fullText, textContent, highlight.text_before, highlight.text_after,
+  );
+  if (idx === -1) return;
+
+  const { startNode, startOff, endNode, endOff } = findNodesForOffsets(
+    container, idx, idx + textContent.length,
+  );
+  if (!startNode || !endNode) return;
+
+  wrapRange(startNode, startOff, endNode, endOff, highlight, selectedId, onClick);
+}
+
+function findNodesForOffsets(
+  root: HTMLElement,
+  startOffset: number,
+  endOffset: number,
+): { startNode: Text | null; startOff: number; endNode: Text | null; endOff: number } {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  let charCount = 0;
+  let startNode: Text | null = null;
+  let startOff = 0;
+  let endNode: Text | null = null;
+  let endOff = 0;
+  let node: Node | null;
+
+  while ((node = walker.nextNode())) {
+    const len = (node.textContent || '').length;
+    if (!startNode && charCount + len > startOffset) {
+      startNode = node as Text;
+      startOff = startOffset - charCount;
+    }
+    if (startNode && charCount + len >= endOffset) {
+      endNode = node as Text;
+      endOff = endOffset - charCount;
+      break;
+    }
+    charCount += len;
+  }
+
+  return { startNode, startOff, endNode, endOff };
+}
+
+function wrapRange(
+  startNode: Text,
+  startOff: number,
+  endNode: Text,
+  endOff: number,
+  highlight: Highlight,
+  selectedId: string | null,
+  onClick: (h: Highlight) => void,
+) {
+  const range = document.createRange();
+  range.setStart(startNode, startOff);
+  range.setEnd(endNode, endOff);
+
+  const mark = document.createElement('mark');
+  mark.className = `highlight-mark highlight-mark--${highlight.status}`;
+  if (highlight.id === selectedId) {
+    mark.classList.add('highlight-mark--selected');
+  }
+  mark.dataset.highlightId = highlight.id;
+  mark.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onClick(highlight);
+  });
+
+  if (startNode === endNode) {
+    range.surroundContents(mark);
+  } else {
+    const fragment = range.extractContents();
+    mark.appendChild(fragment);
+    range.insertNode(mark);
+  }
+}
 
 function findBestMatchIndex(
   fullText: string,

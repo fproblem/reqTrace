@@ -48,6 +48,10 @@ async def create_highlight(
         text_content=data.text_content,
         text_before=data.text_before or "",
         text_after=data.text_after or "",
+        anchor_block_start=data.anchor_block_start,
+        anchor_block_end=data.anchor_block_end,
+        start_char_offset=data.start_char_offset,
+        end_char_offset=data.end_char_offset,
         status="active",
         created_by=data.user_id,
     )

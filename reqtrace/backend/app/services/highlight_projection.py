@@ -1,9 +1,9 @@
 """
-Highlight projection engine.
+Highlight projection engine – block-based approach.
 
-When a Confluence page is updated, this module determines
-whether existing highlights from the baseline are still valid,
-have changed (outdated), or are lost.
+When a Confluence page is updated, this module aligns the block structure
+of the old and new HTML and projects highlight anchors to the new version.
+This mirrors how Confluence inline comments survive edits.
 """
 import logging
 from difflib import SequenceMatcher
@@ -12,32 +12,74 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+BLOCK_TAGS = frozenset(
+    ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "td", "th", "pre", "dt", "dd"]
+)
+
 CONTEXT_MATCH_THRESHOLD = 0.6
 TEXT_MATCH_THRESHOLD = 0.7
 
 
-def extract_text_from_html(html: str) -> str:
-    """Extract plain text from HTML."""
+def extract_blocks(html: str) -> list[str]:
+    """Extract leaf-level block texts from HTML in document order."""
     soup = BeautifulSoup(html, "lxml")
-    for script in soup(["script", "style"]):
-        script.decompose()
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    blocks: list[str] = []
+    for el in soup.find_all(BLOCK_TAGS):
+        if not el.find(BLOCK_TAGS):
+            blocks.append(el.get_text(separator="", strip=False))
+    return blocks
+
+
+def extract_text_from_html(html: str) -> str:
+    """Extract plain text from HTML (kept for legacy fallback)."""
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style"]):
+        tag.decompose()
     return soup.get_text(separator=" ", strip=False)
 
 
-def find_text_in_content(
+def _similarity(a: str, b: str) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _build_block_mapping(
+    old_blocks: list[str], new_blocks: list[str]
+) -> dict[int, tuple[str, int]]:
+    """
+    Align old blocks to new blocks.
+    Returns {old_index: (change_type, new_index)}.
+    change_type is 'equal', 'changed', or absent (deleted).
+    """
+    matcher = SequenceMatcher(None, old_blocks, new_blocks, autojunk=False)
+    mapping: dict[int, tuple[str, int]] = {}
+
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            for k in range(i2 - i1):
+                mapping[i1 + k] = ("equal", j1 + k)
+        elif op == "replace":
+            pairs = min(i2 - i1, j2 - j1)
+            for k in range(pairs):
+                mapping[i1 + k] = ("changed", j1 + k)
+        # 'delete' → old blocks not in mapping → lost
+        # 'insert' → no old blocks to map
+
+    return mapping
+
+
+def _find_text_in_content_legacy(
     content: str,
     text_content: str,
     text_before: str = "",
     text_after: str = "",
 ) -> tuple[str, float]:
-    """
-    Try to find text_content within content using context matching.
-    
-    Returns (status, confidence):
-    - ("active", 1.0) for exact match
-    - ("outdated", confidence) for partial match
-    - ("lost", 0.0) if not found
-    """
+    """Legacy text-based search for highlights without block anchoring."""
     if not text_content:
         return "lost", 0.0
 
@@ -51,11 +93,17 @@ def find_text_in_content(
             while idx != -1:
                 before_start = max(0, idx - len(text_before))
                 actual_before = content[before_start:idx]
-                after_end = min(len(content), idx + len(text_content) + len(text_after))
-                actual_after = content[idx + len(text_content):after_end]
+                after_end = min(
+                    len(content), idx + len(text_content) + len(text_after)
+                )
+                actual_after = content[idx + len(text_content) : after_end]
 
-                before_ratio = _similarity(text_before, actual_before) if text_before else 1.0
-                after_ratio = _similarity(text_after, actual_after) if text_after else 1.0
+                before_ratio = (
+                    _similarity(text_before, actual_before) if text_before else 1.0
+                )
+                after_ratio = (
+                    _similarity(text_after, actual_after) if text_after else 1.0
+                )
 
                 avg_context_match = (before_ratio + after_ratio) / 2
                 if avg_context_match >= CONTEXT_MATCH_THRESHOLD:
@@ -68,67 +116,128 @@ def find_text_in_content(
     best_ratio = 0.0
     window_size = len(text_content)
     step = max(1, window_size // 4)
-
     for i in range(0, max(1, len(content) - window_size + 1), step):
-        window = content[i:i + window_size + window_size // 2]
+        window = content[i : i + window_size + window_size // 2]
         ratio = _similarity(text_content, window)
         best_ratio = max(best_ratio, ratio)
-
         if best_ratio >= TEXT_MATCH_THRESHOLD:
             break
 
     if best_ratio >= TEXT_MATCH_THRESHOLD:
         return "outdated", best_ratio
 
-    if text_before and text_after:
-        context_str = text_before + text_after
-        for i in range(0, max(1, len(content) - len(context_str) + 1), step):
-            window = content[i:i + len(context_str) + len(context_str) // 2]
-            ratio = _similarity(context_str, window)
-            if ratio >= CONTEXT_MATCH_THRESHOLD:
-                return "outdated", ratio * 0.7
-
     return "lost", 0.0
-
-
-def _similarity(a: str, b: str) -> float:
-    """Compute similarity ratio between two strings."""
-    if not a and not b:
-        return 1.0
-    if not a or not b:
-        return 0.0
-    return SequenceMatcher(None, a, b).ratio()
 
 
 def project_highlights(
     highlights: list[dict],
     new_content_html: str,
+    old_content_html: str | None = None,
 ) -> list[dict]:
     """
-    Project all highlights from baseline onto new content.
-    
-    Each highlight dict must have: text_content, text_before, text_after.
-    Returns list of dicts with added 'projected_status' field.
+    Project all highlights onto new content.
+
+    For highlights with block anchoring (anchor_block_start is set):
+      uses structural block alignment between old and new HTML.
+    For legacy highlights:
+      falls back to text-based matching.
     """
-    plain_text = extract_text_from_html(new_content_html)
+    new_blocks = extract_blocks(new_content_html)
+    old_blocks = extract_blocks(old_content_html) if old_content_html else []
 
-    results = []
+    block_mapping = (
+        _build_block_mapping(old_blocks, new_blocks) if old_blocks else {}
+    )
+
+    plain_text_new = extract_text_from_html(new_content_html)
+
+    results: list[dict] = []
     for h in highlights:
-        status, confidence = find_text_in_content(
-            plain_text,
-            h.get("text_content", ""),
-            h.get("text_before", ""),
-            h.get("text_after", ""),
-        )
+        anchor_start = h.get("anchor_block_start")
 
-        result = {**h, "projected_status": status, "confidence": confidence}
+        if anchor_start is not None and old_blocks:
+            result = _project_block_anchored(h, block_mapping, new_blocks)
+        else:
+            status, confidence = _find_text_in_content_legacy(
+                plain_text_new,
+                h.get("text_content", ""),
+                h.get("text_before", ""),
+                h.get("text_after", ""),
+            )
+            result = {**h, "projected_status": status, "confidence": confidence}
+
         results.append(result)
-
         logger.debug(
-            "Highlight '%s...' -> %s (confidence: %.2f)",
+            "Highlight '%s...' -> %s",
             h.get("text_content", "")[:50],
-            status,
-            confidence,
+            result.get("projected_status"),
         )
 
     return results
+
+
+def _project_block_anchored(
+    h: dict,
+    block_mapping: dict[int, tuple[str, int]],
+    new_blocks: list[str],
+) -> dict:
+    """Project a single block-anchored highlight using the block mapping."""
+    anchor_start = h["anchor_block_start"]
+    anchor_end = h.get("anchor_block_end", anchor_start)
+    if anchor_end is None:
+        anchor_end = anchor_start
+
+    start_mapping = block_mapping.get(anchor_start)
+    end_mapping = block_mapping.get(anchor_end)
+
+    if start_mapping is None:
+        return {**h, "projected_status": "lost", "confidence": 0.0}
+
+    start_type, new_start_idx = start_mapping
+
+    if end_mapping is not None:
+        end_type, new_end_idx = end_mapping
+    else:
+        end_type = start_type
+        new_end_idx = new_start_idx
+
+    new_start_offset = h.get("start_char_offset", 0) or 0
+    new_end_offset = h.get("end_char_offset", 0) or 0
+
+    if new_start_idx < len(new_blocks):
+        block_text_len = len(new_blocks[new_start_idx])
+        new_start_offset = min(new_start_offset, block_text_len)
+    if new_end_idx < len(new_blocks):
+        block_text_len = len(new_blocks[new_end_idx])
+        new_end_offset = min(new_end_offset, block_text_len)
+
+    if start_type == "equal" and (anchor_start == anchor_end or end_type == "equal"):
+        status = "active"
+        confidence = 1.0
+    else:
+        text_content = h.get("text_content", "")
+        if new_start_idx < len(new_blocks):
+            new_block_text = new_blocks[new_start_idx]
+            sim = _similarity(text_content, new_block_text)
+            if text_content in new_block_text:
+                status = "active"
+                confidence = 0.95
+            elif sim >= TEXT_MATCH_THRESHOLD:
+                status = "outdated"
+                confidence = sim
+            else:
+                status = "outdated"
+                confidence = max(sim, 0.5)
+        else:
+            status = "outdated"
+            confidence = 0.5
+
+    return {
+        **h,
+        "projected_status": status,
+        "confidence": confidence,
+        "new_anchor_block_start": new_start_idx,
+        "new_anchor_block_end": new_end_idx,
+        "new_start_char_offset": new_start_offset,
+        "new_end_char_offset": new_end_offset,
+    }

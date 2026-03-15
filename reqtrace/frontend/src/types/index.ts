@@ -60,6 +60,10 @@ export interface Highlight {
   text_content: string;
   text_before: string;
   text_after: string;
+  anchor_block_start: number | null;
+  anchor_block_end: number | null;
+  start_char_offset: number | null;
+  end_char_offset: number | null;
   status: 'active' | 'outdated' | 'lost';
   created_by: string;
   created_at: string;

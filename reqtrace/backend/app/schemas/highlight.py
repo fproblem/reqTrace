@@ -6,13 +6,17 @@ from pydantic import BaseModel
 
 
 class HighlightCreate(BaseModel):
-    start_xpath: str
-    start_offset: int
-    end_xpath: str
-    end_offset: int
+    start_xpath: str = ""
+    start_offset: int = 0
+    end_xpath: str = ""
+    end_offset: int = 0
     text_content: str
     text_before: Optional[str] = ""
     text_after: Optional[str] = ""
+    anchor_block_start: Optional[int] = None
+    anchor_block_end: Optional[int] = None
+    start_char_offset: Optional[int] = None
+    end_char_offset: Optional[int] = None
     user_id: UUID
 
 
@@ -41,6 +45,10 @@ class HighlightResponse(BaseModel):
     text_content: str
     text_before: Optional[str] = ""
     text_after: Optional[str] = ""
+    anchor_block_start: Optional[int] = None
+    anchor_block_end: Optional[int] = None
+    start_char_offset: Optional[int] = None
+    end_char_offset: Optional[int] = None
     status: str
     created_by: UUID
     created_at: datetime

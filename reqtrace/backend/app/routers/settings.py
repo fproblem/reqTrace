@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import resolve_setting
 from app.database import get_db
 from app.models.settings import Settings
 from app.schemas.settings import SettingsUpdate, SettingsResponse
@@ -71,13 +72,13 @@ async def get_confluence_params(db: AsyncSession) -> dict:
     password = await _get_setting(db, "confluence_password")
 
     return {
-        "base_url": base_url or env_settings.CONFLUENCE_BASE_URL,
-        "username": username or env_settings.CONFLUENCE_USERNAME,
-        "password": password or env_settings.CONFLUENCE_PASSWORD,
+        "base_url": resolve_setting(base_url, env_settings.CONFLUENCE_BASE_URL),
+        "username": resolve_setting(username, env_settings.CONFLUENCE_USERNAME),
+        "password": resolve_setting(password, env_settings.CONFLUENCE_PASSWORD),
     }
 
 
 async def get_jira_base_url(db: AsyncSession) -> str:
     from app.config import settings as env_settings
     url = await _get_setting(db, "jira_base_url")
-    return url or env_settings.JIRA_BASE_URL
+    return resolve_setting(url, env_settings.JIRA_BASE_URL)

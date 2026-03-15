@@ -245,6 +245,11 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
         )
 
     base_url = conn.base_url.rstrip("/")
+    if not base_url:
+        raise ValueError(
+            "Confluence URL is not configured. Open Settings and set a valid Confluence Server URL."
+        )
+
     api_url = f"{base_url}/rest/api/content/{page_id}"
 
     params = {"expand": "body.storage,version,space"}
@@ -254,8 +259,19 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
         if conn.username and conn.password:
             auth = httpx.BasicAuth(conn.username, conn.password)
 
-        response = await client.get(api_url, params=params, auth=auth)
-        response.raise_for_status()
+        try:
+            response = await client.get(api_url, params=params, auth=auth)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                raise ValueError(
+                    "Confluence returned 401 Unauthorized. Check the username/password saved in Settings."
+                ) from exc
+            if exc.response.status_code == 403:
+                raise ValueError(
+                    "Confluence returned 403 Forbidden. Check account permissions for this page."
+                ) from exc
+            raise
 
         data = response.json()
 

@@ -343,7 +343,12 @@ async def refresh_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = D
         for proj in projected:
             for h in highlights:
                 if h.id == proj["id"]:
-                    h.status = proj["projected_status"]
+                    projected_status = proj["projected_status"]
+                    # Only a human action (reanchor) can resolve outdated → active.
+                    # Refresh must not silently clear an outdated status.
+                    if h.status == "outdated" and projected_status == "active":
+                        projected_status = "outdated"
+                    h.status = projected_status
                     if "new_anchor_block_start" in proj:
                         h.anchor_block_start = proj["new_anchor_block_start"]
                         h.anchor_block_end = proj["new_anchor_block_end"]

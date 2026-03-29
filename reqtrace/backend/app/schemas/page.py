@@ -56,6 +56,24 @@ class PageDetail(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TreeNodeItem(BaseModel):
+    id: UUID
+    confluence_page_id: str
+    title: str
+    space_key: Optional[str] = None
+    is_virtual: bool
+    parent_confluence_page_id: Optional[str] = None
+    coverage_percent: float = 0.0
+    has_updates: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceTreeResponse(BaseModel):
+    space_key: str
+    pages: list[TreeNodeItem]
+
+
 class BaselineCreate(BaseModel):
     user_id: UUID
 

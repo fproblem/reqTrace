@@ -17,6 +17,7 @@ from app.models.highlight_test import HighlightTest
 from app.schemas.page import (
     PageCreate, PageListItem, PageDetail,
     SnapshotInfo, BaselineInfo, BaselineCreate, RefreshRequest,
+    TreeNodeItem, SpaceTreeResponse,
 )
 from app.services import confluence
 from app.services.confluence import ConfluenceConnection, process_confluence_html
@@ -137,11 +138,36 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
         logger.error("Failed to fetch Confluence page %s: %s", page_id_str, e)
         raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
 
+    # Create virtual ancestor pages from Confluence hierarchy
+    conf_base_url = params["base_url"].rstrip("/")
+    prev_ancestor_id: str | None = None
+    for ancestor in page_data.ancestors:
+        existing_ancestor = await db.execute(
+            select(Page).where(Page.confluence_page_id == ancestor.page_id)
+        )
+        if not existing_ancestor.scalar_one_or_none():
+            virtual_page = Page(
+                confluence_page_id=ancestor.page_id,
+                confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={ancestor.page_id}",
+                title=ancestor.title,
+                space_key=page_data.space_key,
+                parent_confluence_page_id=prev_ancestor_id,
+                is_virtual=True,
+                added_by=data.user_id,
+            )
+            db.add(virtual_page)
+            await db.flush()
+        prev_ancestor_id = ancestor.page_id
+
+    # Determine parent: last ancestor in the chain
+    parent_cpid = page_data.ancestors[-1].page_id if page_data.ancestors else None
+
     page = Page(
         confluence_page_id=page_data.page_id,
         confluence_url=data.confluence_url,
         title=page_data.title,
         space_key=page_data.space_key,
+        parent_confluence_page_id=parent_cpid,
         added_by=data.user_id,
     )
     db.add(page)
@@ -189,7 +215,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
 async def list_pages(db: AsyncSession = Depends(get_db)):
     """List all tracked pages with coverage stats."""
     result = await db.execute(
-        select(Page).order_by(Page.created_at.desc())
+        select(Page).where(Page.is_virtual == False).order_by(Page.created_at.desc())
     )
     pages = result.scalars().all()
 
@@ -233,6 +259,49 @@ async def list_pages(db: AsyncSession = Depends(get_db)):
         ))
 
     return items
+
+
+@router.get("/tree", response_model=list[SpaceTreeResponse])
+async def get_page_tree(db: AsyncSession = Depends(get_db)):
+    """Get all pages grouped by space as a tree structure."""
+    result = await db.execute(
+        select(Page).order_by(Page.space_key, Page.title)
+    )
+    pages = result.scalars().all()
+
+    # Compute coverage for tracked pages
+    nodes: list[TreeNodeItem] = []
+    for page in pages:
+        coverage = 0.0
+        if not page.is_virtual:
+            hl_count = await db.execute(
+                select(func.count(Highlight.id))
+                .where(Highlight.page_id == page.id)
+            )
+            highlight_count = hl_count.scalar() or 0
+            coverage = min(highlight_count * 10.0, 100.0)
+
+        nodes.append(TreeNodeItem(
+            id=page.id,
+            confluence_page_id=page.confluence_page_id,
+            title=page.title,
+            space_key=page.space_key,
+            is_virtual=page.is_virtual,
+            parent_confluence_page_id=page.parent_confluence_page_id,
+            coverage_percent=coverage,
+            has_updates=False,
+        ))
+
+    # Group by space_key
+    spaces: dict[str, list[TreeNodeItem]] = {}
+    for node in nodes:
+        key = node.space_key or "OTHER"
+        spaces.setdefault(key, []).append(node)
+
+    return [
+        SpaceTreeResponse(space_key=sk, pages=pg)
+        for sk, pg in spaces.items()
+    ]
 
 
 @router.get("/{page_id}", response_model=PageDetail)
@@ -397,10 +466,14 @@ async def set_baseline(page_id: UUID, data: BaselineCreate, db: AsyncSession = D
 
 @router.delete("/{page_id}", status_code=204)
 async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Delete a tracked page and all its related data (snapshots, baselines, highlights)."""
+    """Delete a tracked page and all its related data (snapshots, baselines, highlights).
+    Also cleans up orphaned virtual ancestors."""
     page = await db.get(Page, page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+
+    # Remember parent chain before deletion
+    parent_cpid = page.parent_confluence_page_id
 
     highlight_ids_q = select(Highlight.id).where(Highlight.page_id == page_id)
     await db.execute(
@@ -412,6 +485,29 @@ async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
 
     await db.delete(page)
     await db.flush()
+
+    # Clean up orphaned virtual ancestors
+    while parent_cpid:
+        parent_result = await db.execute(
+            select(Page).where(Page.confluence_page_id == parent_cpid)
+        )
+        parent_page = parent_result.scalar_one_or_none()
+        if not parent_page or not parent_page.is_virtual:
+            break
+
+        # Check if this virtual page still has children
+        children_count = await db.execute(
+            select(func.count(Page.id))
+            .where(Page.parent_confluence_page_id == parent_cpid)
+        )
+        if (children_count.scalar() or 0) > 0:
+            break
+
+        # No children left — remove this virtual page
+        next_parent = parent_page.parent_confluence_page_id
+        await db.delete(parent_page)
+        await db.flush()
+        parent_cpid = next_parent
 
     return Response(status_code=204)
 

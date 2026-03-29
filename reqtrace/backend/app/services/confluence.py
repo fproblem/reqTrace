@@ -1,7 +1,7 @@
 import re
 import logging
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import httpx
@@ -202,12 +202,19 @@ process_confluence_images = process_confluence_html
 
 
 @dataclass
+class ConfluenceAncestor:
+    page_id: str
+    title: str
+
+
+@dataclass
 class ConfluencePageData:
     page_id: str
     title: str
     space_key: str
     version: int
     content_html: str
+    ancestors: list[ConfluenceAncestor] = field(default_factory=list)
 
 
 @dataclass
@@ -252,7 +259,7 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
 
     api_url = f"{base_url}/rest/api/content/{page_id}"
 
-    params = {"expand": "body.storage,version,space"}
+    params = {"expand": "body.storage,version,space,ancestors"}
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         auth = None
@@ -275,12 +282,18 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
 
         data = response.json()
 
+        ancestors = [
+            ConfluenceAncestor(page_id=str(a["id"]), title=a["title"])
+            for a in data.get("ancestors", [])
+        ]
+
         return ConfluencePageData(
             page_id=str(data["id"]),
             title=data["title"],
             space_key=data.get("space", {}).get("key", ""),
             version=data["version"]["number"],
             content_html=data["body"]["storage"]["value"],
+            ancestors=ancestors,
         )
 
 

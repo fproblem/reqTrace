@@ -1,6 +1,7 @@
 import type {
   User, PageListItem, PageDetail,
   Highlight, TestLink, DiffResponse, BaselineInfo,
+  SpaceTree,
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -43,6 +44,9 @@ export const api = {
 
   listPages: () =>
     request<PageListItem[]>('/pages'),
+
+  getPageTree: () =>
+    request<SpaceTree[]>('/pages/tree'),
 
   getPage: (pageId: string) =>
     request<PageDetail>(`/pages/${pageId}`),

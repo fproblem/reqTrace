@@ -74,6 +74,22 @@ export interface Highlight {
   tests: TestLink[];
 }
 
+export interface TreeNodeItem {
+  id: string;
+  confluence_page_id: string;
+  title: string;
+  space_key: string | null;
+  is_virtual: boolean;
+  parent_confluence_page_id: string | null;
+  coverage_percent: number;
+  has_updates: boolean;
+}
+
+export interface SpaceTree {
+  space_key: string;
+  pages: TreeNodeItem[];
+}
+
 export interface DiffResponse {
   has_changes: boolean;
   diff_html: string;

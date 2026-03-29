@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,8 @@ class Page(Base):
     confluence_url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     space_key: Mapped[str] = mapped_column(String(64), nullable=True)
+    parent_confluence_page_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    is_virtual: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     added_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

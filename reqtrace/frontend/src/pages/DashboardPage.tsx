@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageListItem } from '../types';
+import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface DashboardPageProps {
@@ -16,17 +17,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ userId }) => {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const loadPages = useCallback(async () => {
     try {
       const data = await api.listPages();
       setPages(data);
     } catch (e: any) {
-      console.error('Failed to load pages', e);
+      showToast('error', 'Не удалось загрузить страницы', e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => { loadPages(); }, [loadPages]);
 
@@ -41,7 +43,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ userId }) => {
       setShowAddForm(false);
       await loadPages();
     } catch (e: any) {
-      setError(e.message || 'Ошибка при добавлении');
+      const msg = e.message || 'Ошибка при добавлении';
+      setError(msg);
+      showToast('error', 'Не удалось добавить страницу', msg);
     } finally {
       setAdding(false);
     }
@@ -183,8 +187,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ userId }) => {
                 try {
                   await api.addDemoPage(userId);
                   await loadPages();
-                } catch (e) {
-                  console.error('Failed to add demo page', e);
+                } catch (e: any) {
+                  showToast('error', 'Не удалось добавить демо-страницу', e.message);
                 }
               }}
               style={{

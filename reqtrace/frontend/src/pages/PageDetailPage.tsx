@@ -6,6 +6,7 @@ import { ContentRenderer, contentStyles } from '../components/PageView/ContentRe
 import { HighlightLayer, getContentBlocks } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
+import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -18,6 +19,7 @@ type ViewMode = 'coverage' | 'changes';
 export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [page, setPage] = useState<PageDetail | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -63,12 +65,12 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       setPage(pageData);
       setHighlights(hlData);
       setJiraBaseUrl(settingsData.jira_base_url || '');
-    } catch (e) {
-      console.error('Failed to load page', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось загрузить страницу', e.message);
     } finally {
       setLoading(false);
     }
-  }, [pageId]);
+  }, [pageId, showToast]);
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
@@ -78,6 +80,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     try {
       await api.refreshPage(pageId, userId);
       await loadPage();
+    } catch (e: any) {
+      showToast('error', 'Не удалось обновить страницу', e.message);
     } finally {
       setRefreshing(false);
     }
@@ -99,8 +103,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     try {
       await api.setBaseline(pageId, userId);
       await loadPage();
-    } catch (e) {
-      console.error('Failed to set baseline', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось закрепить baseline', e.message);
     }
   };
 
@@ -126,40 +130,53 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   }, [scrollToHighlight]);
 
   const handleAddTest = async (highlightId: string, testKey: string) => {
-    await api.addTestLink(highlightId, testKey, userId);
-    await loadPage();
-    const updated = highlights.find(h => h.id === highlightId);
-    if (updated) {
+    try {
+      await api.addTestLink(highlightId, testKey, userId);
+      await loadPage();
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);
       setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+    } catch (e: any) {
+      showToast('error', 'Не удалось привязать тест', e.message);
     }
   };
 
   const handleRemoveTest = async (linkId: string) => {
-    await api.removeTestLink(linkId);
-    await loadPage();
-    if (selectedHighlight) {
-      const refreshed = await api.listHighlights(pageId!);
-      setHighlights(refreshed);
-      setSelectedHighlight(refreshed.find(h => h.id === selectedHighlight.id) || null);
+    try {
+      await api.removeTestLink(linkId);
+      await loadPage();
+      if (selectedHighlight) {
+        const refreshed = await api.listHighlights(pageId!);
+        setHighlights(refreshed);
+        setSelectedHighlight(refreshed.find(h => h.id === selectedHighlight.id) || null);
+      }
+    } catch (e: any) {
+      showToast('error', 'Не удалось отвязать тест', e.message);
     }
   };
 
   const handleReanchor = async (highlightId: string) => {
-    await api.reanchorHighlight(highlightId, userId);
-    await loadPage();
-    if (pageId) {
-      const refreshed = await api.listHighlights(pageId);
-      setHighlights(refreshed);
-      setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+    try {
+      await api.reanchorHighlight(highlightId, userId);
+      await loadPage();
+      if (pageId) {
+        const refreshed = await api.listHighlights(pageId);
+        setHighlights(refreshed);
+        setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+      }
+    } catch (e: any) {
+      showToast('error', 'Не удалось актуализировать привязку', e.message);
     }
   };
 
   const handleDeleteHighlight = async (highlightId: string) => {
-    await api.deleteHighlight(highlightId);
-    setSelectedHighlight(null);
-    await loadPage();
+    try {
+      await api.deleteHighlight(highlightId);
+      setSelectedHighlight(null);
+      await loadPage();
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить привязку', e.message);
+    }
   };
 
   const handleDeletePage = async () => {
@@ -168,8 +185,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     try {
       await api.deletePage(pageId);
       navigate('/');
-    } catch (e) {
-      console.error('Failed to delete page', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить страницу', e.message);
       setDeleting(false);
     }
   };
@@ -305,8 +322,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         startCharOffset: 0, endCharOffset: 0,
       };
       await loadPage();
-    } catch (e) {
-      console.error('Failed to create highlight', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось создать привязку', e.message);
     }
   };
 
@@ -338,8 +355,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       try {
         await api.promotePage(pageId, userId);
         await loadPage();
-      } catch (e) {
-        console.error('Failed to promote page', e);
+        showToast('success', 'Страница подключена', 'Содержимое загружено из Confluence');
+      } catch (e: any) {
+        showToast('error', 'Не удалось подключить страницу', e.message);
       } finally {
         setPromoting(false);
       }

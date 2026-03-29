@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
 import { SpaceTree, TreeNodeItem } from '../../types';
+import { useToast } from '../Toast';
 import { colors, radii } from '../../styles/tokens';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
@@ -34,17 +35,18 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
 
   const loadTree = useCallback(async () => {
     try {
       const data = await api.getPageTree();
       setSpaces(data);
-    } catch (e) {
-      console.error('Failed to load page tree', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось загрузить дерево страниц', e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   // Refetch tree on mount and when route changes (covers delete, refresh scenarios)
   useEffect(() => { loadTree(); }, [location.pathname, loadTree]);
@@ -72,7 +74,9 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
       navigate(`/pages/${page.id}`);
       onPageAdded?.();
     } catch (e: any) {
-      setError(e.message || 'Ошибка при добавлении');
+      const msg = e.message || 'Ошибка при добавлении';
+      setError(msg);
+      showToast('error', 'Не удалось добавить страницу', msg);
     } finally {
       setAdding(false);
     }
@@ -83,8 +87,8 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
       const page = await api.addDemoPage(userId);
       await loadTree();
       navigate(`/pages/${page.id}`);
-    } catch (e) {
-      console.error('Failed to add demo page', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось добавить демо-страницу', e.message);
     }
   };
 

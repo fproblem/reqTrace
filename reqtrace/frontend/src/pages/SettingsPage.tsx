@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
 export const SettingsPage: React.FC = () => {
@@ -12,6 +13,7 @@ export const SettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   useEffect(() => {
     const load = async () => {
@@ -21,8 +23,8 @@ export const SettingsPage: React.FC = () => {
         setConfluenceUser(data.confluence_username);
         setPasswordSet(data.confluence_password_set);
         setJiraUrl(data.jira_base_url);
-      } catch (e) {
-        console.error('Failed to load settings', e);
+      } catch (e: any) {
+        showToast('error', 'Не удалось загрузить настройки', e.message);
       } finally {
         setLoading(false);
       }
@@ -46,7 +48,9 @@ export const SettingsPage: React.FC = () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) {
-      setError(e.message || 'Ошибка при сохранении');
+      const msg = e.message || 'Ошибка при сохранении';
+      setError(msg);
+      showToast('error', 'Не удалось сохранить настройки', msg);
     } finally {
       setSaving(false);
     }

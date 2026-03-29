@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useToast } from '../components/Toast';
 import { colors, radii, shadows, fonts } from '../styles/tokens';
 
 interface LoginPageProps {
@@ -8,6 +9,7 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,6 +17,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setLoading(true);
     try {
       await onLogin(name.trim());
+    } catch (err: any) {
+      showToast('error', 'Не удалось войти', err.message);
     } finally {
       setLoading(false);
     }

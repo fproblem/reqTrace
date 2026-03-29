@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { PageDetailPage } from './pages/PageDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { Layout } from './components/Layout/Layout';
+import { ToastProvider } from './components/Toast';
 import { colors } from './styles/tokens';
 
 const USER_STORAGE_KEY = 'reqtrace_user';
@@ -32,10 +33,15 @@ function App() {
   };
 
   if (!user) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <ToastProvider>
+        <LoginPage onLogin={handleLogin} />
+      </ToastProvider>
+    );
   }
 
   return (
+    <ToastProvider>
     <BrowserRouter>
       <Layout userName={user.name} userId={user.id} onLogout={handleLogout}>
         <Routes>
@@ -60,6 +66,7 @@ function App() {
         </Routes>
       </Layout>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
 

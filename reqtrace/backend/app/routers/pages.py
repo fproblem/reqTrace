@@ -123,10 +123,11 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(Page).where(Page.confluence_page_id == page_id_str)
     )
-    if existing.scalar_one_or_none():
+    existing_page = existing_result.scalar_one_or_none()
+    if existing_page and not existing_page.is_virtual:
         raise HTTPException(status_code=409, detail="Page already tracked")
 
     params = await get_confluence_params(db)
@@ -162,16 +163,26 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
     # Determine parent: last ancestor in the chain
     parent_cpid = page_data.ancestors[-1].page_id if page_data.ancestors else None
 
-    page = Page(
-        confluence_page_id=page_data.page_id,
-        confluence_url=data.confluence_url,
-        title=page_data.title,
-        space_key=page_data.space_key,
-        parent_confluence_page_id=parent_cpid,
-        added_by=data.user_id,
-    )
-    db.add(page)
-    await db.flush()
+    if existing_page and existing_page.is_virtual:
+        # Convert virtual page to a real tracked page
+        existing_page.is_virtual = False
+        existing_page.confluence_url = data.confluence_url
+        existing_page.title = page_data.title
+        existing_page.space_key = page_data.space_key
+        existing_page.parent_confluence_page_id = parent_cpid
+        page = existing_page
+        await db.flush()
+    else:
+        page = Page(
+            confluence_page_id=page_data.page_id,
+            confluence_url=data.confluence_url,
+            title=page_data.title,
+            space_key=page_data.space_key,
+            parent_confluence_page_id=parent_cpid,
+            added_by=data.user_id,
+        )
+        db.add(page)
+        await db.flush()
 
     snapshot = PageSnapshot(
         page_id=page.id,

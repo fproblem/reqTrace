@@ -48,6 +48,7 @@ class PageDetail(BaseModel):
     confluence_url: str
     title: str
     space_key: Optional[str] = None
+    is_virtual: bool = False
     created_at: datetime
     current_snapshot: Optional[SnapshotInfo] = None
     baseline: Optional[BaselineInfo] = None

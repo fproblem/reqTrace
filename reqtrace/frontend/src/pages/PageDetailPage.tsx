@@ -50,6 +50,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [showBaselineWarning, setShowBaselineWarning] = useState(false);
+  const [promoting, setPromoting] = useState(false);
 
   const loadPage = useCallback(async () => {
     if (!pageId) return;
@@ -326,6 +327,122 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: colors.statusLost }}>
         Страница не найдена
+      </div>
+    );
+  }
+
+  if (page.is_virtual) {
+    const handlePromote = async () => {
+      if (!pageId) return;
+      setPromoting(true);
+      try {
+        await api.promotePage(pageId, userId);
+        await loadPage();
+      } catch (e) {
+        console.error('Failed to promote page', e);
+      } finally {
+        setPromoting(false);
+      }
+    };
+
+    return (
+      <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
+        {/* Top bar */}
+        <div style={{
+          padding: '14px 24px',
+          background: 'rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          flexShrink: 0,
+        }}>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '16px', color: colors.textSecondary, padding: '4px 8px',
+            }}
+          >
+            ←
+          </button>
+          <div style={{
+            fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {page.title}
+          </div>
+          <span style={{
+            padding: '2px 10px',
+            borderRadius: radii.pill,
+            background: 'rgba(0,0,0,0.05)',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: colors.textTertiary,
+          }}>
+            Виртуальная
+          </span>
+        </div>
+
+        {/* Promote CTA */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            textAlign: 'center',
+            maxWidth: '420px',
+            padding: '40px',
+          }}>
+            <div style={{
+              fontSize: '48px',
+              marginBottom: '16px',
+              opacity: 0.4,
+            }}>
+              📄
+            </div>
+            <div style={{
+              fontSize: '18px',
+              fontWeight: 600,
+              color: colors.textPrimary,
+              marginBottom: '8px',
+            }}>
+              Страница не отслеживается
+            </div>
+            <div style={{
+              fontSize: '14px',
+              color: colors.textSecondary,
+              marginBottom: '28px',
+              lineHeight: 1.5,
+            }}>
+              Эта страница была добавлена автоматически как элемент иерархии.
+              Начните отслеживание, чтобы подтянуть содержимое из Confluence
+              и работать с покрытием требований.
+            </div>
+            <button
+              onClick={handlePromote}
+              disabled={promoting}
+              style={{
+                padding: '10px 28px',
+                borderRadius: radii.pill,
+                border: 'none',
+                background: colors.greenAccent,
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: promoting ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                opacity: promoting ? 0.7 : 1,
+                transition: 'opacity 0.15s',
+              }}
+            >
+              {promoting ? 'Подключение...' : 'Начать отслеживание'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

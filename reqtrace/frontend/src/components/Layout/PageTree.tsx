@@ -374,6 +374,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
 
   const handleClick = () => {
     if (node.is_virtual) {
+      navigate(`/pages/${node.id}`);
       if (hasChildren) toggleExpand(nodeKey);
     } else {
       navigate(`/pages/${node.id}`);

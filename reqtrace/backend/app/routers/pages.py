@@ -99,6 +99,7 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
         confluence_url=page.confluence_url,
         title=page.title,
         space_key=page.space_key,
+        is_virtual=page.is_virtual,
         created_at=page.created_at,
         current_snapshot=SnapshotInfo(
             id=snapshot.id,
@@ -206,6 +207,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
         confluence_url=page.confluence_url,
         title=page.title,
         space_key=page.space_key,
+        is_virtual=page.is_virtual,
         created_at=page.created_at,
         current_snapshot=SnapshotInfo(
             id=snapshot.id,
@@ -344,6 +346,7 @@ async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
         confluence_url=page.confluence_url,
         title=page.title,
         space_key=page.space_key,
+        is_virtual=page.is_virtual,
         created_at=page.created_at,
         current_snapshot=SnapshotInfo(
             id=latest_snapshot.id,
@@ -357,6 +360,68 @@ async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
             confirmed_at=latest_baseline.confirmed_at,
         ) if latest_baseline else None,
         content_html=(await _render_html(latest_snapshot.content_html, page.id, db)) if latest_snapshot else None,
+    )
+
+
+@router.post("/{page_id}/promote", response_model=PageDetail)
+async def promote_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Promote a virtual page to a fully tracked page by fetching its content from Confluence."""
+    page = await db.get(Page, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    if not page.is_virtual:
+        raise HTTPException(status_code=400, detail="Page is already tracked")
+
+    params = await get_confluence_params(db)
+    conn = ConfluenceConnection(**params)
+
+    try:
+        page_data = await confluence.fetch_page(page.confluence_page_id, conn)
+    except Exception as e:
+        logger.error("Failed to fetch Confluence page %s: %s", page.confluence_page_id, e)
+        raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
+
+    page.is_virtual = False
+    page.title = page_data.title
+    page.confluence_url = f"{params['base_url'].rstrip('/')}/pages/viewpage.action?pageId={page.confluence_page_id}"
+    await db.flush()
+
+    snapshot = PageSnapshot(
+        page_id=page.id,
+        confluence_version=page_data.version,
+        content_html=page_data.content_html,
+    )
+    db.add(snapshot)
+    await db.flush()
+
+    baseline = Baseline(
+        page_id=page.id,
+        snapshot_id=snapshot.id,
+        confirmed_by=data.user_id,
+    )
+    db.add(baseline)
+    await db.flush()
+
+    return PageDetail(
+        id=page.id,
+        confluence_page_id=page.confluence_page_id,
+        confluence_url=page.confluence_url,
+        title=page.title,
+        space_key=page.space_key,
+        is_virtual=page.is_virtual,
+        created_at=page.created_at,
+        current_snapshot=SnapshotInfo(
+            id=snapshot.id,
+            confluence_version=snapshot.confluence_version,
+            fetched_at=snapshot.fetched_at,
+        ),
+        baseline=BaselineInfo(
+            id=baseline.id,
+            snapshot_id=baseline.snapshot_id,
+            confirmed_by=baseline.confirmed_by,
+            confirmed_at=baseline.confirmed_at,
+        ),
+        content_html=await _render_html(snapshot.content_html, page.id, db),
     )
 
 

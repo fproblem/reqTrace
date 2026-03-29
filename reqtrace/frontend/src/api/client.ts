@@ -51,6 +51,12 @@ export const api = {
   getPage: (pageId: string) =>
     request<PageDetail>(`/pages/${pageId}`),
 
+  promotePage: (pageId: string, user_id: string) =>
+    request<PageDetail>(`/pages/${pageId}/promote`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+
   refreshPage: (pageId: string, user_id: string) =>
     request<PageDetail>(`/pages/${pageId}/refresh`, {
       method: 'POST',

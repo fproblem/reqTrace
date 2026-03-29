@@ -36,6 +36,7 @@ export interface PageDetail {
   confluence_url: string;
   title: string;
   space_key: string | null;
+  is_virtual: boolean;
   created_at: string;
   current_snapshot: SnapshotInfo | null;
   baseline: BaselineInfo | null;

@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { colors, radii, shadows, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
+import { PageTree } from './PageTree';
 
 interface LayoutProps {
   children: React.ReactNode;
   userName?: string;
+  userId?: string;
   onLogout?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, userName, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [changelogOpen, setChangelogOpen] = useState(false);
@@ -108,18 +110,20 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, onLogout }) 
           )}
         </div>
 
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <NavItem
-            label="Страницы"
-            active={location.pathname === '/'}
-            onClick={() => navigate('/')}
-          />
-          <NavItem
-            label="Настройки"
-            active={location.pathname === '/settings'}
-            onClick={() => navigate('/settings')}
-          />
-        </nav>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {userId && (
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <PageTree userId={userId} />
+            </div>
+          )}
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${colors.border}` }}>
+            <NavItem
+              label="Настройки"
+              active={location.pathname === '/settings'}
+              onClick={() => navigate('/settings')}
+            />
+          </div>
+        </div>
 
         {userName && (
           <div style={{

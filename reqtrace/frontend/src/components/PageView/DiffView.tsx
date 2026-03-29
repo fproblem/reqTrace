@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { DiffResponse } from '../../types';
+import { useToast } from '../Toast';
 import { colors, radii } from '../../styles/tokens';
 
 interface DiffViewProps {
@@ -11,6 +12,7 @@ export const DiffView: React.FC<DiffViewProps> = ({ pageId }) => {
   const [diff, setDiff] = useState<DiffResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   useEffect(() => {
     const load = async () => {
@@ -20,7 +22,9 @@ export const DiffView: React.FC<DiffViewProps> = ({ pageId }) => {
         const data = await api.getDiff(pageId);
         setDiff(data);
       } catch (e: any) {
-        setError(e.message || 'Не удалось загрузить diff');
+        const msg = e.message || 'Не удалось загрузить diff';
+        setError(msg);
+        showToast('error', 'Ошибка загрузки изменений', msg);
       } finally {
         setLoading(false);
       }

@@ -48,12 +48,31 @@ class PageDetail(BaseModel):
     confluence_url: str
     title: str
     space_key: Optional[str] = None
+    is_virtual: bool = False
     created_at: datetime
     current_snapshot: Optional[SnapshotInfo] = None
     baseline: Optional[BaselineInfo] = None
     content_html: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class TreeNodeItem(BaseModel):
+    id: UUID
+    confluence_page_id: str
+    title: str
+    space_key: Optional[str] = None
+    is_virtual: bool
+    parent_confluence_page_id: Optional[str] = None
+    coverage_percent: float = 0.0
+    has_updates: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceTreeResponse(BaseModel):
+    space_key: str
+    pages: list[TreeNodeItem]
 
 
 class BaselineCreate(BaseModel):

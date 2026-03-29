@@ -1,7 +1,7 @@
 import re
 import logging
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import httpx
@@ -202,12 +202,19 @@ process_confluence_images = process_confluence_html
 
 
 @dataclass
+class ConfluenceAncestor:
+    page_id: str
+    title: str
+
+
+@dataclass
 class ConfluencePageData:
     page_id: str
     title: str
     space_key: str
     version: int
     content_html: str
+    ancestors: list[ConfluenceAncestor] = field(default_factory=list)
 
 
 @dataclass
@@ -252,7 +259,7 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
 
     api_url = f"{base_url}/rest/api/content/{page_id}"
 
-    params = {"expand": "body.storage,version,space"}
+    params = {"expand": "body.storage,version,space,ancestors"}
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         auth = None
@@ -275,13 +282,90 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
 
         data = response.json()
 
+        ancestors = [
+            ConfluenceAncestor(page_id=str(a["id"]), title=a["title"])
+            for a in data.get("ancestors", [])
+        ]
+
         return ConfluencePageData(
             page_id=str(data["id"]),
             title=data["title"],
             space_key=data.get("space", {}).get("key", ""),
             version=data["version"]["number"],
             content_html=data["body"]["storage"]["value"],
+            ancestors=ancestors,
         )
+
+
+@dataclass
+class SpacePageInfo:
+    """Lightweight page info returned by fetch_space_pages."""
+    page_id: str
+    title: str
+    parent_page_id: Optional[str]  # direct parent, None for root pages
+
+
+async def fetch_space_pages(
+    space_key: str, conn: Optional[ConfluenceConnection] = None
+) -> list[SpacePageInfo]:
+    """Fetch all pages in a Confluence space with their parent info.
+
+    Uses pagination to handle large spaces. Returns a flat list of
+    SpacePageInfo with parent_page_id derived from the ancestors array.
+    """
+    if conn is None:
+        from app.config import settings
+        conn = ConfluenceConnection(
+            base_url=settings.CONFLUENCE_BASE_URL,
+            username=settings.CONFLUENCE_USERNAME,
+            password=settings.CONFLUENCE_PASSWORD,
+        )
+
+    base_url = conn.base_url.rstrip("/")
+    if not base_url:
+        raise ValueError("Confluence URL is not configured.")
+
+    pages: list[SpacePageInfo] = []
+    start = 0
+    limit = 200
+    max_pages = 10_000  # safety cap
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        auth = None
+        if conn.username and conn.password:
+            auth = httpx.BasicAuth(conn.username, conn.password)
+
+        while len(pages) < max_pages:
+            api_url = f"{base_url}/rest/api/content"
+            params = {
+                "spaceKey": space_key,
+                "type": "page",
+                "expand": "ancestors",
+                "start": str(start),
+                "limit": str(limit),
+            }
+
+            response = await client.get(api_url, params=params, auth=auth)
+            response.raise_for_status()
+            data = response.json()
+
+            for item in data.get("results", []):
+                ancestors = item.get("ancestors", [])
+                parent_id = str(ancestors[-1]["id"]) if ancestors else None
+                pages.append(SpacePageInfo(
+                    page_id=str(item["id"]),
+                    title=item["title"],
+                    parent_page_id=parent_id,
+                ))
+
+            # Check if there are more pages
+            returned = data.get("size", 0)
+            if returned < limit:
+                break
+            start += limit
+
+    logger.info("Fetched %d pages from space %s", len(pages), space_key)
+    return pages
 
 
 async def get_page_version(page_id: str, conn: Optional[ConfluenceConnection] = None) -> int:

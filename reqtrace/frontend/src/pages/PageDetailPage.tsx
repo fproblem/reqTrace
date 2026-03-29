@@ -6,6 +6,7 @@ import { ContentRenderer, contentStyles } from '../components/PageView/ContentRe
 import { HighlightLayer, getContentBlocks } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
+import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -18,6 +19,7 @@ type ViewMode = 'coverage' | 'changes';
 export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [page, setPage] = useState<PageDetail | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -50,6 +52,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [showBaselineWarning, setShowBaselineWarning] = useState(false);
+  const [promoting, setPromoting] = useState(false);
 
   const loadPage = useCallback(async () => {
     if (!pageId) return;
@@ -62,12 +65,12 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       setPage(pageData);
       setHighlights(hlData);
       setJiraBaseUrl(settingsData.jira_base_url || '');
-    } catch (e) {
-      console.error('Failed to load page', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось загрузить страницу', e.message);
     } finally {
       setLoading(false);
     }
-  }, [pageId]);
+  }, [pageId, showToast]);
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
@@ -77,6 +80,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     try {
       await api.refreshPage(pageId, userId);
       await loadPage();
+    } catch (e: any) {
+      showToast('error', 'Не удалось обновить страницу', e.message);
     } finally {
       setRefreshing(false);
     }
@@ -98,8 +103,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     try {
       await api.setBaseline(pageId, userId);
       await loadPage();
-    } catch (e) {
-      console.error('Failed to set baseline', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось закрепить baseline', e.message);
     }
   };
 
@@ -125,40 +130,53 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   }, [scrollToHighlight]);
 
   const handleAddTest = async (highlightId: string, testKey: string) => {
-    await api.addTestLink(highlightId, testKey, userId);
-    await loadPage();
-    const updated = highlights.find(h => h.id === highlightId);
-    if (updated) {
+    try {
+      await api.addTestLink(highlightId, testKey, userId);
+      await loadPage();
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);
       setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+    } catch (e: any) {
+      showToast('error', 'Не удалось привязать тест', e.message);
     }
   };
 
   const handleRemoveTest = async (linkId: string) => {
-    await api.removeTestLink(linkId);
-    await loadPage();
-    if (selectedHighlight) {
-      const refreshed = await api.listHighlights(pageId!);
-      setHighlights(refreshed);
-      setSelectedHighlight(refreshed.find(h => h.id === selectedHighlight.id) || null);
+    try {
+      await api.removeTestLink(linkId);
+      await loadPage();
+      if (selectedHighlight) {
+        const refreshed = await api.listHighlights(pageId!);
+        setHighlights(refreshed);
+        setSelectedHighlight(refreshed.find(h => h.id === selectedHighlight.id) || null);
+      }
+    } catch (e: any) {
+      showToast('error', 'Не удалось отвязать тест', e.message);
     }
   };
 
   const handleReanchor = async (highlightId: string) => {
-    await api.reanchorHighlight(highlightId, userId);
-    await loadPage();
-    if (pageId) {
-      const refreshed = await api.listHighlights(pageId);
-      setHighlights(refreshed);
-      setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+    try {
+      await api.reanchorHighlight(highlightId, userId);
+      await loadPage();
+      if (pageId) {
+        const refreshed = await api.listHighlights(pageId);
+        setHighlights(refreshed);
+        setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+      }
+    } catch (e: any) {
+      showToast('error', 'Не удалось актуализировать привязку', e.message);
     }
   };
 
   const handleDeleteHighlight = async (highlightId: string) => {
-    await api.deleteHighlight(highlightId);
-    setSelectedHighlight(null);
-    await loadPage();
+    try {
+      await api.deleteHighlight(highlightId);
+      setSelectedHighlight(null);
+      await loadPage();
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить привязку', e.message);
+    }
   };
 
   const handleDeletePage = async () => {
@@ -167,8 +185,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     try {
       await api.deletePage(pageId);
       navigate('/');
-    } catch (e) {
-      console.error('Failed to delete page', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить страницу', e.message);
       setDeleting(false);
     }
   };
@@ -304,8 +322,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         startCharOffset: 0, endCharOffset: 0,
       };
       await loadPage();
-    } catch (e) {
-      console.error('Failed to create highlight', e);
+    } catch (e: any) {
+      showToast('error', 'Не удалось создать привязку', e.message);
     }
   };
 
@@ -326,6 +344,123 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: colors.statusLost }}>
         Страница не найдена
+      </div>
+    );
+  }
+
+  if (page.is_virtual) {
+    const handlePromote = async () => {
+      if (!pageId) return;
+      setPromoting(true);
+      try {
+        await api.promotePage(pageId, userId);
+        await loadPage();
+        showToast('success', 'Страница подключена', 'Содержимое загружено из Confluence');
+      } catch (e: any) {
+        showToast('error', 'Не удалось подключить страницу', e.message);
+      } finally {
+        setPromoting(false);
+      }
+    };
+
+    return (
+      <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
+        {/* Top bar */}
+        <div style={{
+          padding: '14px 24px',
+          background: 'rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          flexShrink: 0,
+        }}>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '16px', color: colors.textSecondary, padding: '4px 8px',
+            }}
+          >
+            ←
+          </button>
+          <div style={{
+            fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {page.title}
+          </div>
+          <span style={{
+            padding: '2px 10px',
+            borderRadius: radii.pill,
+            background: 'rgba(0,0,0,0.05)',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: colors.textTertiary,
+          }}>
+            Виртуальная
+          </span>
+        </div>
+
+        {/* Promote CTA */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            textAlign: 'center',
+            maxWidth: '420px',
+            padding: '40px',
+          }}>
+            <div style={{
+              fontSize: '48px',
+              marginBottom: '16px',
+              opacity: 0.4,
+            }}>
+              📄
+            </div>
+            <div style={{
+              fontSize: '18px',
+              fontWeight: 600,
+              color: colors.textPrimary,
+              marginBottom: '8px',
+            }}>
+              Страница не отслеживается
+            </div>
+            <div style={{
+              fontSize: '14px',
+              color: colors.textSecondary,
+              marginBottom: '28px',
+              lineHeight: 1.5,
+            }}>
+              Эта страница была добавлена автоматически как элемент иерархии.
+              Начните отслеживание, чтобы подтянуть содержимое из Confluence
+              и работать с покрытием требований.
+            </div>
+            <button
+              onClick={handlePromote}
+              disabled={promoting}
+              style={{
+                padding: '10px 28px',
+                borderRadius: radii.pill,
+                border: 'none',
+                background: colors.greenAccent,
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: promoting ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                opacity: promoting ? 0.7 : 1,
+                transition: 'opacity 0.15s',
+              }}
+            >
+              {promoting ? 'Подключение...' : 'Начать отслеживание'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

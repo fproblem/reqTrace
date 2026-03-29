@@ -36,6 +36,7 @@ export interface PageDetail {
   confluence_url: string;
   title: string;
   space_key: string | null;
+  is_virtual: boolean;
   created_at: string;
   current_snapshot: SnapshotInfo | null;
   baseline: BaselineInfo | null;
@@ -72,6 +73,22 @@ export interface Highlight {
   reanchored_by_name: string | null;
   reanchored_at: string | null;
   tests: TestLink[];
+}
+
+export interface TreeNodeItem {
+  id: string;
+  confluence_page_id: string;
+  title: string;
+  space_key: string | null;
+  is_virtual: boolean;
+  parent_confluence_page_id: string | null;
+  coverage_percent: number;
+  has_updates: boolean;
+}
+
+export interface SpaceTree {
+  space_key: string;
+  pages: TreeNodeItem[];
 }
 
 export interface DiffResponse {

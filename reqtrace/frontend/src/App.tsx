@@ -3,10 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { api } from './api/client';
 import { User } from './types';
 import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
 import { PageDetailPage } from './pages/PageDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { Layout } from './components/Layout/Layout';
+import { ToastProvider } from './components/Toast';
+import { colors } from './styles/tokens';
 
 const USER_STORAGE_KEY = 'reqtrace_user';
 
@@ -32,14 +33,30 @@ function App() {
   };
 
   if (!user) {
-    return <LoginPage onLogin={handleLogin} />;
+    return (
+      <ToastProvider>
+        <LoginPage onLogin={handleLogin} />
+      </ToastProvider>
+    );
   }
 
   return (
+    <ToastProvider>
     <BrowserRouter>
-      <Layout userName={user.name} onLogout={handleLogout}>
+      <Layout userName={user.name} userId={user.id} onLogout={handleLogout}>
         <Routes>
-          <Route path="/" element={<DashboardPage userId={user.id} />} />
+          <Route path="/" element={
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100vh',
+              color: colors.textTertiary,
+              fontSize: '15px',
+            }}>
+              Выберите страницу в боковой панели
+            </div>
+          } />
           <Route
             path="/pages/:pageId"
             element={<PageDetailPage userId={user.id} />}
@@ -49,6 +66,7 @@ function App() {
         </Routes>
       </Layout>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
 

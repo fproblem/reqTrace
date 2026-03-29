@@ -17,6 +17,7 @@ from app.models.highlight_test import HighlightTest
 from app.schemas.page import (
     PageCreate, PageListItem, PageDetail,
     SnapshotInfo, BaselineInfo, BaselineCreate, RefreshRequest,
+    TreeNodeItem, SpaceTreeResponse,
 )
 from app.services import confluence
 from app.services.confluence import ConfluenceConnection, process_confluence_html
@@ -98,6 +99,7 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
         confluence_url=page.confluence_url,
         title=page.title,
         space_key=page.space_key,
+        is_virtual=page.is_virtual,
         created_at=page.created_at,
         current_snapshot=SnapshotInfo(
             id=snapshot.id,
@@ -122,10 +124,11 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(Page).where(Page.confluence_page_id == page_id_str)
     )
-    if existing.scalar_one_or_none():
+    existing_page = existing_result.scalar_one_or_none()
+    if existing_page and not existing_page.is_virtual:
         raise HTTPException(status_code=409, detail="Page already tracked")
 
     params = await get_confluence_params(db)
@@ -137,15 +140,80 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
         logger.error("Failed to fetch Confluence page %s: %s", page_id_str, e)
         raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
 
-    page = Page(
-        confluence_page_id=page_data.page_id,
-        confluence_url=data.confluence_url,
-        title=page_data.title,
-        space_key=page_data.space_key,
-        added_by=data.user_id,
-    )
-    db.add(page)
-    await db.flush()
+    # Sync full space tree: create virtual pages for ALL pages in the space
+    conf_base_url = params["base_url"].rstrip("/")
+    try:
+        space_pages = await confluence.fetch_space_pages(page_data.space_key, conn)
+    except Exception as e:
+        logger.warning("Failed to fetch space tree for %s: %s — falling back to ancestors only",
+                       page_data.space_key, e)
+        space_pages = []
+
+    if space_pages:
+        # Build a set of confluence_page_ids already in the DB for this space
+        space_existing = await db.execute(
+            select(Page.confluence_page_id).where(Page.space_key == page_data.space_key)
+        )
+        existing_cpids = set(space_existing.scalars().all())
+
+        for sp in space_pages:
+            if sp.page_id not in existing_cpids and sp.page_id != page_id_str:
+                virtual_page = Page(
+                    confluence_page_id=sp.page_id,
+                    confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={sp.page_id}",
+                    title=sp.title,
+                    space_key=page_data.space_key,
+                    parent_confluence_page_id=sp.parent_page_id,
+                    is_virtual=True,
+                    added_by=data.user_id,
+                )
+                db.add(virtual_page)
+                existing_cpids.add(sp.page_id)
+        await db.flush()
+    else:
+        # Fallback: create virtual ancestors only (original behavior)
+        prev_ancestor_id: str | None = None
+        for ancestor in page_data.ancestors:
+            existing_ancestor = await db.execute(
+                select(Page).where(Page.confluence_page_id == ancestor.page_id)
+            )
+            if not existing_ancestor.scalar_one_or_none():
+                virtual_page = Page(
+                    confluence_page_id=ancestor.page_id,
+                    confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={ancestor.page_id}",
+                    title=ancestor.title,
+                    space_key=page_data.space_key,
+                    parent_confluence_page_id=prev_ancestor_id,
+                    is_virtual=True,
+                    added_by=data.user_id,
+                )
+                db.add(virtual_page)
+                await db.flush()
+            prev_ancestor_id = ancestor.page_id
+
+    # Determine parent: last ancestor in the chain
+    parent_cpid = page_data.ancestors[-1].page_id if page_data.ancestors else None
+
+    if existing_page and existing_page.is_virtual:
+        # Convert virtual page to a real tracked page
+        existing_page.is_virtual = False
+        existing_page.confluence_url = data.confluence_url
+        existing_page.title = page_data.title
+        existing_page.space_key = page_data.space_key
+        existing_page.parent_confluence_page_id = parent_cpid
+        page = existing_page
+        await db.flush()
+    else:
+        page = Page(
+            confluence_page_id=page_data.page_id,
+            confluence_url=data.confluence_url,
+            title=page_data.title,
+            space_key=page_data.space_key,
+            parent_confluence_page_id=parent_cpid,
+            added_by=data.user_id,
+        )
+        db.add(page)
+        await db.flush()
 
     snapshot = PageSnapshot(
         page_id=page.id,
@@ -169,6 +237,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
         confluence_url=page.confluence_url,
         title=page.title,
         space_key=page.space_key,
+        is_virtual=page.is_virtual,
         created_at=page.created_at,
         current_snapshot=SnapshotInfo(
             id=snapshot.id,
@@ -189,7 +258,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
 async def list_pages(db: AsyncSession = Depends(get_db)):
     """List all tracked pages with coverage stats."""
     result = await db.execute(
-        select(Page).order_by(Page.created_at.desc())
+        select(Page).where(Page.is_virtual == False).order_by(Page.created_at.desc())
     )
     pages = result.scalars().all()
 
@@ -235,6 +304,49 @@ async def list_pages(db: AsyncSession = Depends(get_db)):
     return items
 
 
+@router.get("/tree", response_model=list[SpaceTreeResponse])
+async def get_page_tree(db: AsyncSession = Depends(get_db)):
+    """Get all pages grouped by space as a tree structure."""
+    result = await db.execute(
+        select(Page).order_by(Page.space_key, Page.title)
+    )
+    pages = result.scalars().all()
+
+    # Compute coverage for tracked pages
+    nodes: list[TreeNodeItem] = []
+    for page in pages:
+        coverage = 0.0
+        if not page.is_virtual:
+            hl_count = await db.execute(
+                select(func.count(Highlight.id))
+                .where(Highlight.page_id == page.id)
+            )
+            highlight_count = hl_count.scalar() or 0
+            coverage = min(highlight_count * 10.0, 100.0)
+
+        nodes.append(TreeNodeItem(
+            id=page.id,
+            confluence_page_id=page.confluence_page_id,
+            title=page.title,
+            space_key=page.space_key,
+            is_virtual=page.is_virtual,
+            parent_confluence_page_id=page.parent_confluence_page_id,
+            coverage_percent=coverage,
+            has_updates=False,
+        ))
+
+    # Group by space_key
+    spaces: dict[str, list[TreeNodeItem]] = {}
+    for node in nodes:
+        key = node.space_key or "OTHER"
+        spaces.setdefault(key, []).append(node)
+
+    return [
+        SpaceTreeResponse(space_key=sk, pages=pg)
+        for sk, pg in spaces.items()
+    ]
+
+
 @router.get("/{page_id}", response_model=PageDetail)
 async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     """Get detailed page information with current content."""
@@ -264,6 +376,7 @@ async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
         confluence_url=page.confluence_url,
         title=page.title,
         space_key=page.space_key,
+        is_virtual=page.is_virtual,
         created_at=page.created_at,
         current_snapshot=SnapshotInfo(
             id=latest_snapshot.id,
@@ -277,6 +390,68 @@ async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
             confirmed_at=latest_baseline.confirmed_at,
         ) if latest_baseline else None,
         content_html=(await _render_html(latest_snapshot.content_html, page.id, db)) if latest_snapshot else None,
+    )
+
+
+@router.post("/{page_id}/promote", response_model=PageDetail)
+async def promote_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Promote a virtual page to a fully tracked page by fetching its content from Confluence."""
+    page = await db.get(Page, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    if not page.is_virtual:
+        raise HTTPException(status_code=400, detail="Page is already tracked")
+
+    params = await get_confluence_params(db)
+    conn = ConfluenceConnection(**params)
+
+    try:
+        page_data = await confluence.fetch_page(page.confluence_page_id, conn)
+    except Exception as e:
+        logger.error("Failed to fetch Confluence page %s: %s", page.confluence_page_id, e)
+        raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
+
+    page.is_virtual = False
+    page.title = page_data.title
+    page.confluence_url = f"{params['base_url'].rstrip('/')}/pages/viewpage.action?pageId={page.confluence_page_id}"
+    await db.flush()
+
+    snapshot = PageSnapshot(
+        page_id=page.id,
+        confluence_version=page_data.version,
+        content_html=page_data.content_html,
+    )
+    db.add(snapshot)
+    await db.flush()
+
+    baseline = Baseline(
+        page_id=page.id,
+        snapshot_id=snapshot.id,
+        confirmed_by=data.user_id,
+    )
+    db.add(baseline)
+    await db.flush()
+
+    return PageDetail(
+        id=page.id,
+        confluence_page_id=page.confluence_page_id,
+        confluence_url=page.confluence_url,
+        title=page.title,
+        space_key=page.space_key,
+        is_virtual=page.is_virtual,
+        created_at=page.created_at,
+        current_snapshot=SnapshotInfo(
+            id=snapshot.id,
+            confluence_version=snapshot.confluence_version,
+            fetched_at=snapshot.fetched_at,
+        ),
+        baseline=BaselineInfo(
+            id=baseline.id,
+            snapshot_id=baseline.snapshot_id,
+            confirmed_by=baseline.confirmed_by,
+            confirmed_at=baseline.confirmed_at,
+        ),
+        content_html=await _render_html(snapshot.content_html, page.id, db),
     )
 
 
@@ -397,10 +572,14 @@ async def set_baseline(page_id: UUID, data: BaselineCreate, db: AsyncSession = D
 
 @router.delete("/{page_id}", status_code=204)
 async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Delete a tracked page and all its related data (snapshots, baselines, highlights)."""
+    """Delete a tracked page and all its related data (snapshots, baselines, highlights).
+    Also cleans up orphaned virtual ancestors."""
     page = await db.get(Page, page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+
+    # Remember space key before deletion
+    space_key = page.space_key
 
     highlight_ids_q = select(Highlight.id).where(Highlight.page_id == page_id)
     await db.execute(
@@ -412,6 +591,21 @@ async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
 
     await db.delete(page)
     await db.flush()
+
+    # If no real (non-virtual) pages remain in this space, clean up all virtual pages
+    if space_key:
+        real_count_result = await db.execute(
+            select(func.count(Page.id))
+            .where(Page.space_key == space_key, Page.is_virtual == False)
+        )
+        real_count = real_count_result.scalar() or 0
+
+        if real_count == 0:
+            # Bulk-remove all remaining virtual pages in this space
+            await db.execute(
+                delete(Page).where(Page.space_key == space_key, Page.is_virtual == True)
+            )
+            await db.flush()
 
     return Response(status_code=204)
 

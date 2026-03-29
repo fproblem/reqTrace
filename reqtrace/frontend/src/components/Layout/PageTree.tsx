@@ -145,14 +145,14 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
         // Include ancestors of matched pages so the tree stays connected
         const cpidToPage = new Map(space.pages.map(p => [p.confluence_page_id, p]));
         const withAncestors = new Set(matched);
-        for (const cpid of matched) {
+        Array.from(matched).forEach(cpid => {
           let current = cpidToPage.get(cpid);
           while (current?.parent_confluence_page_id) {
             if (withAncestors.has(current.parent_confluence_page_id)) break;
             withAncestors.add(current.parent_confluence_page_id);
             current = cpidToPage.get(current.parent_confluence_page_id);
           }
-        }
+        });
 
         return {
           ...space,

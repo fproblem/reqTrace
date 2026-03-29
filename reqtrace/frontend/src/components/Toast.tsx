@@ -131,13 +131,13 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
           border: 'none',
           cursor: 'pointer',
           color: colors.textTertiary,
-          fontSize: '14px',
-          padding: '0 2px',
+          fontSize: '16px',
+          padding: '4px',
           flexShrink: 0,
           lineHeight: 1,
         }}
       >
-        \u2715
+        ✕
       </button>
     </div>
   );

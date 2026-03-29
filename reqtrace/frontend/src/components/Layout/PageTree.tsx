@@ -278,13 +278,13 @@ interface SpaceNodeProps {
 }
 
 const spaceActionBtnStyle: React.CSSProperties = {
-  width: '20px',
-  height: '20px',
+  width: '22px',
+  height: '22px',
   border: 'none',
   background: 'transparent',
-  color: colors.textTertiary,
-  fontSize: '12px',
-  lineHeight: '20px',
+  color: colors.textSecondary,
+  fontSize: '14px',
+  lineHeight: '22px',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
@@ -292,6 +292,7 @@ const spaceActionBtnStyle: React.CSSProperties = {
   borderRadius: radii.sm,
   flexShrink: 0,
   padding: 0,
+  transition: 'all 0.15s',
 };
 
 const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, setExpandForSpace, activePageId, navigate }) => {
@@ -379,8 +380,14 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
               onClick={() => setExpandForSpace(space, true)}
               title="Развернуть все"
               style={spaceActionBtnStyle}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = colors.greenLight;
+                e.currentTarget.style.color = colors.greenDark;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
             >
               ⊞
             </button>
@@ -388,8 +395,14 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
               onClick={() => setExpandForSpace(space, false)}
               title="Свернуть все"
               style={spaceActionBtnStyle}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = colors.greenLight;
+                e.currentTarget.style.color = colors.greenDark;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
             >
               ⊟
             </button>

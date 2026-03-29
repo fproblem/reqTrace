@@ -132,9 +132,12 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
           cursor: 'pointer',
           color: colors.textTertiary,
           fontSize: '16px',
-          padding: '4px',
+          padding: 0,
           flexShrink: 0,
-          lineHeight: 1,
+          lineHeight: '22px',
+          height: '22px',
+          display: 'flex',
+          alignItems: 'center',
         }}
       >
         ✕

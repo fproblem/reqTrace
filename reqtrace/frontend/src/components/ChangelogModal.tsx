@@ -26,7 +26,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
 
   useEffect(() => {
     if (!open) return;
-    fetch('/changelog.json')
+    fetch('/changelog.json', { cache: 'no-cache' })
       .then(r => r.json())
       .then(setEntries)
       .catch(() => setEntries([]));
@@ -183,7 +183,7 @@ export function useCurrentVersion(): string {
   const [version, setVersion] = useState('');
 
   useEffect(() => {
-    fetch('/changelog.json')
+    fetch('/changelog.json', { cache: 'no-cache' })
       .then(r => r.json())
       .then((data: ChangelogEntry[]) => {
         if (data.length > 0) setVersion(data[0].version);

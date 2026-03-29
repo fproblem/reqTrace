@@ -7,6 +7,22 @@ import { colors, radii } from '../../styles/tokens';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  const q = query.trim().toLowerCase();
+  if (!q) return text;
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <span style={{ background: colors.yellowHighlight, borderRadius: '2px', padding: '0 1px' }}>
+        {text.slice(idx, idx + q.length)}
+      </span>
+      {text.slice(idx + q.length)}
+    </>
+  );
+}
+
 function loadExpandState(): Record<string, boolean> {
   try {
     const stored = localStorage.getItem(TREE_STATE_KEY);
@@ -33,6 +49,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
   const [newUrl, setNewUrl] = useState('');
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
@@ -110,7 +127,44 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
     return match ? match[1] : null;
   }, [location.pathname]);
 
-  const isEmpty = spaces.length === 0 || spaces.every(s => s.pages.length === 0);
+  const filteredSpaces = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return spaces;
+
+    return spaces
+      .map(space => {
+        const matched = new Set<string>();
+        // Find pages matching the query
+        for (const page of space.pages) {
+          if (page.title.toLowerCase().includes(q)) {
+            matched.add(page.confluence_page_id);
+          }
+        }
+        if (matched.size === 0) return null;
+
+        // Include ancestors of matched pages so the tree stays connected
+        const cpidToPage = new Map(space.pages.map(p => [p.confluence_page_id, p]));
+        const withAncestors = new Set(matched);
+        for (const cpid of matched) {
+          let current = cpidToPage.get(cpid);
+          while (current?.parent_confluence_page_id) {
+            if (withAncestors.has(current.parent_confluence_page_id)) break;
+            withAncestors.add(current.parent_confluence_page_id);
+            current = cpidToPage.get(current.parent_confluence_page_id);
+          }
+        }
+
+        return {
+          ...space,
+          pages: space.pages.filter(p => withAncestors.has(p.confluence_page_id)),
+        } as SpaceTree;
+      })
+      .filter((s): s is SpaceTree => s !== null);
+  }, [spaces, searchQuery]);
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const isEmpty = filteredSpaces.length === 0 || filteredSpaces.every(s => s.pages.length === 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -220,13 +274,58 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
         </form>
       )}
 
+      {/* Search */}
+      {!loading && spaces.some(s => s.pages.length > 0) && (
+        <div style={{ padding: '0 4px', marginBottom: '8px', position: 'relative' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Найти страницу..."
+            style={{
+              width: '100%',
+              padding: '6px 26px 6px 8px',
+              borderRadius: radii.sm,
+              border: `1px solid ${colors.border}`,
+              fontSize: '12px',
+              fontFamily: 'inherit',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
+            onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: colors.textTertiary,
+                fontSize: '14px',
+                padding: '0 2px',
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Tree content */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
         {loading ? (
           <div style={{ padding: '20px 4px', color: colors.textTertiary, fontSize: '12px' }}>
             Загрузка...
           </div>
-        ) : isEmpty ? (
+        ) : spaces.length === 0 || spaces.every(s => s.pages.length === 0) ? (
           <div style={{ padding: '20px 4px', textAlign: 'center' }}>
             <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.3 }}>📄</div>
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
@@ -248,8 +347,14 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
               Демо-страница
             </button>
           </div>
+        ) : isEmpty ? (
+          <div style={{ padding: '12px 4px', textAlign: 'center' }}>
+            <div style={{ fontSize: '12px', color: colors.textTertiary }}>
+              Ничего не найдено
+            </div>
+          </div>
         ) : (
-          spaces.map(space => (
+          filteredSpaces.map(space => (
             <SpaceNode
               key={space.space_key}
               space={space}
@@ -258,6 +363,8 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
               setExpandForSpace={setExpandForSpace}
               activePageId={activePageId}
               navigate={navigate}
+              isSearching={isSearching}
+              searchQuery={searchQuery}
             />
           ))
         )}
@@ -275,6 +382,8 @@ interface SpaceNodeProps {
   setExpandForSpace: (space: SpaceTree, expanded: boolean) => void;
   activePageId: string | null;
   navigate: (path: string) => void;
+  isSearching: boolean;
+  searchQuery: string;
 }
 
 const spaceActionBtnStyle: React.CSSProperties = {
@@ -295,9 +404,9 @@ const spaceActionBtnStyle: React.CSSProperties = {
   transition: 'all 0.15s',
 };
 
-const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, setExpandForSpace, activePageId, navigate }) => {
+const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, setExpandForSpace, activePageId, navigate, isSearching, searchQuery }) => {
   const spaceKey = `space:${space.space_key}`;
-  const isExpanded = expandState[spaceKey] !== false; // default expanded
+  const isExpanded = isSearching || expandState[spaceKey] !== false; // force expand when searching
 
   // Build children map
   const childrenMap = useMemo(() => {
@@ -374,7 +483,7 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
             {space.space_key}
           </span>
         </button>
-        {isExpanded && (
+        {isExpanded && !isSearching && (
           <>
             <button
               onClick={() => setExpandForSpace(space, true)}
@@ -389,7 +498,7 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
                 e.currentTarget.style.color = colors.textSecondary;
               }}
             >
-              ⊞
+              ⇊
             </button>
             <button
               onClick={() => setExpandForSpace(space, false)}
@@ -404,7 +513,7 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
                 e.currentTarget.style.color = colors.textSecondary;
               }}
             >
-              ⊟
+              ⇈
             </button>
           </>
         )}
@@ -421,6 +530,8 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
               toggleExpand={toggleExpand}
               activePageId={activePageId}
               navigate={navigate}
+              isSearching={isSearching}
+              searchQuery={searchQuery}
             />
           ))}
         </div>
@@ -439,15 +550,17 @@ interface TreeNodeProps {
   toggleExpand: (key: string) => void;
   activePageId: string | null;
   navigate: (path: string) => void;
+  isSearching: boolean;
+  searchQuery: string;
 }
 
 const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
-  node, childrenMap, depth, expandState, toggleExpand, activePageId, navigate,
+  node, childrenMap, depth, expandState, toggleExpand, activePageId, navigate, isSearching, searchQuery,
 }) => {
   const children = childrenMap[node.confluence_page_id] || [];
   const hasChildren = children.length > 0;
   const nodeKey = `page:${node.confluence_page_id}`;
-  const isExpanded = hasChildren && expandState[nodeKey] !== false; // default expanded
+  const isExpanded = hasChildren && (isSearching || expandState[nodeKey] !== false);
   const isActive = activePageId === node.id;
 
   const handleClick = () => {
@@ -545,7 +658,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
           flex: 1,
           minWidth: 0,
         }}>
-          {node.title}
+          {isSearching ? highlightMatch(node.title, searchQuery) : node.title}
         </span>
       </button>
 
@@ -560,6 +673,8 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
           toggleExpand={toggleExpand}
           activePageId={activePageId}
           navigate={navigate}
+          isSearching={isSearching}
+          searchQuery={searchQuery}
         />
       ))}
     </div>

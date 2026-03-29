@@ -140,26 +140,56 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
         logger.error("Failed to fetch Confluence page %s: %s", page_id_str, e)
         raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
 
-    # Create virtual ancestor pages from Confluence hierarchy
+    # Sync full space tree: create virtual pages for ALL pages in the space
     conf_base_url = params["base_url"].rstrip("/")
-    prev_ancestor_id: str | None = None
-    for ancestor in page_data.ancestors:
-        existing_ancestor = await db.execute(
-            select(Page).where(Page.confluence_page_id == ancestor.page_id)
+    try:
+        space_pages = await confluence.fetch_space_pages(page_data.space_key, conn)
+    except Exception as e:
+        logger.warning("Failed to fetch space tree for %s: %s — falling back to ancestors only",
+                       page_data.space_key, e)
+        space_pages = []
+
+    if space_pages:
+        # Build a set of confluence_page_ids already in the DB for this space
+        space_existing = await db.execute(
+            select(Page.confluence_page_id).where(Page.space_key == page_data.space_key)
         )
-        if not existing_ancestor.scalar_one_or_none():
-            virtual_page = Page(
-                confluence_page_id=ancestor.page_id,
-                confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={ancestor.page_id}",
-                title=ancestor.title,
-                space_key=page_data.space_key,
-                parent_confluence_page_id=prev_ancestor_id,
-                is_virtual=True,
-                added_by=data.user_id,
+        existing_cpids = set(space_existing.scalars().all())
+
+        for sp in space_pages:
+            if sp.page_id not in existing_cpids and sp.page_id != page_id_str:
+                virtual_page = Page(
+                    confluence_page_id=sp.page_id,
+                    confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={sp.page_id}",
+                    title=sp.title,
+                    space_key=page_data.space_key,
+                    parent_confluence_page_id=sp.parent_page_id,
+                    is_virtual=True,
+                    added_by=data.user_id,
+                )
+                db.add(virtual_page)
+                existing_cpids.add(sp.page_id)
+        await db.flush()
+    else:
+        # Fallback: create virtual ancestors only (original behavior)
+        prev_ancestor_id: str | None = None
+        for ancestor in page_data.ancestors:
+            existing_ancestor = await db.execute(
+                select(Page).where(Page.confluence_page_id == ancestor.page_id)
             )
-            db.add(virtual_page)
-            await db.flush()
-        prev_ancestor_id = ancestor.page_id
+            if not existing_ancestor.scalar_one_or_none():
+                virtual_page = Page(
+                    confluence_page_id=ancestor.page_id,
+                    confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={ancestor.page_id}",
+                    title=ancestor.title,
+                    space_key=page_data.space_key,
+                    parent_confluence_page_id=prev_ancestor_id,
+                    is_virtual=True,
+                    added_by=data.user_id,
+                )
+                db.add(virtual_page)
+                await db.flush()
+            prev_ancestor_id = ancestor.page_id
 
     # Determine parent: last ancestor in the chain
     parent_cpid = page_data.ancestors[-1].page_id if page_data.ancestors else None
@@ -548,8 +578,8 @@ async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
 
-    # Remember parent chain before deletion
-    parent_cpid = page.parent_confluence_page_id
+    # Remember space key before deletion
+    space_key = page.space_key
 
     highlight_ids_q = select(Highlight.id).where(Highlight.page_id == page_id)
     await db.execute(
@@ -562,28 +592,20 @@ async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     await db.delete(page)
     await db.flush()
 
-    # Clean up orphaned virtual ancestors
-    while parent_cpid:
-        parent_result = await db.execute(
-            select(Page).where(Page.confluence_page_id == parent_cpid)
-        )
-        parent_page = parent_result.scalar_one_or_none()
-        if not parent_page or not parent_page.is_virtual:
-            break
-
-        # Check if this virtual page still has children
-        children_count = await db.execute(
+    # If no real (non-virtual) pages remain in this space, clean up all virtual pages
+    if space_key:
+        real_count_result = await db.execute(
             select(func.count(Page.id))
-            .where(Page.parent_confluence_page_id == parent_cpid)
+            .where(Page.space_key == space_key, Page.is_virtual == False)
         )
-        if (children_count.scalar() or 0) > 0:
-            break
+        real_count = real_count_result.scalar() or 0
 
-        # No children left — remove this virtual page
-        next_parent = parent_page.parent_confluence_page_id
-        await db.delete(parent_page)
-        await db.flush()
-        parent_cpid = next_parent
+        if real_count == 0:
+            # Bulk-remove all remaining virtual pages in this space
+            await db.execute(
+                delete(Page).where(Page.space_key == space_key, Page.is_virtual == True)
+            )
+            await db.flush()
 
     return Response(status_code=204)
 

@@ -82,6 +82,19 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
     }
   };
 
+  const setExpandForSpace = useCallback((space: SpaceTree, expanded: boolean) => {
+    setExpandState(prev => {
+      const next = { ...prev };
+      const spaceKey = `space:${space.space_key}`;
+      next[spaceKey] = true; // always keep space itself expanded
+      for (const page of space.pages) {
+        next[`page:${page.confluence_page_id}`] = expanded;
+      }
+      saveExpandState(next);
+      return next;
+    });
+  }, []);
+
   const handleAddDemo = async () => {
     try {
       const page = await api.addDemoPage(userId);
@@ -242,6 +255,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
               space={space}
               expandState={expandState}
               toggleExpand={toggleExpand}
+              setExpandForSpace={setExpandForSpace}
               activePageId={activePageId}
               navigate={navigate}
             />
@@ -258,11 +272,29 @@ interface SpaceNodeProps {
   space: SpaceTree;
   expandState: Record<string, boolean>;
   toggleExpand: (key: string) => void;
+  setExpandForSpace: (space: SpaceTree, expanded: boolean) => void;
   activePageId: string | null;
   navigate: (path: string) => void;
 }
 
-const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, activePageId, navigate }) => {
+const spaceActionBtnStyle: React.CSSProperties = {
+  width: '20px',
+  height: '20px',
+  border: 'none',
+  background: 'transparent',
+  color: colors.textTertiary,
+  fontSize: '12px',
+  lineHeight: '20px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: radii.sm,
+  flexShrink: 0,
+  padding: 0,
+};
+
+const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, setExpandForSpace, activePageId, navigate }) => {
   const spaceKey = `space:${space.space_key}`;
   const isExpanded = expandState[spaceKey] !== false; // default expanded
 
@@ -300,41 +332,70 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
 
   return (
     <div style={{ marginBottom: '4px' }}>
-      <button
-        onClick={() => toggleExpand(spaceKey)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          width: '100%',
-          padding: '6px 4px',
-          border: 'none',
-          background: 'transparent',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          textAlign: 'left',
-        }}
-      >
-        <span style={{
-          fontSize: '10px',
-          color: colors.textTertiary,
-          transition: 'transform 0.15s',
-          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-          display: 'inline-block',
-        }}>
-          ▶
-        </span>
-        <span style={{
-          fontSize: '12px',
-          fontWeight: 600,
-          color: colors.textSecondary,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {space.space_key}
-        </span>
-      </button>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '2px 4px',
+      }}>
+        <button
+          onClick={() => toggleExpand(spaceKey)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            flex: 1,
+            minWidth: 0,
+            padding: '4px 0',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            textAlign: 'left',
+          }}
+        >
+          <span style={{
+            fontSize: '10px',
+            color: colors.textTertiary,
+            transition: 'transform 0.15s',
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            display: 'inline-block',
+          }}>
+            ▶
+          </span>
+          <span style={{
+            fontSize: '12px',
+            fontWeight: 600,
+            color: colors.textSecondary,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {space.space_key}
+          </span>
+        </button>
+        {isExpanded && (
+          <>
+            <button
+              onClick={() => setExpandForSpace(space, true)}
+              title="Развернуть все"
+              style={spaceActionBtnStyle}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              ⊞
+            </button>
+            <button
+              onClick={() => setExpandForSpace(space, false)}
+              title="Свернуть все"
+              style={spaceActionBtnStyle}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              ⊟
+            </button>
+          </>
+        )}
+      </div>
       {isExpanded && (
         <div>
           {childrenMap.__roots__.map(node => (

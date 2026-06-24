@@ -61,7 +61,11 @@ async def create_highlight(
         anchor_block_end=data.anchor_block_end,
         start_char_offset=data.start_char_offset,
         end_char_offset=data.end_char_offset,
-        status="active",
+        # Только что созданное выделение ещё пустое (без тестов) и не подтверждено,
+        # поэтому заводим его как "требует проверки", а не "актуально". Перевести
+        # в "актуально" можно вручную через "Актуализировать" (reanchor). Refresh
+        # не сбрасывает этот статус автоматически (см. refresh_page).
+        status="outdated",
         created_by=data.user_id,
     )
     db.add(highlight)

@@ -80,12 +80,7 @@ function applyBlockAnchored(
     const clampedEnd = Math.min(endCharOffset, blockText.length);
     if (clampedStart >= clampedEnd) return;
 
-    const { startNode, startOff, endNode, endOff } = findNodesForOffsets(
-      block, clampedStart, clampedEnd,
-    );
-    if (!startNode || !endNode) return;
-
-    wrapRange(startNode, startOff, endNode, endOff, highlight, selectedId, onClick);
+    wrapTextNodesInRange(block, clampedStart, clampedEnd, highlight, selectedId, onClick);
   } else {
     const clampedEndBlockIdx = Math.min(endBlockIdx, blocks.length - 1);
 
@@ -108,12 +103,7 @@ function applyBlockAnchored(
 
       if (bStart >= bEnd) continue;
 
-      const { startNode, startOff, endNode, endOff } = findNodesForOffsets(
-        block, bStart, bEnd,
-      );
-      if (!startNode || !endNode) continue;
-
-      wrapRange(startNode, startOff, endNode, endOff, highlight, selectedId, onClick);
+      wrapTextNodesInRange(block, bStart, bEnd, highlight, selectedId, onClick);
     }
   }
 }
@@ -133,57 +123,14 @@ function applyLegacyTextSearch(
   );
   if (idx === -1) return;
 
-  const { startNode, startOff, endNode, endOff } = findNodesForOffsets(
-    container, idx, idx + textContent.length,
-  );
-  if (!startNode || !endNode) return;
-
-  wrapRange(startNode, startOff, endNode, endOff, highlight, selectedId, onClick);
+  wrapTextNodesInRange(container, idx, idx + textContent.length, highlight, selectedId, onClick);
 }
 
-function findNodesForOffsets(
-  root: HTMLElement,
-  startOffset: number,
-  endOffset: number,
-): { startNode: Text | null; startOff: number; endNode: Text | null; endOff: number } {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-  let charCount = 0;
-  let startNode: Text | null = null;
-  let startOff = 0;
-  let endNode: Text | null = null;
-  let endOff = 0;
-  let node: Node | null;
-
-  while ((node = walker.nextNode())) {
-    const len = (node.textContent || '').length;
-    if (!startNode && charCount + len > startOffset) {
-      startNode = node as Text;
-      startOff = startOffset - charCount;
-    }
-    if (startNode && charCount + len >= endOffset) {
-      endNode = node as Text;
-      endOff = endOffset - charCount;
-      break;
-    }
-    charCount += len;
-  }
-
-  return { startNode, startOff, endNode, endOff };
-}
-
-function wrapRange(
-  startNode: Text,
-  startOff: number,
-  endNode: Text,
-  endOff: number,
+function createMark(
   highlight: Highlight,
   selectedId: string | null,
   onClick: (h: Highlight) => void,
-) {
-  const range = document.createRange();
-  range.setStart(startNode, startOff);
-  range.setEnd(endNode, endOff);
-
+): HTMLElement {
   const mark = document.createElement('mark');
   mark.className = `highlight-mark highlight-mark--${highlight.status}`;
   if (highlight.id === selectedId) {
@@ -194,13 +141,56 @@ function wrapRange(
     e.stopPropagation();
     onClick(highlight);
   });
+  return mark;
+}
 
-  if (startNode === endNode) {
-    range.surroundContents(mark);
-  } else {
-    const fragment = range.extractContents();
-    mark.appendChild(fragment);
-    range.insertNode(mark);
+// Оборачивает выделенный диапазон [startOffset, endOffset) (смещения по тексту
+// root) в подсветку, НЕ разрезая инлайн-элементы. Раньше для диапазона из
+// нескольких узлов использовался range.extractContents() через границы тегов:
+// он клонировал частично задетые <span>/<code>/<strong> на обе стороны mark,
+// из-за чего бейджи и код «расползались» (один бейдж превращался в два).
+// Здесь же каждый затронутый текстовый узел оборачивается отдельным <mark>
+// через range.surroundContents в пределах ОДНОГО узла — структура предков не
+// меняется, mark вставляется внутрь существующего элемента.
+function wrapTextNodesInRange(
+  root: HTMLElement,
+  startOffset: number,
+  endOffset: number,
+  highlight: Highlight,
+  selectedId: string | null,
+  onClick: (h: Highlight) => void,
+) {
+  if (startOffset >= endOffset) return;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const segments: { node: Text; from: number; to: number }[] = [];
+  let charCount = 0;
+  let node: Node | null;
+
+  while ((node = walker.nextNode())) {
+    const text = node as Text;
+    const len = (text.textContent || '').length;
+    const nodeStart = charCount;
+    charCount += len;
+    if (charCount <= startOffset) continue; // узел целиком до выделения
+    if (nodeStart >= endOffset) break;       // узел целиком после выделения
+    const from = Math.max(0, startOffset - nodeStart);
+    const to = Math.min(len, endOffset - nodeStart);
+    if (from < to) segments.push({ node: text, from, to });
+  }
+
+  // Сначала собираем сегменты, затем мутируем DOM: surroundContents разрезает
+  // текстовый узел, но каждый сегмент относится к своему узлу, поэтому ссылки
+  // остальных сегментов не инвалидируются.
+  for (const seg of segments) {
+    const range = document.createRange();
+    range.setStart(seg.node, seg.from);
+    range.setEnd(seg.node, seg.to);
+    try {
+      range.surroundContents(createMark(highlight, selectedId, onClick));
+    } catch (err) {
+      console.warn('Failed to wrap highlight segment:', highlight.id, err);
+    }
   }
 }
 

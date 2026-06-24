@@ -1,7 +1,7 @@
 import type {
   User, PageListItem, PageDetail,
   Highlight, TestLink, DiffResponse, BaselineInfo,
-  SpaceTree,
+  SpaceTree, TreeSyncResult,
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -133,6 +133,12 @@ export const api = {
 
   getPageTree: () =>
     request<SpaceTree[]>('/pages/tree'),
+
+  syncTree: (user_id: string) =>
+    request<TreeSyncResult>('/pages/sync-tree', {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
 
   getPage: (pageId: string) =>
     request<PageDetail>(`/pages/${pageId}`),

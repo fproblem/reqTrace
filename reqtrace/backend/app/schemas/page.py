@@ -75,6 +75,15 @@ class SpaceTreeResponse(BaseModel):
     pages: list[TreeNodeItem]
 
 
+class TreeSyncResult(BaseModel):
+    """Summary of a hierarchy re-sync against Confluence."""
+    spaces: int = 0
+    moved: int = 0
+    added: int = 0
+    removed: int = 0
+    missing_tracked: int = 0
+
+
 class BaselineCreate(BaseModel):
     user_id: UUID
 

@@ -128,12 +128,6 @@ export const api = {
       body: JSON.stringify({ user_id }),
     }),
 
-  addFormattingTestPage: (user_id: string) =>
-    request<PageDetail>('/pages/demo/formatting', {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
-
   listPages: () =>
     request<PageListItem[]>('/pages'),
 

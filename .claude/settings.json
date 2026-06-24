@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 tools/codemap/codemap.py >/dev/null 2>&1 || true",
+            "timeout": 30,
+            "statusMessage": "Обновляю карту кода (codemap)…"
+          }
+        ]
+      }
+    ]
+  }
+}

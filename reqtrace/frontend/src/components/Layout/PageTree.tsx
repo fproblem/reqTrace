@@ -48,6 +48,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [adding, setAdding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -99,19 +100,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
     }
   };
 
-  const setExpandForSpace = useCallback((space: SpaceTree, expanded: boolean) => {
-    setExpandState(prev => {
-      const next = { ...prev };
-      const spaceKey = `space:${space.space_key}`;
-      next[spaceKey] = true; // always keep space itself expanded
-      for (const page of space.pages) {
-        next[`page:${page.confluence_page_id}`] = expanded;
-      }
-      saveExpandState(next);
-      return next;
-    });
-  }, []);
-
   const handleAddDemo = async () => {
     try {
       const page = await api.addDemoPage(userId);
@@ -119,6 +107,38 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
       navigate(`/pages/${page.id}`);
     } catch (e: any) {
       showToast('error', 'Не удалось добавить демо-страницу', e.message);
+    }
+  };
+
+  const handleSyncTree = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res = await api.syncTree(userId);
+      await loadTree();
+
+      const parts: string[] = [];
+      if (res.moved) parts.push(`перемещено: ${res.moved}`);
+      if (res.added) parts.push(`добавлено: ${res.added}`);
+      if (res.removed) parts.push(`удалено: ${res.removed}`);
+
+      if (parts.length === 0) {
+        showToast('success', 'Структура актуальна', 'Изменений в иерархии не найдено');
+      } else {
+        showToast('success', 'Структура синхронизирована', parts.join(', '));
+      }
+
+      if (res.missing_tracked) {
+        showToast(
+          'warning',
+          'Часть страниц отсутствует в Confluence',
+          `Отслеживаемых страниц без аналога в Confluence: ${res.missing_tracked}. Они сохранены, проверьте их вручную`,
+        );
+      }
+    } catch (e: any) {
+      showToast('error', 'Не удалось синхронизировать структуру', e.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -168,6 +188,12 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <style>{`
+        @keyframes reqtrace-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       {/* Header */}
       <div style={{
         display: 'flex',
@@ -185,27 +211,65 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
         }}>
           Страницы
         </span>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          title="Добавить страницу"
-          style={{
-            width: '22px',
-            height: '22px',
-            borderRadius: radii.sm,
-            border: 'none',
-            background: showAddForm ? colors.greenLight : 'transparent',
-            color: showAddForm ? colors.greenDark : colors.textSecondary,
-            fontSize: '16px',
-            lineHeight: '22px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.15s',
-          }}
-        >
-          +
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+          <button
+            onClick={handleSyncTree}
+            disabled={syncing}
+            title="Синхронизировать структуру с Confluence (перенос/добавление страниц)"
+            style={{
+              width: '22px',
+              height: '22px',
+              borderRadius: radii.sm,
+              border: 'none',
+              background: 'transparent',
+              color: colors.textSecondary,
+              cursor: syncing ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{
+                display: 'block',
+                animation: syncing ? 'reqtrace-spin 0.8s linear infinite' : undefined,
+              }}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            title="Добавить страницу"
+            style={{
+              width: '22px',
+              height: '22px',
+              borderRadius: radii.sm,
+              border: 'none',
+              background: showAddForm ? colors.greenLight : 'transparent',
+              color: showAddForm ? colors.greenDark : colors.textSecondary,
+              fontSize: '16px',
+              lineHeight: '22px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+          >
+            +
+          </button>
+        </div>
       </div>
 
       {/* Add form */}
@@ -360,7 +424,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
               space={space}
               expandState={expandState}
               toggleExpand={toggleExpand}
-              setExpandForSpace={setExpandForSpace}
               activePageId={activePageId}
               navigate={navigate}
               isSearching={isSearching}
@@ -379,32 +442,13 @@ interface SpaceNodeProps {
   space: SpaceTree;
   expandState: Record<string, boolean>;
   toggleExpand: (key: string) => void;
-  setExpandForSpace: (space: SpaceTree, expanded: boolean) => void;
   activePageId: string | null;
   navigate: (path: string) => void;
   isSearching: boolean;
   searchQuery: string;
 }
 
-const spaceActionBtnStyle: React.CSSProperties = {
-  width: '22px',
-  height: '22px',
-  border: 'none',
-  background: 'transparent',
-  color: colors.textSecondary,
-  fontSize: '14px',
-  lineHeight: '22px',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: radii.sm,
-  flexShrink: 0,
-  padding: 0,
-  transition: 'all 0.15s',
-};
-
-const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, setExpandForSpace, activePageId, navigate, isSearching, searchQuery }) => {
+const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, activePageId, navigate, isSearching, searchQuery }) => {
   const spaceKey = `space:${space.space_key}`;
   const isExpanded = isSearching || expandState[spaceKey] !== false; // force expand when searching
 
@@ -483,40 +527,6 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand,
             {space.space_key}
           </span>
         </button>
-        {isExpanded && !isSearching && (
-          <>
-            <button
-              onClick={() => setExpandForSpace(space, true)}
-              title="Развернуть все"
-              style={spaceActionBtnStyle}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = colors.greenLight;
-                e.currentTarget.style.color = colors.greenDark;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
-            >
-              ⇊
-            </button>
-            <button
-              onClick={() => setExpandForSpace(space, false)}
-              title="Свернуть все"
-              style={spaceActionBtnStyle}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = colors.greenLight;
-                e.currentTarget.style.color = colors.greenDark;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
-            >
-              ⇈
-            </button>
-          </>
-        )}
       </div>
       {isExpanded && (
         <div>

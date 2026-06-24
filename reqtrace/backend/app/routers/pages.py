@@ -17,7 +17,7 @@ from app.models.highlight_test import HighlightTest
 from app.schemas.page import (
     PageCreate, PageListItem, PageDetail,
     SnapshotInfo, BaselineInfo, BaselineCreate, RefreshRequest,
-    TreeNodeItem, SpaceTreeResponse,
+    TreeNodeItem, SpaceTreeResponse, TreeSyncResult,
 )
 from app.services import confluence
 from app.services.confluence import ConfluenceConnection, process_confluence_html
@@ -347,6 +347,90 @@ async def get_page_tree(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.post("/sync-tree", response_model=TreeSyncResult)
+async def sync_tree(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Re-sync the page hierarchy from Confluence for every tracked space.
+
+    Reflects pages that were moved (re-nested) in Confluence by updating their
+    ``parent_confluence_page_id``/``title``, creates virtual pages for pages
+    newly added in Confluence, and removes virtual pages that no longer exist
+    there. Tracked (real) pages are never deleted — if one disappears from
+    Confluence it is kept and only counted in ``missing_tracked``.
+    """
+    params = await get_confluence_params(db)
+    conn = ConfluenceConnection(**params)
+    conf_base_url = params["base_url"].rstrip("/")
+
+    # Spaces that contain at least one tracked (real) page — virtual pages only
+    # ever exist alongside a tracked page in the same space.
+    spaces_result = await db.execute(
+        select(Page.space_key)
+        .where(Page.is_virtual == False, Page.space_key.isnot(None))
+        .distinct()
+    )
+    space_keys = [s for s in spaces_result.scalars().all() if s]
+
+    moved = added = removed = missing_tracked = 0
+
+    for space_key in space_keys:
+        try:
+            space_pages = await confluence.fetch_space_pages(space_key, conn)
+        except Exception as e:
+            logger.warning("sync-tree: failed to fetch space %s: %s — skipping", space_key, e)
+            continue
+
+        fresh = {sp.page_id: sp for sp in space_pages}
+
+        db_pages_result = await db.execute(
+            select(Page).where(Page.space_key == space_key)
+        )
+        db_pages = db_pages_result.scalars().all()
+        db_cpids = {p.confluence_page_id for p in db_pages}
+
+        # 1. Update existing pages (re-parent + title); handle disappeared ones.
+        #    parent_confluence_page_id has no FK to other pages, so deleting a
+        #    stale virtual parent here never breaks its (already re-parented) children.
+        for page in db_pages:
+            sp = fresh.get(page.confluence_page_id)
+            if sp is not None:
+                if page.parent_confluence_page_id != sp.parent_page_id:
+                    page.parent_confluence_page_id = sp.parent_page_id
+                    moved += 1
+                if page.title != sp.title:
+                    page.title = sp.title
+            elif page.is_virtual:
+                # Virtual placeholder gone from Confluence — safe to drop.
+                await db.delete(page)
+                removed += 1
+            else:
+                # Tracked page with real data — keep it, just flag it.
+                missing_tracked += 1
+
+        # 2. Create virtual pages for Confluence pages not yet known locally.
+        for cpid, sp in fresh.items():
+            if cpid not in db_cpids:
+                db.add(Page(
+                    confluence_page_id=cpid,
+                    confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={cpid}",
+                    title=sp.title,
+                    space_key=space_key,
+                    parent_confluence_page_id=sp.parent_page_id,
+                    is_virtual=True,
+                    added_by=data.user_id,
+                ))
+                added += 1
+
+        await db.flush()
+
+    return TreeSyncResult(
+        spaces=len(space_keys),
+        moved=moved,
+        added=added,
+        removed=removed,
+        missing_tracked=missing_tracked,
+    )
+
+
 @router.get("/{page_id}", response_model=PageDetail)
 async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     """Get detailed page information with current content."""
@@ -469,6 +553,13 @@ async def refresh_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = D
         page_data = await confluence.fetch_page(page.confluence_page_id, conn)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch from Confluence: {e}")
+
+    # Keep this page's place in the tree current: moving a page in Confluence
+    # changes its ancestors without touching content, so do this before the
+    # "content unchanged" early-return below (get_db commits the change anyway).
+    new_parent = page_data.ancestors[-1].page_id if page_data.ancestors else None
+    if page.parent_confluence_page_id != new_parent:
+        page.parent_confluence_page_id = new_parent
 
     snap_result = await db.execute(
         select(PageSnapshot)

@@ -91,6 +91,14 @@ export interface SpaceTree {
   pages: TreeNodeItem[];
 }
 
+export interface TreeSyncResult {
+  spaces: number;
+  moved: number;
+  added: number;
+  removed: number;
+  missing_tracked: number;
+}
+
 export interface DiffResponse {
   has_changes: boolean;
   diff_html: string;

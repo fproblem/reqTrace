@@ -366,7 +366,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     };
 
     return (
-      <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
         {/* Top bar */}
         <div style={{
           padding: '14px 24px',
@@ -505,7 +505,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
 
       {/* Top bar */}

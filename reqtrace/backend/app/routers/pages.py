@@ -52,6 +52,149 @@ DEMO_HTML = """
 """
 
 
+# Страница-полигон для ручного тестирования выделения (highlight) текста.
+# Намеренно написана как итоговый HTML (без ac:-макросов Confluence), чтобы
+# структура блоков на бэкенде (extract_blocks) и на фронтенде (getContentBlocks)
+# совпадала. Так под тестом остаётся ровно одна переменная — логика выделения,
+# а не различия raw/processed-разметки. Каждый раздел помечен меткой §N; разделы
+# с ⚠ — наиболее вероятные места поломки (вложенная структура блоков).
+FORMATTING_TEST_HTML = """
+<h1>🧪 Полигон форматирования и выделения текста</h1>
+<p>Страница для проверки механизма выделения (highlight) и привязки тестов на всех типах
+форматирования. Выделяйте текст в каждом разделе, жмите «Привязать тесты» и проверяйте,
+что подсветка остаётся ровно на выделенном фрагменте, а не «улетает» в начало страницы
+или не исчезает. Метка <code>§N</code> — номер раздела; <strong>⚠</strong> отмечает разделы
+с повышенным риском.</p>
+
+<h2>§1. Обычный абзац (контроль)</h2>
+<p>Это простой абзац без вложенного форматирования. Выделение здесь обязано работать корректно:
+подсветка остаётся на выделенном фрагменте. Используйте его как эталон ожидаемого поведения.</p>
+
+<h2>§2. Инлайн-форматирование внутри абзаца</h2>
+<p>В этом абзаце есть <strong>полужирный текст</strong>, <em>курсив</em>, <u>подчёркнутый</u>,
+<s>зачёркнутый</s>, верхний<sup>индекс</sup> и нижний<sub>индекс</sub>, встроенный код
+<code>response.status == 200</code>, а также <a href="https://example.com">внешняя ссылка</a>.
+Из-за форматирования абзац состоит из множества текстовых узлов — выделяйте фрагменты,
+пересекающие границы форматирования (например, от «полужирный» до «курсив»), и проверяйте
+точность смещений начала и конца подсветки.</p>
+
+<h2>§3. Заголовки</h2>
+<h3>§3.1 Заголовок третьего уровня</h3>
+<p>Текст под заголовком третьего уровня — для проверки выделения заголовка целиком.</p>
+<h4>§3.2 Заголовок четвёртого уровня</h4>
+<p>Текст под заголовком четвёртого уровня.</p>
+
+<h2>§4. Плоский маркированный список</h2>
+<ul>
+<li>Первый пункт списка — короткий.</li>
+<li>Второй пункт списка, в котором текста чуть побольше, чтобы было что выделять.</li>
+<li>Третий пункт списка с <strong>полужирным</strong> словом внутри.</li>
+</ul>
+<p>Проверьте два сценария: (а) выделение внутри одного пункта; (б) выделение, охватывающее
+сразу несколько пунктов, — частая причина «улёта» подсветки в начало страницы.</p>
+
+<h2>§5. Плоский нумерованный список</h2>
+<ol>
+<li>Шаг первый: открыть экран каталога.</li>
+<li>Шаг второй: нажать на карточку товара.</li>
+<li>Шаг третий: убедиться в открытии детального экрана.</li>
+</ol>
+
+<h2>§6 ⚠ Вложенный список (главный подозреваемый)</h2>
+<ul>
+<li>Родительский пункт с собственным текстом, у которого есть вложенный список:
+<ul>
+<li>Вложенный пункт A.</li>
+<li>Вложенный пункт B с <em>курсивом</em>.</li>
+</ul>
+</li>
+<li>Ещё один родительский пункт с двумя уровнями вложенности:
+<ul>
+<li>Уровень 2 — пункт с подпунктами:
+<ol>
+<li>Уровень 3 — пункт один.</li>
+<li>Уровень 3 — пункт два.</li>
+</ol>
+</li>
+</ul>
+</li>
+</ul>
+<p>Особое внимание: выделите именно <strong>текст родительского пункта</strong>
+(«Родительский пункт с собственным текстом…»). Такой текст не лежит в «листовом» блоке,
+поэтому подсветка с большой вероятностью улетит в начало страницы.</p>
+
+<h2>§7. Список с разнообразным инлайн-форматированием</h2>
+<ul>
+<li>Пункт со ссылкой <a href="https://example.com">на документацию</a> и кодом <code>GET /api/v2/items</code>.</li>
+<li>Пункт с <em>курсивом</em>, <s>зачёркиванием</s> и эмодзи 🚀 внутри.</li>
+</ul>
+
+<h2>§8. Пункты списка, обёрнутые в абзац</h2>
+<ul>
+<li><p>Этот пункт содержит абзац внутри (li → p). Структура блоков отличается от обычного списка.</p></li>
+<li><p>Второй такой же пункт. Проверьте смещение подсветки относительно §4.</p></li>
+</ul>
+
+<h2>§9. Таблица</h2>
+<table>
+<tbody>
+<tr><th>Поле</th><th>Описание</th></tr>
+<tr><td>Логин</td><td>Строка, обязательное поле. <strong>Не более 32 символов.</strong></td></tr>
+<tr><td>Пароль</td><td>Минимум 8 символов, хотя бы одна цифра и одна <em>заглавная</em> буква.</td></tr>
+</tbody>
+</table>
+
+<h2>§10 ⚠ Таблица со списком внутри ячейки</h2>
+<table>
+<tbody>
+<tr><th>Сценарий</th><th>Шаги</th></tr>
+<tr><td>Авторизация</td><td>Перед списком идёт прямой текст ячейки, а затем шаги:
+<ul>
+<li>ввести логин;</li>
+<li>ввести пароль;</li>
+<li>нажать «Войти».</li>
+</ul>
+</td></tr>
+</tbody>
+</table>
+<p>Выделите «прямой текст ячейки» (фразу до списка) — ячейка с вложенным списком не является
+листовым блоком, поэтому это потенциально проблемный случай.</p>
+
+<h2>§11. Список определений (dt / dd)</h2>
+<dl>
+<dt>Идемпотентность</dt>
+<dd>Свойство операции давать один и тот же результат при повторном выполнении.</dd>
+<dt>Дебаунс</dt>
+<dd>Задержка перед отправкой запроса для группировки частых событий.</dd>
+</dl>
+
+<h2>§12. Блок кода</h2>
+<pre style="background:#f4f5f7;border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:14px 18px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:10px 0;font-family:'SF Mono',Menlo,Consolas,monospace;"><code>{
+  "id": 42,
+  "name": "Товар",
+  "price": 199.0,
+  "tags": ["new", "sale"]
+}</code></pre>
+<p>Выделите несколько строк внутри блока кода и привяжите тест.</p>
+
+<h2>§13 ⚠ Цитата</h2>
+<blockquote style="margin:8px 0;padding:6px 16px;border-left:3px solid rgba(0,0,0,0.15);color:#5e6c84;"><p>Цитата, обёрнутая в абзац. Здесь подсветка обычно работает (абзац — листовой блок).</p></blockquote>
+<blockquote style="margin:8px 0;padding:6px 16px;border-left:3px solid rgba(0,0,0,0.15);color:#5e6c84;">Цитата с прямым текстом без абзаца внутри. Текст лежит прямо в blockquote — потенциально проблемный случай выделения.</blockquote>
+
+<h2>§14. Инлайн-элементы (бейдж, ссылка-задача, эмодзи)</h2>
+<p>Статус задачи:
+<span style="display:inline-block;padding:1px 8px;border-radius:4px;font-size:0.82em;font-weight:700;text-transform:uppercase;letter-spacing:0.02em;color:#14892c;background:rgba(20,137,44,0.08);border:1px solid #14892c30;">Готово</span>,
+связанная задача
+<a href="#" style="display:inline-flex;align-items:center;gap:4px;color:#2a6496;font-weight:500;text-decoration:none;background:rgba(42,100,150,0.06);padding:1px 6px;border-radius:4px;font-size:0.92em;">🔗 PROJ-123</a>,
+значок проверки ✅. Выделите фрагмент, пересекающий эти инлайн-элементы.</p>
+
+<h2>§15. Абзац с переносами строк и пробелами</h2>
+<p>Первая строка абзаца,<br/>вторая строка после переноса,<br/>третья строка.
+Здесь   несколько   подряд   идущих   пробелов, а также ведущие и хвостовые пробелы,
+которые проверяют логику обрезки (trim) смещений выделения.</p>
+"""
+
+
 async def _render_html(raw_html: str | None, page_id, db: AsyncSession) -> str | None:
     """Process stored Confluence HTML so images, Jira links, statuses etc. render correctly."""
     if not raw_html:
@@ -60,19 +203,26 @@ async def _render_html(raw_html: str | None, page_id, db: AsyncSession) -> str |
     return process_confluence_html(raw_html, str(page_id), jira_base_url=jira_url)
 
 
-@router.post("/demo", response_model=PageDetail)
-async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)):
-    """Add a demo page with sample content for testing without Confluence."""
+async def _create_demo_page(
+    db: AsyncSession,
+    *,
+    user_id,
+    title: str,
+    content_html: str,
+    space_key: str = "DEMO",
+    id_prefix: str = "demo",
+) -> PageDetail:
+    """Create a self-contained demo page (page + snapshot + baseline) without Confluence."""
     import uuid as _uuid
 
-    demo_id = "demo-" + str(_uuid.uuid4())[:8]
+    demo_id = f"{id_prefix}-" + str(_uuid.uuid4())[:8]
 
     page = Page(
         confluence_page_id=demo_id,
         confluence_url=f"https://confluence.example.com/pages/viewpage.action?pageId={demo_id}",
-        title="Экран «Каталог товаров» — Требования",
-        space_key="DEMO",
-        added_by=data.user_id,
+        title=title,
+        space_key=space_key,
+        added_by=user_id,
     )
     db.add(page)
     await db.flush()
@@ -80,7 +230,7 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
     snapshot = PageSnapshot(
         page_id=page.id,
         confluence_version=1,
-        content_html=DEMO_HTML,
+        content_html=content_html,
     )
     db.add(snapshot)
     await db.flush()
@@ -88,7 +238,7 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
     baseline = Baseline(
         page_id=page.id,
         snapshot_id=snapshot.id,
-        confirmed_by=data.user_id,
+        confirmed_by=user_id,
     )
     db.add(baseline)
     await db.flush()
@@ -113,6 +263,29 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
             confirmed_at=baseline.confirmed_at,
         ),
         content_html=await _render_html(snapshot.content_html, page.id, db),
+    )
+
+
+@router.post("/demo", response_model=PageDetail)
+async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)):
+    """Add a demo page with sample content for testing without Confluence."""
+    return await _create_demo_page(
+        db,
+        user_id=data.user_id,
+        title="Экран «Каталог товаров» — Требования",
+        content_html=DEMO_HTML,
+    )
+
+
+@router.post("/demo/formatting", response_model=PageDetail)
+async def add_formatting_test_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)):
+    """Add a formatting test page — a playground for manually testing text highlighting."""
+    return await _create_demo_page(
+        db,
+        user_id=data.user_id,
+        title="🧪 Полигон форматирования и выделения",
+        content_html=FORMATTING_TEST_HTML,
+        id_prefix="fmt",
     )
 
 

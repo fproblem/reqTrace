@@ -122,6 +122,16 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
     }
   };
 
+  const handleAddFormattingTest = async () => {
+    try {
+      const page = await api.addFormattingTestPage(userId);
+      await loadTree();
+      navigate(`/pages/${page.id}`);
+    } catch (e: any) {
+      showToast('error', 'Не удалось добавить тестовую страницу', e.message);
+    }
+  };
+
   const activePageId = useMemo(() => {
     const match = location.pathname.match(/^\/pages\/(.+)$/);
     return match ? match[1] : null;
@@ -271,6 +281,25 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
               {error}
             </div>
           )}
+          <button
+            type="button"
+            onClick={handleAddFormattingTest}
+            title="Создать локальную страницу со всеми типами форматирования для проверки выделения"
+            style={{
+              marginTop: '8px',
+              width: '100%',
+              padding: '5px 8px',
+              borderRadius: radii.sm,
+              border: `1px dashed ${colors.border}`,
+              background: 'transparent',
+              color: colors.textSecondary,
+              fontSize: '11px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            🧪 Тестовая страница форматирования
+          </button>
         </form>
       )}
 
@@ -331,21 +360,38 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
               Нет страниц
             </div>
-            <button
-              onClick={handleAddDemo}
-              style={{
-                padding: '6px 12px',
-                borderRadius: radii.sm,
-                border: `1px solid ${colors.border}`,
-                background: 'transparent',
-                color: colors.textSecondary,
-                fontSize: '11px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              Демо-страница
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+              <button
+                onClick={handleAddDemo}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Демо-страница
+              </button>
+              <button
+                onClick={handleAddFormattingTest}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                🧪 Тест форматирования
+              </button>
+            </div>
           </div>
         ) : isEmpty ? (
           <div style={{ padding: '12px 4px', textAlign: 'center' }}>

@@ -38,14 +38,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const selectionContextRef = useRef<{
     textBefore: string;
     textAfter: string;
-    anchorBlockStart: number;
-    anchorBlockEnd: number;
-    startCharOffset: number;
-    endCharOffset: number;
+    anchorBlockStart: number | null;
+    anchorBlockEnd: number | null;
+    startCharOffset: number | null;
+    endCharOffset: number | null;
   }>({
     textBefore: '', textAfter: '',
-    anchorBlockStart: -1, anchorBlockEnd: -1,
-    startCharOffset: 0, endCharOffset: 0,
+    anchorBlockStart: null, anchorBlockEnd: null,
+    startCharOffset: null, endCharOffset: null,
   });
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -265,26 +265,28 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         }
       }
 
-      if (anchorBlockStart === -1) {
-        anchorBlockStart = 0;
-        anchorBlockEnd = 0;
-        startCharOffset = 0;
-        endCharOffset = text.length;
-      }
+      // Если хотя бы одна граница выделения не попала в листовой блок
+      // (текст лежит в нелистовом <li>/<td>/<blockquote> либо граница пришлась
+      // на контейнерный <ul>/<ol> или пробельный узел) — НЕ привязываем
+      // подсветку к блоку 0. Раньше именно этот фолбэк «улетал» в начало
+      // страницы. Вместо этого сохраняем без блочных якорей: подсветку
+      // корректно разместит текстовый поиск (applyLegacyTextSearch) по
+      // text_content и контексту text_before/text_after.
+      const blockAnchored = anchorBlockStart !== -1 && anchorBlockEnd !== -1;
 
       selectionContextRef.current = {
         textBefore,
         textAfter,
-        anchorBlockStart,
-        anchorBlockEnd,
-        startCharOffset,
-        endCharOffset,
+        anchorBlockStart: blockAnchored ? anchorBlockStart : null,
+        anchorBlockEnd: blockAnchored ? anchorBlockEnd : null,
+        startCharOffset: blockAnchored ? startCharOffset : null,
+        endCharOffset: blockAnchored ? endCharOffset : null,
       };
     } else {
       selectionContextRef.current = {
         textBefore: '', textAfter: '',
-        anchorBlockStart: -1, anchorBlockEnd: -1,
-        startCharOffset: 0, endCharOffset: 0,
+        anchorBlockStart: null, anchorBlockEnd: null,
+        startCharOffset: null, endCharOffset: null,
       };
     }
 
@@ -318,8 +320,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       setSelectionText('');
       selectionContextRef.current = {
         textBefore: '', textAfter: '',
-        anchorBlockStart: -1, anchorBlockEnd: -1,
-        startCharOffset: 0, endCharOffset: 0,
+        anchorBlockStart: null, anchorBlockEnd: null,
+        startCharOffset: null, endCharOffset: null,
       };
       await loadPage();
     } catch (e: any) {

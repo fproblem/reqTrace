@@ -169,10 +169,10 @@ export const api = {
     text_content: string;
     text_before: string;
     text_after: string;
-    anchor_block_start: number;
-    anchor_block_end: number;
-    start_char_offset: number;
-    end_char_offset: number;
+    anchor_block_start: number | null;
+    anchor_block_end: number | null;
+    start_char_offset: number | null;
+    end_char_offset: number | null;
     user_id: string;
   }) =>
     request<Highlight>(`/pages/${pageId}/highlights`, {

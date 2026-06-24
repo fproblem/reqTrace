@@ -8,6 +8,36 @@ export function getContentBlocks(container: HTMLElement): HTMLElement[] {
   return all.filter(el => !el.querySelector(BLOCK_SELECTOR));
 }
 
+// Карта id подсветки -> порядковый номер по позиции отрисованной <mark> в DOM
+// (порядок документа = визуально сверху вниз). Берётся первое вхождение каждой
+// подсветки (многосегментные/многоблочные дают несколько <mark> с одним id).
+export function highlightDomOrder(root: ParentNode = document): Map<string, number> {
+  const order = new Map<string, number>();
+  let i = 0;
+  root.querySelectorAll('mark[data-highlight-id]').forEach(m => {
+    const id = (m as HTMLElement).dataset.highlightId;
+    if (id && !order.has(id)) order.set(id, i++);
+  });
+  return order;
+}
+
+// Компаратор «сверху вниз»: сначала по фактической позиции в DOM, затем — для
+// неотрисованных подсветок (например утраченных) — запасной порядок по блочному
+// якорю. Так legacy-привязки (anchor_block_start === null) не уезжают в конец.
+export function compareByDomThenAnchor(order: Map<string, number>) {
+  return (a: Highlight, b: Highlight): number => {
+    const ia = order.get(a.id);
+    const ib = order.get(b.id);
+    if (ia != null && ib != null) return ia - ib;
+    if (ia != null) return -1; // отрисованные — выше неотрисованных
+    if (ib != null) return 1;
+    const aBlock = a.anchor_block_start ?? Infinity;
+    const bBlock = b.anchor_block_start ?? Infinity;
+    if (aBlock !== bBlock) return aBlock - bBlock;
+    return (a.start_char_offset ?? 0) - (b.start_char_offset ?? 0);
+  };
+}
+
 interface HighlightLayerProps {
   container: HTMLDivElement | null;
   highlights: Highlight[];

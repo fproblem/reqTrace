@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
-import { HighlightLayer, getContentBlocks } from '../components/PageView/HighlightLayer';
+import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { useToast } from '../components/Toast';
@@ -478,6 +478,21 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const outdatedHighlights = highlights.filter(h => h.status === 'outdated').sort(sortByPosition);
   const lostHighlights = highlights.filter(h => h.status === 'lost').sort(sortByPosition);
   const coveredCount = highlights.filter(h => h.tests.length > 0).length;
+
+  // Чип статуса в верхней панели ведёт к ВЕРХНЕЙ подсветке этого статуса.
+  // Порядок считаем в момент клика по фактической позиции отрисованных <mark>
+  // в DOM — иначе legacy-привязки (anchor_block_start === null) уезжали в конец
+  // якорной сортировки и чип прыгал не к той подсветке.
+  const jumpToFirstOfStatus = (status: 'active' | 'outdated' | 'lost') => {
+    const ofStatus = highlights.filter(h => h.status === status);
+    if (ofStatus.length === 0) return;
+    const [first] = [...ofStatus].sort(compareByDomThenAnchor(highlightDomOrder()));
+    if (status === 'lost') {
+      setSelectedHighlight(first);
+    } else {
+      handleHighlightClick(first);
+    }
+  };
   const coveragePercent = highlights.length > 0
     ? Math.round((coveredCount / highlights.length) * 100)
     : 0;
@@ -552,7 +567,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
           }}>
             {activeHighlights.length > 0 && (
               <span
-                onClick={() => handleHighlightClick(activeHighlights[0])}
+                onClick={() => jumpToFirstOfStatus('active')}
                 style={{
                   padding: '2px 8px', borderRadius: radii.pill,
                   background: 'rgba(122,224,90,0.1)', color: colors.statusActive,
@@ -567,7 +582,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
             )}
             {outdatedHighlights.length > 0 && (
               <span
-                onClick={() => handleHighlightClick(outdatedHighlights[0])}
+                onClick={() => jumpToFirstOfStatus('outdated')}
                 style={{
                   padding: '2px 8px', borderRadius: radii.pill,
                   background: 'rgba(245,158,11,0.1)', color: colors.statusOutdated,
@@ -582,7 +597,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
             )}
             {lostHighlights.length > 0 && (
               <span
-                onClick={() => setSelectedHighlight(lostHighlights[0])}
+                onClick={() => jumpToFirstOfStatus('lost')}
                 style={{
                   padding: '2px 8px', borderRadius: radii.pill,
                   background: 'rgba(239,68,68,0.1)', color: colors.statusLost,

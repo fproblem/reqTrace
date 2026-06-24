@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
+import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 
 interface SidePanelProps {
   highlight: Highlight | null;
@@ -21,32 +22,9 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 };
 
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
-  // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз.
-  // Берём позицию из DOM: <mark data-highlight-id> идут в порядке документа
-  // (= визуальный порядок чтения). Так legacy-подсветки без блочного якоря
-  // (anchor_block_start === null) больше не «прыгают» в конец списка из-за
-  // сортировки по `?? Infinity`, а идут там, где реально стоят на странице.
-  const domOrder = new Map<string, number>();
-  let i = 0;
-  document.querySelectorAll('mark[data-highlight-id]').forEach(m => {
-    const id = (m as HTMLElement).dataset.highlightId;
-    if (id && !domOrder.has(id)) domOrder.set(id, i++);
-  });
-
-  return [...highlights].sort((a, b) => {
-    const ia = domOrder.get(a.id);
-    const ib = domOrder.get(b.id);
-    if (ia != null && ib != null) return ia - ib;
-    if (ia != null) return -1; // отрисованные — выше неотрисованных (утраченных)
-    if (ib != null) return 1;
-    // Обе подсветки не отрисованы (например, lost): запасной порядок по якорю.
-    const aBlock = a.anchor_block_start ?? Infinity;
-    const bBlock = b.anchor_block_start ?? Infinity;
-    if (aBlock !== bBlock) return aBlock - bBlock;
-    const aOff = a.start_char_offset ?? 0;
-    const bOff = b.start_char_offset ?? 0;
-    return aOff - bOff;
-  });
+  // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
+  // (позиция <mark> в DOM). Подробности — в compareByDomThenAnchor.
+  return [...highlights].sort(compareByDomThenAnchor(highlightDomOrder()));
 }
 
 export const SidePanel: React.FC<SidePanelProps> = ({

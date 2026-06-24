@@ -50,7 +50,7 @@ function App() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              height: '100vh',
+              height: '100%',
               color: colors.textTertiary,
               fontSize: '15px',
             }}>

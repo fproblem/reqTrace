@@ -82,7 +82,9 @@ export const DiffView: React.FC<DiffViewProps> = ({ pageId }) => {
         borderRadius: radii.md,
         padding: '24px',
         fontSize: '14px',
-        lineHeight: '1.7',
+        // Тот же межстрочный интервал, что и у контента (ContentRenderer),
+        // чтобы вкладки «Покрытие» и «Изменения» выглядели одинаково.
+        lineHeight: '1.45',
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
       }}>

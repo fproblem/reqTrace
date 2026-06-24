@@ -23,7 +23,9 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ html, onConten
       style={{
         padding: '32px',
         fontSize: '14px',
-        lineHeight: '1.6',
+        // Межстрочный интервал как в Confluence (≈1.43 = 20px при 14px),
+        // раньше было 1.6 — текст выглядел заметно «разгонистее» оригинала.
+        lineHeight: '1.45',
         color: colors.textPrimary,
         wordBreak: 'break-word',
       }}

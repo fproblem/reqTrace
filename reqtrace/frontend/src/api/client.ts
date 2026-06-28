@@ -192,6 +192,9 @@ export const api = {
       body: JSON.stringify({ user_id }),
     }),
 
+  markHighlightLost: (highlightId: string) =>
+    request<Highlight>(`/highlights/${highlightId}/mark-lost`, { method: 'POST' }),
+
   // Test links
   addTestLink: (highlightId: string, test_key: string, user_id: string) =>
     request<TestLink>(`/highlights/${highlightId}/tests`, {

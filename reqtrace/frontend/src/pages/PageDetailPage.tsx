@@ -64,6 +64,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const contentContainerRef = useRef<HTMLDivElement | null>(null);
+  // id привязок, для которых уже отправлен запрос «пометить утраченной» — чтобы
+  // не дёргать бэкенд повторно на каждый прогон слоя подсветки.
+  const markedLostRef = useRef<Set<string>>(new Set());
   const selectionContextRef = useRef<{
     textBefore: string;
     textAfter: string;
@@ -383,6 +386,48 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     [highlights],
   );
 
+  // При смене страницы сбрасываем набор «уже помеченных утраченными».
+  useEffect(() => {
+    markedLostRef.current = new Set();
+  }, [pageId]);
+
+  // Привязки, которые слой обработал, но не смог отрисовать (текст не найден на
+  // странице), сразу переводим в «Утрачено»: тогда они видны в секции внизу
+  // страницы и в чипе «утрачено» в верхней панели, а не теряются среди
+  // актуальных/требующих проверки. Статус пишем и в БД (best-effort), чтобы он
+  // пережил перезагрузку.
+  useEffect(() => {
+    if (!renderReport) return;
+    const missing: string[] = [];
+    renderReport.considered.forEach(id => {
+      if (!renderReport.rendered.has(id)) missing.push(id);
+    });
+    if (missing.length === 0) return;
+
+    setHighlights(prev => {
+      let changed = false;
+      const next = prev.map(h => {
+        if (missing.indexOf(h.id) !== -1 && h.status !== 'lost') {
+          changed = true;
+          return { ...h, status: 'lost' as const };
+        }
+        return h;
+      });
+      return changed ? next : prev;
+    });
+    setSelectedHighlight(prev =>
+      prev && missing.indexOf(prev.id) !== -1 && prev.status !== 'lost'
+        ? { ...prev, status: 'lost' as const }
+        : prev,
+    );
+
+    const toPersist = missing.filter(id => !markedLostRef.current.has(id));
+    toPersist.forEach(id => {
+      markedLostRef.current.add(id);
+      api.markHighlightLost(id).catch(() => { /* best-effort: статус уже обновлён локально */ });
+    });
+  }, [renderReport]);
+
   if (loading) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary }}>
@@ -553,16 +598,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     });
   };
 
-  // Выбранная привязка не отобразилась на странице: слой её обработал
-  // (considered), но ни одной <mark> не появилось (нет в rendered). Показываем
-  // только в режиме «Покрытие» и не для «утраченных» (у них своя секция).
+  // Выбранная привязка не отображается на странице: либо она уже «утрачена»
+  // (нет <mark> по определению), либо слой её обработал (considered), но ни
+  // одной <mark> не появилось (нет в rendered) — это переходное состояние перед
+  // авто-переводом в «Утрачено». Показываем только в режиме «Покрытие».
   const selectedNotOnPage =
     viewMode === 'coverage' &&
     !!selectedHighlight &&
-    selectedHighlight.status !== 'lost' &&
-    !!renderReport &&
-    renderReport.considered.has(selectedHighlight.id) &&
-    !renderReport.rendered.has(selectedHighlight.id);
+    (selectedHighlight.status === 'lost' ||
+      (!!renderReport &&
+        renderReport.considered.has(selectedHighlight.id) &&
+        !renderReport.rendered.has(selectedHighlight.id)));
 
   return (
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>

@@ -65,15 +65,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         position: 'relative',
         zIndex: 1,
       }}>
-        <div style={{
-          fontSize: '28px',
-          fontWeight: 700,
-          color: colors.greenDark,
-          marginBottom: '4px',
-          letterSpacing: '-0.5px',
-        }}>
-          ReqTrace
-        </div>
+        <img
+          src={`${process.env.PUBLIC_URL}/logo.svg`}
+          alt="ReqTrace — Требования, Тесты, Покрытие"
+          style={{ height: '58px', display: 'block', marginBottom: '12px' }}
+        />
         <div style={{
           fontSize: '14px',
           color: colors.textSecondary,

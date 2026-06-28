@@ -88,25 +88,30 @@ export const contentStyles = `
   .highlight-mark--active {
     background-color: rgba(122, 224, 90, 0.15);
   }
-  .highlight-mark--active:hover {
-    background-color: rgba(122, 224, 90, 0.3);
-  }
   .highlight-mark--outdated {
     background-color: rgba(255, 180, 0, 0.15);
-  }
-  .highlight-mark--outdated:hover {
-    background-color: rgba(255, 180, 0, 0.3);
   }
   .highlight-mark--lost {
     background-color: rgba(239, 68, 68, 0.1);
   }
-  .highlight-mark--lost:hover {
+  /* Ховер единый для всей привязки: при наведении на любую её часть класс
+     --hover навешивается на ВСЕ её <mark> сразу (см. createMark в
+     HighlightLayer). Иначе (через :hover) подсвечивался бы только фрагмент под
+     курсором, а выделение, разбитое форматированием, мерцало бы по частям. */
+  .highlight-mark--active.highlight-mark--hover {
+    background-color: rgba(122, 224, 90, 0.3);
+  }
+  .highlight-mark--outdated.highlight-mark--hover {
+    background-color: rgba(255, 180, 0, 0.3);
+  }
+  .highlight-mark--lost.highlight-mark--hover {
     background-color: rgba(239, 68, 68, 0.2);
   }
-  .highlight-mark--selected {
-    outline: 2px solid rgba(77, 184, 48, 0.6);
-    outline-offset: 1px;
-  }
+  /* Выбранная привязка обводится ЕДИНОЙ рамкой поверх текста (overlay-слой
+     drawSelectionOutline в HighlightLayer). Раньше здесь был outline на каждом
+     <mark>, из-за чего рамка «рвалась» на каждой границе форматирования
+     (полужирный/курсив/код/индексы) — выделение смотрелось рвано. Класс
+     оставлен на случай доп. стилизации выбранного состояния. */
 `;
 
 export default ContentRenderer;

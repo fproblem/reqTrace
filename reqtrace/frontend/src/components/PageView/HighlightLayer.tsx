@@ -38,11 +38,21 @@ export function compareByDomThenAnchor(order: Map<string, number>) {
   };
 }
 
+// Отчёт об отрисовке: considered — все привязки, которые слой пытался показать
+// (не «утраченные»); rendered — те, у которых реально появилась хотя бы одна
+// <mark>. Разница (considered − rendered) = привязки, не отобразившиеся на
+// странице (например, выделенный текст не нашёлся в текущем содержимом).
+export interface HighlightRenderReport {
+  rendered: Set<string>;
+  considered: Set<string>;
+}
+
 interface HighlightLayerProps {
   container: HTMLDivElement | null;
   highlights: Highlight[];
   selectedHighlightId: string | null;
   onHighlightClick: (highlight: Highlight) => void;
+  onRenderReport?: (report: HighlightRenderReport) => void;
 }
 
 export const HighlightLayer: React.FC<HighlightLayerProps> = ({
@@ -50,6 +60,7 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   highlights,
   selectedHighlightId,
   onHighlightClick,
+  onRenderReport,
 }) => {
   const applyHighlights = useCallback(() => {
     if (!container) return;
@@ -67,27 +78,34 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
 
     const blocks = getContentBlocks(container);
 
+    const rendered = new Set<string>();
+    const considered = new Set<string>();
+
     for (const highlight of highlights) {
       if (highlight.status === 'lost') continue;
+      considered.add(highlight.id);
 
       try {
-        let rendered = false;
+        let ok = false;
         if (highlight.anchor_block_start != null) {
-          rendered = applyBlockAnchored(container, blocks, highlight, selectedHighlightId, onHighlightClick);
+          ok = applyBlockAnchored(container, blocks, highlight, selectedHighlightId, onHighlightClick);
         }
         // Фолбэк: блочный якорь не дал ни одной метки (номер блока уехал за
         // пределы текущей структуры либо смещения схлопнулись в пустой диапазон
         // после изменения контента) — пробуем разместить по тексту. Так метка
         // не пропадает молча. Для legacy-привязок (anchor_block_start == null)
         // это и есть основной путь.
-        if (!rendered) {
-          applyLegacyTextSearch(container, highlight, selectedHighlightId, onHighlightClick);
+        if (!ok) {
+          ok = applyLegacyTextSearch(container, highlight, selectedHighlightId, onHighlightClick);
         }
+        if (ok) rendered.add(highlight.id);
       } catch (err) {
         console.warn('Failed to apply highlight:', highlight.id, err);
       }
     }
-  }, [container, highlights, selectedHighlightId, onHighlightClick]);
+
+    onRenderReport?.({ rendered, considered });
+  }, [container, highlights, selectedHighlightId, onHighlightClick, onRenderReport]);
 
   useEffect(() => {
     applyHighlights();
@@ -149,77 +167,74 @@ function applyBlockAnchored(
   }
 }
 
+// Возвращает true, если удалось отрисовать хотя бы одну метку.
 function applyLegacyTextSearch(
   container: HTMLElement,
   highlight: Highlight,
   selectedId: string | null,
   onClick: (h: Highlight) => void,
-) {
+): boolean {
   const textContent = highlight.text_content;
-  if (!textContent) return;
+  if (!textContent) return false;
 
   const fullText = container.textContent || '';
   const idx = findBestMatchIndex(
     fullText, textContent, highlight.text_before, highlight.text_after,
   );
   if (idx !== -1) {
-    wrapTextNodesInRange(container, idx, idx + textContent.length, highlight, selectedId, onClick);
-    return;
+    return wrapTextNodesInRange(
+      container, idx, idx + textContent.length, highlight, selectedId, onClick,
+    ) > 0;
   }
 
   // Фолбэк: text_content приходит из selection.toString(), которое для выделений
   // через границы блоков (абзацы, пункты списка, ячейки) вставляет переносы
-  // строк \n, а container.textContent склеивает блоки без разделителей. Из-за
-  // этого точного совпадения нет и подсветка не отрисовывалась вовсе. Ищем без
-  // учёта различий в пробелах/переносах и оборачиваем найденный «сырой» диапазон.
-  const span = findWsNormalizedRange(
+  // строк \n. А container.textContent между текстом пункта и вложенным списком
+  // может вовсе не иметь пробела (<li>...:<ol>), поэтому даже «схлопнутые до
+  // одного пробела» строки не совпадают: «один пробел против нуля». Ищем,
+  // ПОЛНОСТЬЮ игнорируя пробельные символы, и оборачиваем найденный «сырой»
+  // диапазон.
+  const span = findRangeIgnoringWhitespace(
     fullText, textContent, highlight.text_before, highlight.text_after,
   );
-  if (!span) return;
+  if (!span) return false;
 
-  wrapTextNodesInRange(container, span.start, span.end, highlight, selectedId, onClick);
+  return wrapTextNodesInRange(
+    container, span.start, span.end, highlight, selectedId, onClick,
+  ) > 0;
 }
 
-// Сжимает каждую последовательность пробельных символов в один пробел и строит
-// карту map: map[i] = индекс в исходной строке для i-го символа нормализованной.
-function normalizeWhitespace(s: string): { norm: string; map: number[] } {
-  let norm = '';
+// Удаляет все пробельные символы и строит карту map: map[i] = индекс в исходной
+// строке для i-го непробельного символа.
+function stripWhitespaceWithMap(s: string): { stripped: string; map: number[] } {
+  let stripped = '';
   const map: number[] = [];
-  let inWs = false;
   for (let i = 0; i < s.length; i++) {
-    const isWs = /\s/.test(s[i]);
-    if (isWs) {
-      if (!inWs) {
-        norm += ' ';
-        map.push(i);
-        inWs = true;
-      }
-    } else {
-      norm += s[i];
+    if (!/\s/.test(s[i])) {
+      stripped += s[i];
       map.push(i);
-      inWs = false;
     }
   }
-  return { norm, map };
+  return { stripped, map };
 }
 
-// Ищет needle в fullText без учёта различий в пробелах/переносах и возвращает
+// Ищет needle в fullText, полностью игнорируя пробелы/переносы, и возвращает
 // «сырой» диапазон [start, end) в исходном fullText (в единицах textContent,
 // как их считает wrapTextNodesInRange). null — если совпадений нет.
-function findWsNormalizedRange(
+function findRangeIgnoringWhitespace(
   fullText: string,
   needle: string,
   textBefore: string,
   textAfter: string,
 ): { start: number; end: number } | null {
-  const { norm: haystack, map } = normalizeWhitespace(fullText);
-  const normNeedle = normalizeWhitespace(needle).norm.trim();
-  if (!normNeedle) return null;
+  const { stripped: haystack, map } = stripWhitespaceWithMap(fullText);
+  const strippedNeedle = stripWhitespaceWithMap(needle).stripped;
+  if (!strippedNeedle) return null;
 
   const matches: number[] = [];
   let from = 0;
   while (true) {
-    const at = haystack.indexOf(normNeedle, from);
+    const at = haystack.indexOf(strippedNeedle, from);
     if (at === -1) break;
     matches.push(at);
     from = at + 1;
@@ -228,25 +243,25 @@ function findWsNormalizedRange(
 
   let best = matches[0];
   if (matches.length > 1 && (textBefore || textAfter)) {
-    const normBefore = normalizeWhitespace(textBefore).norm;
-    const normAfter = normalizeWhitespace(textAfter).norm;
+    const strippedBefore = stripWhitespaceWithMap(textBefore).stripped;
+    const strippedAfter = stripWhitespaceWithMap(textAfter).stripped;
     let bestScore = -1;
     for (const at of matches) {
       let score = 0;
-      if (normBefore) {
-        const actual = haystack.substring(Math.max(0, at - normBefore.length), at);
-        const minLen = Math.min(actual.length, normBefore.length);
+      if (strippedBefore) {
+        const actual = haystack.substring(Math.max(0, at - strippedBefore.length), at);
+        const minLen = Math.min(actual.length, strippedBefore.length);
         for (let i = 1; i <= minLen; i++) {
-          if (actual[actual.length - i] === normBefore[normBefore.length - i]) score++;
+          if (actual[actual.length - i] === strippedBefore[strippedBefore.length - i]) score++;
           else break;
         }
       }
-      if (normAfter) {
-        const tail = at + normNeedle.length;
-        const actual = haystack.substring(tail, tail + normAfter.length);
-        const minLen = Math.min(actual.length, normAfter.length);
+      if (strippedAfter) {
+        const tail = at + strippedNeedle.length;
+        const actual = haystack.substring(tail, tail + strippedAfter.length);
+        const minLen = Math.min(actual.length, strippedAfter.length);
         for (let i = 0; i < minLen; i++) {
-          if (actual[i] === normAfter[i]) score++;
+          if (actual[i] === strippedAfter[i]) score++;
           else break;
         }
       }
@@ -258,9 +273,7 @@ function findWsNormalizedRange(
   }
 
   const start = map[best];
-  // Последний символ normNeedle не пробельный (мы сделали trim), поэтому его
-  // «сырой» индекс +1 даёт корректную эксклюзивную правую границу.
-  const end = map[best + normNeedle.length - 1] + 1;
+  const end = map[best + strippedNeedle.length - 1] + 1;
   return { start, end };
 }
 

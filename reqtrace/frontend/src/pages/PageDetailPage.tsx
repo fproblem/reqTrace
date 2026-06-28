@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
 import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
+import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { useToast } from '../components/Toast';
@@ -32,6 +33,17 @@ function measureTextOffset(root: Node, node: Node, offset: number): number {
   return len;
 }
 
+function sameIdSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  let equal = true;
+  a.forEach(id => { if (!b.has(id)) equal = false; });
+  return equal;
+}
+
+function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderReport): boolean {
+  return !!a && sameIdSet(a.rendered, b.rendered) && sameIdSet(a.considered, b.considered);
+}
+
 export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
@@ -42,6 +54,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('coverage');
   const [selectedHighlight, setSelectedHighlight] = useState<Highlight | null>(null);
+  const [renderReport, setRenderReport] = useState<HighlightRenderReport | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [contentContainer, setContentContainer] = useState<HTMLDivElement | null>(null);
   const [jiraBaseUrl, setJiraBaseUrl] = useState('');
@@ -127,6 +140,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const handleHighlightClick = useCallback((h: Highlight) => {
     setSelectedHighlight(h);
     scrollToHighlight(h.id);
+  }, []);
+
+  // HighlightLayer сообщает, какие привязки реально отрисовались. Обновляем
+  // состояние только при фактическом изменении отчёта — иначе пере-рендер на
+  // каждый прогон слоя зациклил бы эффект.
+  const handleRenderReport = useCallback((report: HighlightRenderReport) => {
+    setRenderReport(prev => (sameRenderReport(prev, report) ? prev : report));
   }, []);
 
   const scrollToHighlight = useCallback((highlightId: string) => {
@@ -356,6 +376,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [handleMouseUp]);
 
+  // Стабильная ссылка на видимые (не «утраченные») привязки — чтобы передача в
+  // HighlightLayer не пересоздавала массив на каждый рендер и не гоняла эффект.
+  const visibleHighlights = useMemo(
+    () => highlights.filter(h => h.status !== 'lost'),
+    [highlights],
+  );
+
   if (loading) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary }}>
@@ -525,6 +552,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
   };
+
+  // Выбранная привязка не отобразилась на странице: слой её обработал
+  // (considered), но ни одной <mark> не появилось (нет в rendered). Показываем
+  // только в режиме «Покрытие» и не для «утраченных» (у них своя секция).
+  const selectedNotOnPage =
+    viewMode === 'coverage' &&
+    !!selectedHighlight &&
+    selectedHighlight.status !== 'lost' &&
+    !!renderReport &&
+    renderReport.considered.has(selectedHighlight.id) &&
+    !renderReport.rendered.has(selectedHighlight.id);
 
   return (
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
@@ -745,9 +783,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
                   />
                   <HighlightLayer
                     container={contentContainer}
-                    highlights={highlights.filter(h => h.status !== 'lost')}
+                    highlights={visibleHighlights}
                     selectedHighlightId={selectedHighlight?.id || null}
                     onHighlightClick={handleHighlightClick}
+                    onRenderReport={handleRenderReport}
                   />
                 </>
               ) : (
@@ -814,6 +853,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
             highlight={selectedHighlight}
             allHighlights={highlights}
             jiraBaseUrl={jiraBaseUrl}
+            notOnPage={selectedNotOnPage}
             onClose={() => setSelectedHighlight(null)}
             onAddTest={handleAddTest}
             onRemoveTest={handleRemoveTest}

@@ -16,6 +16,22 @@ interface PageDetailPageProps {
 
 type ViewMode = 'coverage' | 'changes';
 
+// Длина «сырого» текста (textContent), как его считает HighlightLayer при
+// отрисовке, от начала root до точки (node, offset). Берём
+// cloneContents().textContent, а НЕ Range.toString(): toString отдаёт
+// «отрендеренный» текст (<br> → \n, схлопывание пробелов), из-за чего смещения
+// захвата расходились со смещениями отрисовки — подсветка уезжала или вовсе не
+// появлялась. cloneContents().textContent совпадает с обходом текстовых узлов
+// в wrapTextNodesInRange.
+function measureTextOffset(root: Node, node: Node, offset: number): number {
+  const r = document.createRange();
+  r.selectNodeContents(root);
+  r.setEnd(node, offset);
+  const len = r.cloneContents().textContent?.length ?? 0;
+  r.detach();
+  return len;
+}
+
 export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
@@ -135,7 +151,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       await loadPage();
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);
-      setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+      // Не закрываем панель, если привязка по какой-то причине не нашлась в
+      // обновлённом списке — оставляем текущее выделение, чтобы тест не «исчезал».
+      setSelectedHighlight(prev => refreshed.find(h => h.id === highlightId) || prev);
     } catch (e: any) {
       showToast('error', 'Не удалось привязать тест', e.message);
     }
@@ -219,14 +237,22 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
 
     const container = contentContainerRef.current;
     if (container) {
+      // Обе границы выделения должны лежать ВНУТРИ контейнера с контентом.
+      // Ранняя проверка выше валидирует contentAreaRef (внешнюю обёртку, куда
+      // попадает и секция «Утраченные привязки», и заголовок), а смещения
+      // считаются по contentContainerRef. Без этой проверки measureTextOffset
+      // (Range.setEnd) бросил бы InvalidNodeTypeError и весь обработчик
+      // оборвался бы без появления кнопки «Привязать тесты».
+      if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) {
+        setShowSelectionPopup(false);
+        return;
+      }
+
       const fullText = container.textContent || '';
       const leadingTrimmed = rawText.length - rawText.trimStart().length;
 
-      const preRange = document.createRange();
-      preRange.selectNodeContents(container);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      const offsetInContainer = preRange.toString().length + leadingTrimmed;
-      preRange.detach();
+      const offsetInContainer =
+        measureTextOffset(container, range.startContainer, range.startOffset) + leadingTrimmed;
 
       const textBefore = fullText.substring(Math.max(0, offsetInContainer - 100), offsetInContainer);
       const textAfter = fullText.substring(
@@ -243,24 +269,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       for (let i = 0; i < blocks.length; i++) {
         if (anchorBlockStart === -1 && blocks[i].contains(range.startContainer)) {
           anchorBlockStart = i;
-          const pre = document.createRange();
-          pre.selectNodeContents(blocks[i]);
-          pre.setEnd(range.startContainer, range.startOffset);
-          startCharOffset = pre.toString().length;
+          startCharOffset = measureTextOffset(blocks[i], range.startContainer, range.startOffset);
           const trimDelta = rawText.length - rawText.trimStart().length;
           startCharOffset += trimDelta;
-          pre.detach();
         }
         if (blocks[i].contains(range.endContainer)) {
           anchorBlockEnd = i;
-          const pre = document.createRange();
-          pre.selectNodeContents(blocks[i]);
-          pre.setEnd(range.endContainer, range.endOffset);
-          let rawEndOffset = pre.toString().length;
+          let rawEndOffset = measureTextOffset(blocks[i], range.endContainer, range.endOffset);
           const trailingTrimmed = rawText.length - rawText.trimEnd().length;
           rawEndOffset -= trailingTrimmed;
           endCharOffset = Math.max(0, rawEndOffset);
-          pre.detach();
           break;
         }
       }
@@ -305,7 +323,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       selectionContextRef.current;
 
     try {
-      await api.createHighlight(pageId, {
+      const created = await api.createHighlight(pageId, {
         text_content: selectionText,
         text_before: textBefore,
         text_after: textAfter,
@@ -324,6 +342,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         startCharOffset: null, endCharOffset: null,
       };
       await loadPage();
+      // Сразу открываем боковую панель на созданной привязке: кнопка обещает
+      // «Привязать тесты», поэтому пользователь должен сразу получить форму
+      // привязки, а не искать бледную метку «Требует проверки» на странице.
+      setSelectedHighlight(created);
     } catch (e: any) {
       showToast('error', 'Не удалось создать привязку', e.message);
     }

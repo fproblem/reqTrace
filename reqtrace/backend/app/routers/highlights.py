@@ -141,6 +141,52 @@ async def reanchor_highlight(
     return highlight
 
 
+@router.post("/api/highlights/{highlight_id}/mark-lost", response_model=HighlightResponse)
+async def mark_highlight_lost(
+    highlight_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Перевести привязку в статус "утрачено".
+
+    Вызывается фронтендом, когда выделенный текст не удалось разместить на
+    странице (ни по блочному якорю, ни текстовым поиском). Так привязка уходит
+    в секцию «Утраченные» и в чип «утрачено» в верхней панели, где её легко найти.
+    """
+    highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
+    if not highlight:
+        raise HTTPException(status_code=404, detail="Highlight not found")
+
+    if highlight.status != "lost":
+        highlight.status = "lost"
+        await db.flush()
+        await db.refresh(highlight, ["tests", "created_by_user", "reanchored_by_user"])
+
+    return highlight
+
+
+@router.post("/api/highlights/{highlight_id}/unmark-lost", response_model=HighlightResponse)
+async def unmark_highlight_lost(
+    highlight_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Вернуть привязку из «Утрачено», если она снова отображается на странице.
+
+    Вызывается фронтендом, когда ранее утраченную привязку снова удалось
+    разместить (например, текст вернулся или подсветка легла «разрывом» после
+    правки). Переводим её в «Требует проверки», чтобы пользователь подтвердил.
+    """
+    highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
+    if not highlight:
+        raise HTTPException(status_code=404, detail="Highlight not found")
+
+    if highlight.status == "lost":
+        highlight.status = "outdated"
+        await db.flush()
+        await db.refresh(highlight, ["tests", "created_by_user", "reanchored_by_user"])
+
+    return highlight
+
+
 @router.post("/api/highlights/{highlight_id}/tests", response_model=TestLinkResponse)
 async def add_test_link(
     highlight_id: UUID,

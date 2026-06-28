@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
 import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
+import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { useToast } from '../components/Toast';
@@ -16,6 +17,33 @@ interface PageDetailPageProps {
 
 type ViewMode = 'coverage' | 'changes';
 
+// Длина «сырого» текста (textContent), как его считает HighlightLayer при
+// отрисовке, от начала root до точки (node, offset). Берём
+// cloneContents().textContent, а НЕ Range.toString(): toString отдаёт
+// «отрендеренный» текст (<br> → \n, схлопывание пробелов), из-за чего смещения
+// захвата расходились со смещениями отрисовки — подсветка уезжала или вовсе не
+// появлялась. cloneContents().textContent совпадает с обходом текстовых узлов
+// в wrapTextNodesInRange.
+function measureTextOffset(root: Node, node: Node, offset: number): number {
+  const r = document.createRange();
+  r.selectNodeContents(root);
+  r.setEnd(node, offset);
+  const len = r.cloneContents().textContent?.length ?? 0;
+  r.detach();
+  return len;
+}
+
+function sameIdSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  let equal = true;
+  a.forEach(id => { if (!b.has(id)) equal = false; });
+  return equal;
+}
+
+function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderReport): boolean {
+  return !!a && sameIdSet(a.rendered, b.rendered) && sameIdSet(a.considered, b.considered);
+}
+
 export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
@@ -26,6 +54,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('coverage');
   const [selectedHighlight, setSelectedHighlight] = useState<Highlight | null>(null);
+  const [renderReport, setRenderReport] = useState<HighlightRenderReport | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [contentContainer, setContentContainer] = useState<HTMLDivElement | null>(null);
   const [jiraBaseUrl, setJiraBaseUrl] = useState('');
@@ -113,6 +142,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     scrollToHighlight(h.id);
   }, []);
 
+  // HighlightLayer сообщает, какие привязки реально отрисовались. Обновляем
+  // состояние только при фактическом изменении отчёта — иначе пере-рендер на
+  // каждый прогон слоя зациклил бы эффект.
+  const handleRenderReport = useCallback((report: HighlightRenderReport) => {
+    setRenderReport(prev => (sameRenderReport(prev, report) ? prev : report));
+  }, []);
+
   const scrollToHighlight = useCallback((highlightId: string) => {
     setTimeout(() => {
       const el = contentAreaRef.current?.querySelector(
@@ -135,7 +171,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       await loadPage();
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);
-      setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+      // Не закрываем панель, если привязка по какой-то причине не нашлась в
+      // обновлённом списке — оставляем текущее выделение, чтобы тест не «исчезал».
+      setSelectedHighlight(prev => refreshed.find(h => h.id === highlightId) || prev);
     } catch (e: any) {
       showToast('error', 'Не удалось привязать тест', e.message);
     }
@@ -219,14 +257,22 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
 
     const container = contentContainerRef.current;
     if (container) {
+      // Обе границы выделения должны лежать ВНУТРИ контейнера с контентом.
+      // Ранняя проверка выше валидирует contentAreaRef (внешнюю обёртку, куда
+      // попадает и секция «Утраченные привязки», и заголовок), а смещения
+      // считаются по contentContainerRef. Без этой проверки measureTextOffset
+      // (Range.setEnd) бросил бы InvalidNodeTypeError и весь обработчик
+      // оборвался бы без появления кнопки «Привязать тесты».
+      if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) {
+        setShowSelectionPopup(false);
+        return;
+      }
+
       const fullText = container.textContent || '';
       const leadingTrimmed = rawText.length - rawText.trimStart().length;
 
-      const preRange = document.createRange();
-      preRange.selectNodeContents(container);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      const offsetInContainer = preRange.toString().length + leadingTrimmed;
-      preRange.detach();
+      const offsetInContainer =
+        measureTextOffset(container, range.startContainer, range.startOffset) + leadingTrimmed;
 
       const textBefore = fullText.substring(Math.max(0, offsetInContainer - 100), offsetInContainer);
       const textAfter = fullText.substring(
@@ -243,24 +289,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       for (let i = 0; i < blocks.length; i++) {
         if (anchorBlockStart === -1 && blocks[i].contains(range.startContainer)) {
           anchorBlockStart = i;
-          const pre = document.createRange();
-          pre.selectNodeContents(blocks[i]);
-          pre.setEnd(range.startContainer, range.startOffset);
-          startCharOffset = pre.toString().length;
+          startCharOffset = measureTextOffset(blocks[i], range.startContainer, range.startOffset);
           const trimDelta = rawText.length - rawText.trimStart().length;
           startCharOffset += trimDelta;
-          pre.detach();
         }
         if (blocks[i].contains(range.endContainer)) {
           anchorBlockEnd = i;
-          const pre = document.createRange();
-          pre.selectNodeContents(blocks[i]);
-          pre.setEnd(range.endContainer, range.endOffset);
-          let rawEndOffset = pre.toString().length;
+          let rawEndOffset = measureTextOffset(blocks[i], range.endContainer, range.endOffset);
           const trailingTrimmed = rawText.length - rawText.trimEnd().length;
           rawEndOffset -= trailingTrimmed;
           endCharOffset = Math.max(0, rawEndOffset);
-          pre.detach();
           break;
         }
       }
@@ -305,7 +343,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       selectionContextRef.current;
 
     try {
-      await api.createHighlight(pageId, {
+      const created = await api.createHighlight(pageId, {
         text_content: selectionText,
         text_before: textBefore,
         text_after: textAfter,
@@ -324,6 +362,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         startCharOffset: null, endCharOffset: null,
       };
       await loadPage();
+      // Сразу открываем боковую панель на созданной привязке: кнопка обещает
+      // «Привязать тесты», поэтому пользователь должен сразу получить форму
+      // привязки, а не искать бледную метку «Требует проверки» на странице.
+      setSelectedHighlight(created);
     } catch (e: any) {
       showToast('error', 'Не удалось создать привязку', e.message);
     }
@@ -333,6 +375,38 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [handleMouseUp]);
+
+  // Синхронизируем статус «Утрачено» с фактической отрисовкой:
+  //  • привязку обработали, но ни одной <mark> не появилось → «Утрачено»
+  //    (видно в секции внизу и в чипе «утрачено» вверху);
+  //  • ранее утраченная привязка снова легла на страницу (в т.ч. «разрывом»
+  //    после правки) → возвращаем в «Требует проверки».
+  // Статус пишем в БД best-effort (эндпоинты идемпотентны), локально — сразу.
+  useEffect(() => {
+    if (!renderReport) return;
+    const { rendered, considered } = renderReport;
+
+    const toLose: string[] = [];
+    const toRecover: string[] = [];
+    highlights.forEach(h => {
+      if (!considered.has(h.id)) return;
+      const isRendered = rendered.has(h.id);
+      if (!isRendered && h.status !== 'lost') toLose.push(h.id);
+      else if (isRendered && h.status === 'lost') toRecover.push(h.id);
+    });
+    if (toLose.length === 0 && toRecover.length === 0) return;
+
+    const apply = (h: Highlight): Highlight => {
+      if (toLose.indexOf(h.id) !== -1) return { ...h, status: 'lost' };
+      if (toRecover.indexOf(h.id) !== -1) return { ...h, status: 'outdated' };
+      return h;
+    };
+    setHighlights(prev => prev.map(apply));
+    setSelectedHighlight(prev => (prev ? apply(prev) : prev));
+
+    toLose.forEach(id => { api.markHighlightLost(id).catch(() => {}); });
+    toRecover.forEach(id => { api.unmarkHighlightLost(id).catch(() => {}); });
+  }, [renderReport, highlights]);
 
   if (loading) {
     return (
@@ -503,6 +577,18 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
   };
+
+  // Выбранная привязка не отображается на странице: либо она уже «утрачена»
+  // (нет <mark> по определению), либо слой её обработал (considered), но ни
+  // одной <mark> не появилось (нет в rendered) — это переходное состояние перед
+  // авто-переводом в «Утрачено». Показываем только в режиме «Покрытие».
+  const selectedNotOnPage =
+    viewMode === 'coverage' &&
+    !!selectedHighlight &&
+    (selectedHighlight.status === 'lost' ||
+      (!!renderReport &&
+        renderReport.considered.has(selectedHighlight.id) &&
+        !renderReport.rendered.has(selectedHighlight.id)));
 
   return (
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
@@ -723,9 +809,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
                   />
                   <HighlightLayer
                     container={contentContainer}
-                    highlights={highlights.filter(h => h.status !== 'lost')}
+                    highlights={highlights}
                     selectedHighlightId={selectedHighlight?.id || null}
                     onHighlightClick={handleHighlightClick}
+                    onRenderReport={handleRenderReport}
                   />
                 </>
               ) : (
@@ -792,6 +879,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
             highlight={selectedHighlight}
             allHighlights={highlights}
             jiraBaseUrl={jiraBaseUrl}
+            notOnPage={selectedNotOnPage}
             onClose={() => setSelectedHighlight(null)}
             onAddTest={handleAddTest}
             onRemoveTest={handleRemoveTest}

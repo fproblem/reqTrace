@@ -7,6 +7,7 @@ interface SidePanelProps {
   highlight: Highlight | null;
   allHighlights: Highlight[];
   jiraBaseUrl: string;
+  notOnPage?: boolean;
   onClose: () => void;
   onAddTest: (highlightId: string, testKey: string) => Promise<void>;
   onRemoveTest: (linkId: string) => Promise<void>;
@@ -28,7 +29,7 @@ function sortedByPosition(highlights: Highlight[]): Highlight[] {
 }
 
 export const SidePanel: React.FC<SidePanelProps> = ({
-  highlight, allHighlights, jiraBaseUrl, onClose,
+  highlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
   onAddTest, onRemoveTest, onDeleteHighlight, onReanchor, onNavigate,
 }) => {
   const [testKey, setTestKey] = useState('');
@@ -169,6 +170,30 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           }} />
           {statusInfo.label}
         </div>
+
+        {/* Alert: привязка не отображается на странице */}
+        {notOnPage && (
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            padding: '10px 12px',
+            marginBottom: '16px',
+            borderRadius: radii.sm,
+            border: `1px solid rgba(239,68,68,0.3)`,
+            background: 'rgba(239,68,68,0.06)',
+            color: colors.statusLost,
+            fontSize: '12px',
+            lineHeight: 1.45,
+          }}>
+            <span style={{ flexShrink: 0 }}>⚠</span>
+            <span>
+              Эта привязка <strong>не отображается на странице</strong>: выделенный
+              текст не удалось найти в текущем содержимом, поэтому она помечена как
+              «Утрачено». Найти её можно внизу страницы или по чипу «утрачено» в
+              верхней панели. Привязанные тесты сохранены.
+            </span>
+          </div>
+        )}
 
         {/* Reanchor button for outdated highlights */}
         {highlight.status === 'outdated' && onReanchor && (

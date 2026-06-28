@@ -109,32 +109,78 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 disabled={!hasPrev}
                 title="Предыдущее выделение"
                 style={{
-                  background: 'none', border: `1px solid ${colors.border}`,
+                  background: colors.white,
+                  border: `1px solid ${colors.border}`,
                   cursor: hasPrev ? 'pointer' : 'default',
-                  fontSize: '14px', padding: '3px 8px',
+                  padding: '3px 8px',
                   borderRadius: radii.sm,
-                  color: hasPrev ? colors.textPrimary : colors.textTertiary,
+                  color: hasPrev ? colors.textSecondary : colors.textTertiary,
                   opacity: hasPrev ? 1 : 0.4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}
+                onMouseEnter={e => {
+                  if (!hasPrev) return;
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.borderColor = colors.borderHover;
+                  e.currentTarget.style.color = colors.textPrimary;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = colors.white;
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = hasPrev ? colors.textSecondary : colors.textTertiary;
+                }}
               >
-                ↑
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth={2}
+                  strokeLinecap="round" strokeLinejoin="round"
+                  style={{ display: 'block' }}
+                >
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
               </button>
               <button
                 onClick={handleNext}
                 disabled={!hasNext}
                 title="Следующее выделение"
                 style={{
-                  background: 'none', border: `1px solid ${colors.border}`,
+                  background: colors.white,
+                  border: `1px solid ${colors.border}`,
                   cursor: hasNext ? 'pointer' : 'default',
-                  fontSize: '14px', padding: '3px 8px',
+                  padding: '3px 8px',
                   borderRadius: radii.sm,
-                  color: hasNext ? colors.textPrimary : colors.textTertiary,
+                  color: hasNext ? colors.textSecondary : colors.textTertiary,
                   opacity: hasNext ? 1 : 0.4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}
+                onMouseEnter={e => {
+                  if (!hasNext) return;
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.borderColor = colors.borderHover;
+                  e.currentTarget.style.color = colors.textPrimary;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = colors.white;
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = hasNext ? colors.textSecondary : colors.textTertiary;
+                }}
               >
-                ↓
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth={2}
+                  strokeLinecap="round" strokeLinejoin="round"
+                  style={{ display: 'block' }}
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="19 12 12 19 5 12" />
+                </svg>
               </button>
             </>
           )}

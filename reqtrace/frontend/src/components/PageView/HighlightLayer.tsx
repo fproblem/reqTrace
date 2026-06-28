@@ -1,5 +1,11 @@
 import React, { useEffect, useCallback } from 'react';
 import { Highlight } from '../../types';
+import { colors } from '../../styles/tokens';
+import {
+  strippedEquals,
+  findBestMatchIndex,
+  findSplitRangesIgnoringWhitespace,
+} from './highlightMatching';
 
 const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
 
@@ -109,11 +115,32 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
     }
 
     onRenderReport?.({ rendered, considered });
+
+    // Единая рамка вокруг выбранной привязки рисуется поверх текста отдельным
+    // слоем — иначе она «рвётся» по каждому инлайн-тегу (см. drawSelectionOutline).
+    drawSelectionOutline(container, selectedHighlightId);
   }, [container, highlights, selectedHighlightId, onHighlightClick, onRenderReport]);
 
   useEffect(() => {
     applyHighlights();
   }, [applyHighlights]);
+
+  // Рамка выбора позиционируется по client-rect'ам текста, поэтому при изменении
+  // ширины контента (открытие/закрытие правой панели, ресайз окна) её нужно
+  // перерисовать — текст уже переносится сам, а overlay про это не знает.
+  useEffect(() => {
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => drawSelectionOutline(container, selectedHighlightId));
+    });
+    ro.observe(container);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [container, selectedHighlightId]);
 
   return null;
 };
@@ -134,41 +161,57 @@ function applyBlockAnchored(
 
   if (startBlockIdx >= blocks.length) return false;
 
-  if (startBlockIdx === endBlockIdx) {
-    const block = blocks[startBlockIdx];
+  // Сначала собираем диапазоны, которые собираемся подсветить, и их текст —
+  // и только потом трогаем DOM. Это позволяет СНАЧАЛА проверить, что под якорем
+  // действительно наш текст: после удаления/вставки пунктов списка индекс блока
+  // мог указать на чужой блок, и подсвечивать его (как было раньше) — баг.
+  const targets: { block: HTMLElement; from: number; to: number }[] = [];
+  const clampedEndBlockIdx = Math.min(endBlockIdx, blocks.length - 1);
+
+  for (let bi = startBlockIdx; bi <= clampedEndBlockIdx; bi++) {
+    const block = blocks[bi];
     const blockText = block.textContent || '';
-    const clampedStart = Math.min(startCharOffset, blockText.length);
-    const clampedEnd = Math.min(endCharOffset, blockText.length);
-    if (clampedStart >= clampedEnd) return false;
+    let from: number;
+    let to: number;
 
-    return wrapTextNodesInRange(block, clampedStart, clampedEnd, highlight, selectedId, onClick) > 0;
-  } else {
-    const clampedEndBlockIdx = Math.min(endBlockIdx, blocks.length - 1);
-    let wrapped = 0;
-
-    for (let bi = startBlockIdx; bi <= clampedEndBlockIdx; bi++) {
-      const block = blocks[bi];
-      const blockText = block.textContent || '';
-      let bStart: number;
-      let bEnd: number;
-
-      if (bi === startBlockIdx) {
-        bStart = Math.min(startCharOffset, blockText.length);
-        bEnd = blockText.length;
-      } else if (bi === clampedEndBlockIdx) {
-        bStart = 0;
-        bEnd = Math.min(endCharOffset, blockText.length);
-      } else {
-        bStart = 0;
-        bEnd = blockText.length;
-      }
-
-      if (bStart >= bEnd) continue;
-
-      wrapped += wrapTextNodesInRange(block, bStart, bEnd, highlight, selectedId, onClick);
+    if (startBlockIdx === endBlockIdx) {
+      from = Math.min(startCharOffset, blockText.length);
+      to = Math.min(endCharOffset, blockText.length);
+    } else if (bi === startBlockIdx) {
+      from = Math.min(startCharOffset, blockText.length);
+      to = blockText.length;
+    } else if (bi === clampedEndBlockIdx) {
+      from = 0;
+      to = Math.min(endCharOffset, blockText.length);
+    } else {
+      from = 0;
+      to = blockText.length;
     }
-    return wrapped > 0;
+
+    if (from < to) targets.push({ block, from, to });
   }
+
+  if (targets.length === 0) return false;
+
+  // Текст под якорем должен ТОЧНО совпадать с сохранённым (без учёта пробелов и
+  // переносов). Если индекс блока «съехал» на чужой блок, либо текст
+  // отредактировали — совпадения нет, и мы НЕ подсвечиваем здесь: пусть сработает
+  // точный текстовый поиск, иначе привязка уйдёт в «Утрачено». Никаких
+  // «процентов похожести» — правка выделенного текста = потеря привязки.
+  if (highlight.text_content) {
+    const anchoredText = targets
+      .map(t => (t.block.textContent || '').substring(t.from, t.to))
+      .join('');
+    if (!strippedEquals(anchoredText, highlight.text_content)) {
+      return false;
+    }
+  }
+
+  let wrapped = 0;
+  for (const t of targets) {
+    wrapped += wrapTextNodesInRange(t.block, t.from, t.to, highlight, selectedId, onClick);
+  }
+  return wrapped > 0;
 }
 
 // Возвращает true, если удалось отрисовать хотя бы одну метку.
@@ -210,131 +253,6 @@ function applyLegacyTextSearch(
   return wrapped > 0;
 }
 
-// Удаляет все пробельные символы и строит карту map: map[i] = индекс в исходной
-// строке для i-го непробельного символа.
-function stripWhitespaceWithMap(s: string): { stripped: string; map: number[] } {
-  let stripped = '';
-  const map: number[] = [];
-  for (let i = 0; i < s.length; i++) {
-    if (!/\s/.test(s[i])) {
-      stripped += s[i];
-      map.push(i);
-    }
-  }
-  return { stripped, map };
-}
-
-// Сопоставляет needle с fullText, ПОЛНОСТЬЮ игнорируя пробелы/переносы и
-// допуская вставки в середину (в выделение добавили строку). Возвращает один
-// или несколько «сырых» диапазонов [start, end) в исходном fullText (в единицах
-// textContent, как их считает wrapTextNodesInRange). Если в середине вставлен
-// текст — совпавшие куски возвращаются отдельными диапазонами, и подсветка
-// «рвётся» на части, как инлайн-комментарий в Confluence. Пустой массив —
-// если совпало меньше половины (это уже не «разрыв», а потеря привязки).
-function findSplitRangesIgnoringWhitespace(
-  fullText: string,
-  needle: string,
-  textBefore: string,
-  textAfter: string,
-): { start: number; end: number }[] {
-  const { stripped: haystack, map } = stripWhitespaceWithMap(fullText);
-  const sNeedle = stripWhitespaceWithMap(needle).stripped;
-  if (!sNeedle) return [];
-
-  // Якорь начала: непробельный текст прямо перед выделением (если найден) —
-  // чтобы не зацепиться за такой же фрагмент в другом месте страницы.
-  let anchorFrom = 0;
-  const sBefore = stripWhitespaceWithMap(textBefore).stripped;
-  if (sBefore) {
-    const bi = haystack.indexOf(sBefore);
-    if (bi !== -1) anchorFrom = bi + sBefore.length;
-  }
-
-  const segments = matchSegments(haystack, sNeedle, anchorFrom);
-  let matched = 0;
-  for (const s of segments) matched += s.end - s.start;
-
-  // Якорь по before увёл не туда — пробуем с начала страницы.
-  if (matched === 0 && anchorFrom !== 0) {
-    const fromStart = matchSegments(haystack, sNeedle, 0);
-    let m2 = 0;
-    for (const s of fromStart) m2 += s.end - s.start;
-    if (m2 > matched) {
-      segments.length = 0;
-      for (const s of fromStart) segments.push(s);
-      matched = m2;
-    }
-  }
-
-  // Совпало слишком мало — считаем привязку потерянной, а не «разорванной».
-  if (matched < Math.ceil(sNeedle.length / 2)) return [];
-
-  // Переводим в «сырые» смещения и склеиваем соседние диапазоны.
-  const raw: { start: number; end: number }[] = [];
-  for (const s of segments) {
-    const start = map[s.start];
-    const end = map[s.end - 1] + 1;
-    const last = raw[raw.length - 1];
-    if (last && start <= last.end) {
-      last.end = Math.max(last.end, end);
-    } else {
-      raw.push({ start, end });
-    }
-  }
-  return raw;
-}
-
-// Жадно выкладывает needle на haystack начиная с позиции from: на каждом шаге
-// берёт самый длинный кусок needle, встречающийся в haystack дальше текущей
-// позиции. Куски, которых нет впереди (изменённый/удалённый текст), пропускает.
-// Возвращает сегменты совпадения в координатах haystack (без пробелов).
-function matchSegments(
-  haystack: string,
-  needle: string,
-  from: number,
-): { start: number; end: number }[] {
-  const segments: { start: number; end: number }[] = [];
-  let np = 0;
-  let pos = from;
-  let guard = 0;
-  while (np < needle.length && guard++ <= needle.length) {
-    const len = longestSubstringAt(haystack, needle, np, pos);
-    if (len === 0) {
-      np++; // символа needle нет впереди — пропускаем
-      continue;
-    }
-    const at = haystack.indexOf(needle.substring(np, np + len), pos);
-    segments.push({ start: at, end: at + len });
-    np += len;
-    pos = at + len;
-  }
-  return segments;
-}
-
-// Самая длинная L >= 1, для которой needle.substring(np, np+L) встречается в
-// haystack начиная с позиции >= from. 0 — если даже один символ не найден.
-function longestSubstringAt(
-  haystack: string,
-  needle: string,
-  np: number,
-  from: number,
-): number {
-  if (haystack.indexOf(needle[np], from) === -1) return 0;
-  let lo = 1;
-  let hi = needle.length - np;
-  let best = 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (haystack.indexOf(needle.substring(np, np + mid), from) !== -1) {
-      best = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return best;
-}
-
 function createMark(
   highlight: Highlight,
   selectedId: string | null,
@@ -346,10 +264,22 @@ function createMark(
     mark.classList.add('highlight-mark--selected');
   }
   mark.dataset.highlightId = highlight.id;
+  mark.dataset.status = highlight.status; // для drawSelectionOutline (цвет рамки)
   mark.addEventListener('click', (e) => {
     e.stopPropagation();
     onClick(highlight);
   });
+  // Ховер — единый для всей привязки: наведение на любую её часть подсвечивает
+  // ВСЕ её <mark> сразу (выделение, разбитое форматированием, иначе мерцало бы
+  // по фрагментам). Класс снимается/ставится на всех метках с тем же id.
+  const toggleHover = (on: boolean) => {
+    const scope = mark.closest('.confluence-content') ?? document;
+    scope
+      .querySelectorAll(`mark[data-highlight-id="${cssEscapeId(highlight.id)}"]`)
+      .forEach(m => m.classList.toggle('highlight-mark--hover', on));
+  };
+  mark.addEventListener('mouseenter', () => toggleHover(true));
+  mark.addEventListener('mouseleave', () => toggleHover(false));
   return mark;
 }
 
@@ -407,62 +337,243 @@ function wrapTextNodesInRange(
   return wrapped;
 }
 
-function findBestMatchIndex(
-  fullText: string,
-  textContent: string,
-  textBefore: string,
-  textAfter: string,
-): number {
-  const indices: number[] = [];
-  let searchFrom = 0;
-  while (true) {
-    const idx = fullText.indexOf(textContent, searchFrom);
-    if (idx === -1) break;
-    indices.push(idx);
-    searchFrom = idx + 1;
+// ===========================================================================
+// Единая рамка вокруг ВЫБРАННОЙ привязки
+// ===========================================================================
+// Раньше выбранная привязка обводилась через CSS `outline` на каждом <mark>.
+// Поскольку выделение, пересекающее форматирование (полужирный/курсив/код/
+// индексы), разбивается на несколько <mark> в разных родителях, получалось
+// много отдельных рамок — выделение смотрелось «рвано».
+//
+// Здесь рамка рисуется ОДНИМ слоем поверх текста: берём диапазон выбранной
+// привязки, спрашиваем у браузера его прямоугольники построчно
+// (Range.getClientRects — они уже объединены через границы тегов), сливаем их в
+// строчные полосы и обводим единым скруглённым контуром (SVG-path). Так на
+// одной строке выходит одна рамка, а на нескольких — единый контур без
+// внутренних швов, как инлайн-комментарий в Confluence.
+
+const OUTLINE_OVERLAY_CLASS = 'highlight-selection-outline';
+// Цвет рамки совпадает со статусом привязки (а заливка <mark> — его светлая
+// версия): зелёный для актуальных, жёлтый для требующих актуализации, красный
+// для утраченных. Так рамка «подходит» к цвету выделения.
+const OUTLINE_COLOR_BY_STATUS: Record<Highlight['status'], string> = {
+  active: colors.statusActive,
+  outdated: colors.statusOutdated,
+  lost: colors.statusLost,
+};
+const OUTLINE_WIDTH = 2;
+const OUTLINE_OPACITY = 0.8;
+const OUTLINE_RADIUS = 5;
+const OUTLINE_PAD_X = 2.5; // отступ рамки от текста по горизонтали
+const OUTLINE_PAD_Y = 1.5; // отступ рамки от текста по вертикали (только сверху/снизу)
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+interface Band {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function cssEscapeId(id: string): string {
+  const cssObj = (window as unknown as { CSS?: { escape?: (s: string) => string } }).CSS;
+  return cssObj?.escape ? cssObj.escape(id) : id.replace(/["\\]/g, '\\$&');
+}
+
+function drawSelectionOutline(container: HTMLElement, selectedId: string | null): void {
+  // Снести прошлую рамку (смена выбора / ресайз / перерисовка привязок).
+  container.querySelectorAll(`.${OUTLINE_OVERLAY_CLASS}`).forEach(el => el.remove());
+  if (!selectedId) return;
+
+  const marks = Array.from(
+    container.querySelectorAll(`mark[data-highlight-id="${cssEscapeId(selectedId)}"]`),
+  ) as HTMLElement[];
+  if (marks.length === 0) return; // выбранная привязка не отрисована (например, «утрачена»)
+
+  // Цвет рамки — по статусу привязки (читаем с самой метки, чтобы не тащить
+  // объект привязки через ResizeObserver).
+  const status = (marks[0].dataset.status || 'active') as Highlight['status'];
+  const strokeColor = OUTLINE_COLOR_BY_STATUS[status] || colors.statusActive;
+
+  // overlay позиционируется абсолютно — контейнер должен быть точкой отсчёта.
+  if (window.getComputedStyle(container).position === 'static') {
+    container.style.position = 'relative';
   }
+  const containerRect = container.getBoundingClientRect();
 
-  if (indices.length === 0) return -1;
-  if (indices.length === 1) return indices[0];
+  // Привязка может быть «разорвана» вставленным текстом (несколько несмежных
+  // групп <mark>) — каждую группу обводим своим контуром.
+  const runs = groupContiguousMarks(marks);
 
-  let bestIdx = indices[0];
-  let bestScore = -1;
+  const paths: string[] = [];
+  for (const run of runs) {
+    const range = document.createRange();
+    range.setStartBefore(run[0]);
+    range.setEndAfter(run[run.length - 1]);
+    const bands = buildLineBands(Array.from(range.getClientRects()), containerRect);
+    if (bands.length > 0) paths.push(buildRoundedRectilinearPath(bands));
+  }
+  if (paths.length === 0) return;
 
-  for (const idx of indices) {
-    let score = 0;
-    if (textBefore) {
-      const actualBefore = fullText.substring(Math.max(0, idx - textBefore.length), idx);
-      const minLen = Math.min(actualBefore.length, textBefore.length);
-      for (let i = 1; i <= minLen; i++) {
-        if (actualBefore[actualBefore.length - i] === textBefore[textBefore.length - i]) {
-          score++;
-        } else {
-          break;
-        }
-      }
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', OUTLINE_OVERLAY_CLASS);
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.position = 'absolute';
+  svg.style.left = '0';
+  svg.style.top = '0';
+  svg.style.width = `${container.scrollWidth}px`;
+  svg.style.height = `${container.scrollHeight}px`;
+  svg.style.overflow = 'visible';
+  svg.style.pointerEvents = 'none';
+
+  for (const d of paths) {
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', strokeColor);
+    path.setAttribute('stroke-width', String(OUTLINE_WIDTH));
+    path.setAttribute('stroke-opacity', String(OUTLINE_OPACITY));
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+  }
+  container.appendChild(svg);
+}
+
+// Делит метки выбранной привязки на смежные группы: между двумя соседними
+// <mark> допустим только пробельный «зазор» (граница тега). Непустой текст между
+// ними — значит привязка «разорвана» вставкой, и группы обводятся раздельно.
+function groupContiguousMarks(marks: HTMLElement[]): HTMLElement[][] {
+  const runs: HTMLElement[][] = [[marks[0]]];
+  for (let i = 1; i < marks.length; i++) {
+    let gapText = 'x';
+    try {
+      const gap = document.createRange();
+      gap.setStartAfter(marks[i - 1]);
+      gap.setEndBefore(marks[i]);
+      gapText = gap.toString();
+    } catch {
+      // соседние метки в разных поддеревьях — считаем разрывом
     }
-    if (textAfter) {
-      const actualAfter = fullText.substring(
-        idx + textContent.length,
-        idx + textContent.length + textAfter.length,
-      );
-      const minLen = Math.min(actualAfter.length, textAfter.length);
-      for (let i = 0; i < minLen; i++) {
-        if (actualAfter[i] === textAfter[i]) {
-          score++;
-        } else {
-          break;
-        }
-      }
-    }
+    if (gapText.trim() === '') runs[runs.length - 1].push(marks[i]);
+    else runs.push([marks[i]]);
+  }
+  return runs;
+}
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestIdx = idx;
+// Прямоугольники диапазона (по одному+ на строку) -> строчные полосы в
+// координатах контейнера. Полосы стыкуются по общей границе и снабжаются
+// отступами, чтобы рамка не липла к тексту.
+function buildLineBands(rects: DOMRect[], containerRect: DOMRect): Band[] {
+  const norm = rects
+    .filter(r => r.width > 0.5 && r.height > 0.5)
+    .map(r => ({
+      left: r.left - containerRect.left,
+      right: r.right - containerRect.left,
+      top: r.top - containerRect.top,
+      bottom: r.bottom - containerRect.top,
+    }))
+    .sort((a, b) => a.top - b.top || a.left - b.left);
+
+  const bands: Band[] = [];
+  for (const r of norm) {
+    const last = bands[bands.length - 1];
+    if (last && r.top < last.bottom - 2) {
+      // вертикально пересекается с текущей полосой => та же строка
+      last.left = Math.min(last.left, r.left);
+      last.right = Math.max(last.right, r.right);
+      last.top = Math.min(last.top, r.top);
+      last.bottom = Math.max(last.bottom, r.bottom);
+    } else {
+      bands.push({ ...r });
     }
   }
+  if (bands.length === 0) return bands;
 
-  return bestIdx;
+  // Стыкуем соседние строки по средней линии — без зазоров и нахлёстов в контуре.
+  for (let i = 0; i < bands.length - 1; i++) {
+    const mid = (bands[i].bottom + bands[i + 1].top) / 2;
+    bands[i].bottom = mid;
+    bands[i + 1].top = mid;
+  }
+  for (const b of bands) {
+    b.left -= OUTLINE_PAD_X;
+    b.right += OUTLINE_PAD_X;
+  }
+  bands[0].top -= OUTLINE_PAD_Y;
+  bands[bands.length - 1].bottom += OUTLINE_PAD_Y;
+  return bands;
+}
+
+// Строит замкнутый скруглённый контур вокруг «лесенки» строчных полос (единая
+// рамка вокруг многострочного выделения, без внутренних линий между строками).
+function buildRoundedRectilinearPath(bands: Band[]): string {
+  const n = bands.length;
+  const pts: [number, number][] = [];
+
+  pts.push([bands[0].left, bands[0].top]);
+  pts.push([bands[0].right, bands[0].top]);
+  for (let i = 0; i < n; i++) {
+    pts.push([bands[i].right, bands[i].bottom]);
+    if (i < n - 1) pts.push([bands[i + 1].right, bands[i].bottom]); // ступенька справа
+  }
+  pts.push([bands[n - 1].left, bands[n - 1].bottom]);
+  for (let i = n - 1; i >= 0; i--) {
+    pts.push([bands[i].left, bands[i].top]);
+    if (i > 0) pts.push([bands[i - 1].left, bands[i].top]); // ступенька слева
+  }
+  return roundedPolygonPath(dedupePoints(pts), OUTLINE_RADIUS);
+}
+
+function dedupePoints(pts: [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const p of pts) {
+    const prev = out[out.length - 1];
+    if (!prev || Math.abs(prev[0] - p[0]) > 0.1 || Math.abs(prev[1] - p[1]) > 0.1) {
+      out.push(p);
+    }
+  }
+  // замыкание: первая и последняя точки могут совпасть
+  while (
+    out.length > 1 &&
+    Math.abs(out[0][0] - out[out.length - 1][0]) <= 0.1 &&
+    Math.abs(out[0][1] - out[out.length - 1][1]) <= 0.1
+  ) {
+    out.pop();
+  }
+  return out;
+}
+
+// Замкнутый путь по вершинам со скруглением каждого угла (радиус ужимается до
+// половины смежных рёбер, чтобы короткие ступеньки не «выворачивались»).
+function roundedPolygonPath(pts: [number, number][], radius: number): string {
+  const n = pts.length;
+  if (n < 3) {
+    return n === 0 ? '' : `M ${pts.map(p => `${round(p[0])},${round(p[1])}`).join(' L ')} Z`;
+  }
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const ax = p0[0] - p1[0];
+    const ay = p0[1] - p1[1];
+    const bx = p2[0] - p1[0];
+    const by = p2[1] - p1[1];
+    const lenA = Math.hypot(ax, ay);
+    const lenB = Math.hypot(bx, by);
+    if (lenA === 0 || lenB === 0) continue;
+    const rr = Math.min(radius, lenA / 2, lenB / 2);
+    const start: [number, number] = [p1[0] + (ax / lenA) * rr, p1[1] + (ay / lenA) * rr];
+    const end: [number, number] = [p1[0] + (bx / lenB) * rr, p1[1] + (by / lenB) * rr];
+    d += i === 0 ? `M ${round(start[0])},${round(start[1])}` : ` L ${round(start[0])},${round(start[1])}`;
+    d += ` Q ${round(p1[0])},${round(p1[1])} ${round(end[0])},${round(end[1])}`;
+  }
+  return `${d} Z`;
+}
+
+function round(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 
 export default HighlightLayer;

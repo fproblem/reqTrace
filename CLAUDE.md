@@ -69,6 +69,31 @@ cd reqtrace/backend && alembic upgrade head && uvicorn app.main:app --reload
 cd reqtrace/frontend && npm install && npm start   # сборка: npm run build, тесты: npm test
 ```
 
+## Тесты логики подсветки (highlight)
+
+Размещение подсветок — самая хрупкая часть проекта: логика решает, **где** показать
+привязку и **когда** считать её «Утраченной». Исторически здесь повторялись баги с
+«прыгающей» подсветкой (привязка переезжала на похожий чужой текст) и неверным
+переходом в «Утрачено».
+
+Чистая логика сопоставления вынесена в
+`reqtrace/frontend/src/components/PageView/highlightMatching.ts` (без DOM/React) и
+покрыта юнит-тестами `highlightMatching.test.ts`.
+
+⚠ **Обязательно прогоняй эти тесты после ЛЮБЫХ правок, затрагивающих размещение
+подсветок** — `highlightMatching.ts`, `HighlightLayer.tsx`, а также логику
+статусов/«Утрачено» в `pages/PageDetailPage.tsx`. Если меняешь поведение
+осознанно — обнови и тесты: они фиксируют правило, что привязка показывается
+только при точном совпадении текста (различия в пробелах/вёрстке и одна вставка
+внутрь выделения допускаются), а правка/удаление текста → «Утрачено».
+
+```bash
+cd reqtrace/frontend
+CI=true npx react-scripts test --watchAll=false src/components/PageView/highlightMatching.test.ts
+# все тесты:   CI=true npm test
+# типизация:   npx tsc --noEmit
+```
+
 ## Конвенции
 
 - UI и пользовательские сообщения — на русском (см. `api/client.ts`, маппинг ошибок).

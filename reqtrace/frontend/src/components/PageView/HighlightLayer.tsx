@@ -82,7 +82,11 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
     const considered = new Set<string>();
 
     for (const highlight of highlights) {
-      if (highlight.status === 'lost') continue;
+      // Пытаемся отрисовать ВСЕ привязки, в т.ч. «утраченные»: если такая снова
+      // легла на страницу (текст вернулся или подсветка ложится «разрывом»),
+      // вызывающий код вернёт её из «Утрачено». Иначе lost-статус был бы
+      // «липким» — однажды утраченную привязку слой больше никогда не пробовал
+      // бы показать.
       considered.add(highlight.id);
 
       try {

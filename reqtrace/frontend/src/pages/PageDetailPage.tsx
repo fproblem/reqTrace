@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
@@ -64,9 +64,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const contentContainerRef = useRef<HTMLDivElement | null>(null);
-  // id привязок, для которых уже отправлен запрос «пометить утраченной» — чтобы
-  // не дёргать бэкенд повторно на каждый прогон слоя подсветки.
-  const markedLostRef = useRef<Set<string>>(new Set());
   const selectionContextRef = useRef<{
     textBefore: string;
     textAfter: string;
@@ -379,54 +376,37 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [handleMouseUp]);
 
-  // Стабильная ссылка на видимые (не «утраченные») привязки — чтобы передача в
-  // HighlightLayer не пересоздавала массив на каждый рендер и не гоняла эффект.
-  const visibleHighlights = useMemo(
-    () => highlights.filter(h => h.status !== 'lost'),
-    [highlights],
-  );
-
-  // При смене страницы сбрасываем набор «уже помеченных утраченными».
-  useEffect(() => {
-    markedLostRef.current = new Set();
-  }, [pageId]);
-
-  // Привязки, которые слой обработал, но не смог отрисовать (текст не найден на
-  // странице), сразу переводим в «Утрачено»: тогда они видны в секции внизу
-  // страницы и в чипе «утрачено» в верхней панели, а не теряются среди
-  // актуальных/требующих проверки. Статус пишем и в БД (best-effort), чтобы он
-  // пережил перезагрузку.
+  // Синхронизируем статус «Утрачено» с фактической отрисовкой:
+  //  • привязку обработали, но ни одной <mark> не появилось → «Утрачено»
+  //    (видно в секции внизу и в чипе «утрачено» вверху);
+  //  • ранее утраченная привязка снова легла на страницу (в т.ч. «разрывом»
+  //    после правки) → возвращаем в «Требует проверки».
+  // Статус пишем в БД best-effort (эндпоинты идемпотентны), локально — сразу.
   useEffect(() => {
     if (!renderReport) return;
-    const missing: string[] = [];
-    renderReport.considered.forEach(id => {
-      if (!renderReport.rendered.has(id)) missing.push(id);
-    });
-    if (missing.length === 0) return;
+    const { rendered, considered } = renderReport;
 
-    setHighlights(prev => {
-      let changed = false;
-      const next = prev.map(h => {
-        if (missing.indexOf(h.id) !== -1 && h.status !== 'lost') {
-          changed = true;
-          return { ...h, status: 'lost' as const };
-        }
-        return h;
-      });
-      return changed ? next : prev;
+    const toLose: string[] = [];
+    const toRecover: string[] = [];
+    highlights.forEach(h => {
+      if (!considered.has(h.id)) return;
+      const isRendered = rendered.has(h.id);
+      if (!isRendered && h.status !== 'lost') toLose.push(h.id);
+      else if (isRendered && h.status === 'lost') toRecover.push(h.id);
     });
-    setSelectedHighlight(prev =>
-      prev && missing.indexOf(prev.id) !== -1 && prev.status !== 'lost'
-        ? { ...prev, status: 'lost' as const }
-        : prev,
-    );
+    if (toLose.length === 0 && toRecover.length === 0) return;
 
-    const toPersist = missing.filter(id => !markedLostRef.current.has(id));
-    toPersist.forEach(id => {
-      markedLostRef.current.add(id);
-      api.markHighlightLost(id).catch(() => { /* best-effort: статус уже обновлён локально */ });
-    });
-  }, [renderReport]);
+    const apply = (h: Highlight): Highlight => {
+      if (toLose.indexOf(h.id) !== -1) return { ...h, status: 'lost' };
+      if (toRecover.indexOf(h.id) !== -1) return { ...h, status: 'outdated' };
+      return h;
+    };
+    setHighlights(prev => prev.map(apply));
+    setSelectedHighlight(prev => (prev ? apply(prev) : prev));
+
+    toLose.forEach(id => { api.markHighlightLost(id).catch(() => {}); });
+    toRecover.forEach(id => { api.unmarkHighlightLost(id).catch(() => {}); });
+  }, [renderReport, highlights]);
 
   if (loading) {
     return (
@@ -829,7 +809,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
                   />
                   <HighlightLayer
                     container={contentContainer}
-                    highlights={visibleHighlights}
+                    highlights={highlights}
                     selectedHighlightId={selectedHighlight?.id || null}
                     onHighlightClick={handleHighlightClick}
                     onRenderReport={handleRenderReport}

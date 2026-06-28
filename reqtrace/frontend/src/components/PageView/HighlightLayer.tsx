@@ -187,21 +187,23 @@ function applyLegacyTextSearch(
     ) > 0;
   }
 
-  // Фолбэк: text_content приходит из selection.toString(), которое для выделений
-  // через границы блоков (абзацы, пункты списка, ячейки) вставляет переносы
-  // строк \n. А container.textContent между текстом пункта и вложенным списком
-  // может вовсе не иметь пробела (<li>...:<ol>), поэтому даже «схлопнутые до
-  // одного пробела» строки не совпадают: «один пробел против нуля». Ищем,
-  // ПОЛНОСТЬЮ игнорируя пробельные символы, и оборачиваем найденный «сырой»
-  // диапазон.
-  const span = findRangeIgnoringWhitespace(
+  // Фолбэк: точного совпадения нет. text_content приходит из selection.toString(),
+  // которое для выделений через границы блоков вставляет переносы строк \n,
+  // а container.textContent между текстом пункта и вложенным списком может вовсе
+  // не иметь пробела (<li>...:<ol>). Кроме того, в содержимое могли вставить
+  // новую строку ВНУТРИ выделения (как в Confluence). Поэтому ищем, полностью
+  // игнорируя пробелы, и допускаем вставки в середину: совпавшие куски
+  // подсвечиваем по отдельности — подсветка «рвётся» на части, как
+  // инлайн-комментарий в Confluence, вместо полной потери.
+  const ranges = findSplitRangesIgnoringWhitespace(
     fullText, textContent, highlight.text_before, highlight.text_after,
   );
-  if (!span) return false;
 
-  return wrapTextNodesInRange(
-    container, span.start, span.end, highlight, selectedId, onClick,
-  ) > 0;
+  let wrapped = 0;
+  for (const r of ranges) {
+    wrapped += wrapTextNodesInRange(container, r.start, r.end, highlight, selectedId, onClick);
+  }
+  return wrapped > 0;
 }
 
 // Удаляет все пробельные символы и строит карту map: map[i] = индекс в исходной
@@ -218,63 +220,115 @@ function stripWhitespaceWithMap(s: string): { stripped: string; map: number[] } 
   return { stripped, map };
 }
 
-// Ищет needle в fullText, полностью игнорируя пробелы/переносы, и возвращает
-// «сырой» диапазон [start, end) в исходном fullText (в единицах textContent,
-// как их считает wrapTextNodesInRange). null — если совпадений нет.
-function findRangeIgnoringWhitespace(
+// Сопоставляет needle с fullText, ПОЛНОСТЬЮ игнорируя пробелы/переносы и
+// допуская вставки в середину (в выделение добавили строку). Возвращает один
+// или несколько «сырых» диапазонов [start, end) в исходном fullText (в единицах
+// textContent, как их считает wrapTextNodesInRange). Если в середине вставлен
+// текст — совпавшие куски возвращаются отдельными диапазонами, и подсветка
+// «рвётся» на части, как инлайн-комментарий в Confluence. Пустой массив —
+// если совпало меньше половины (это уже не «разрыв», а потеря привязки).
+function findSplitRangesIgnoringWhitespace(
   fullText: string,
   needle: string,
   textBefore: string,
   textAfter: string,
-): { start: number; end: number } | null {
+): { start: number; end: number }[] {
   const { stripped: haystack, map } = stripWhitespaceWithMap(fullText);
-  const strippedNeedle = stripWhitespaceWithMap(needle).stripped;
-  if (!strippedNeedle) return null;
+  const sNeedle = stripWhitespaceWithMap(needle).stripped;
+  if (!sNeedle) return [];
 
-  const matches: number[] = [];
-  let from = 0;
-  while (true) {
-    const at = haystack.indexOf(strippedNeedle, from);
-    if (at === -1) break;
-    matches.push(at);
-    from = at + 1;
+  // Якорь начала: непробельный текст прямо перед выделением (если найден) —
+  // чтобы не зацепиться за такой же фрагмент в другом месте страницы.
+  let anchorFrom = 0;
+  const sBefore = stripWhitespaceWithMap(textBefore).stripped;
+  if (sBefore) {
+    const bi = haystack.indexOf(sBefore);
+    if (bi !== -1) anchorFrom = bi + sBefore.length;
   }
-  if (matches.length === 0) return null;
 
-  let best = matches[0];
-  if (matches.length > 1 && (textBefore || textAfter)) {
-    const strippedBefore = stripWhitespaceWithMap(textBefore).stripped;
-    const strippedAfter = stripWhitespaceWithMap(textAfter).stripped;
-    let bestScore = -1;
-    for (const at of matches) {
-      let score = 0;
-      if (strippedBefore) {
-        const actual = haystack.substring(Math.max(0, at - strippedBefore.length), at);
-        const minLen = Math.min(actual.length, strippedBefore.length);
-        for (let i = 1; i <= minLen; i++) {
-          if (actual[actual.length - i] === strippedBefore[strippedBefore.length - i]) score++;
-          else break;
-        }
-      }
-      if (strippedAfter) {
-        const tail = at + strippedNeedle.length;
-        const actual = haystack.substring(tail, tail + strippedAfter.length);
-        const minLen = Math.min(actual.length, strippedAfter.length);
-        for (let i = 0; i < minLen; i++) {
-          if (actual[i] === strippedAfter[i]) score++;
-          else break;
-        }
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        best = at;
-      }
+  const segments = matchSegments(haystack, sNeedle, anchorFrom);
+  let matched = 0;
+  for (const s of segments) matched += s.end - s.start;
+
+  // Якорь по before увёл не туда — пробуем с начала страницы.
+  if (matched === 0 && anchorFrom !== 0) {
+    const fromStart = matchSegments(haystack, sNeedle, 0);
+    let m2 = 0;
+    for (const s of fromStart) m2 += s.end - s.start;
+    if (m2 > matched) {
+      segments.length = 0;
+      for (const s of fromStart) segments.push(s);
+      matched = m2;
     }
   }
 
-  const start = map[best];
-  const end = map[best + strippedNeedle.length - 1] + 1;
-  return { start, end };
+  // Совпало слишком мало — считаем привязку потерянной, а не «разорванной».
+  if (matched < Math.ceil(sNeedle.length / 2)) return [];
+
+  // Переводим в «сырые» смещения и склеиваем соседние диапазоны.
+  const raw: { start: number; end: number }[] = [];
+  for (const s of segments) {
+    const start = map[s.start];
+    const end = map[s.end - 1] + 1;
+    const last = raw[raw.length - 1];
+    if (last && start <= last.end) {
+      last.end = Math.max(last.end, end);
+    } else {
+      raw.push({ start, end });
+    }
+  }
+  return raw;
+}
+
+// Жадно выкладывает needle на haystack начиная с позиции from: на каждом шаге
+// берёт самый длинный кусок needle, встречающийся в haystack дальше текущей
+// позиции. Куски, которых нет впереди (изменённый/удалённый текст), пропускает.
+// Возвращает сегменты совпадения в координатах haystack (без пробелов).
+function matchSegments(
+  haystack: string,
+  needle: string,
+  from: number,
+): { start: number; end: number }[] {
+  const segments: { start: number; end: number }[] = [];
+  let np = 0;
+  let pos = from;
+  let guard = 0;
+  while (np < needle.length && guard++ <= needle.length) {
+    const len = longestSubstringAt(haystack, needle, np, pos);
+    if (len === 0) {
+      np++; // символа needle нет впереди — пропускаем
+      continue;
+    }
+    const at = haystack.indexOf(needle.substring(np, np + len), pos);
+    segments.push({ start: at, end: at + len });
+    np += len;
+    pos = at + len;
+  }
+  return segments;
+}
+
+// Самая длинная L >= 1, для которой needle.substring(np, np+L) встречается в
+// haystack начиная с позиции >= from. 0 — если даже один символ не найден.
+function longestSubstringAt(
+  haystack: string,
+  needle: string,
+  np: number,
+  from: number,
+): number {
+  if (haystack.indexOf(needle[np], from) === -1) return 0;
+  let lo = 1;
+  let hi = needle.length - np;
+  let best = 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (haystack.indexOf(needle.substring(np, np + mid), from) !== -1) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
 }
 
 function createMark(

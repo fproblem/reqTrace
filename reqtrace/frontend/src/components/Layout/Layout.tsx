@@ -223,15 +223,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
       }}>
         {/* Left: brand + version */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-          <div
+          <img
+            src={`${process.env.PUBLIC_URL}/logo-header.svg`}
+            alt="ReqTrace"
             onClick={() => navigate('/')}
-            style={{
-              fontSize: '20px', fontWeight: 700, color: colors.greenDark,
-              cursor: 'pointer', letterSpacing: '-0.5px', flexShrink: 0,
-            }}
-          >
-            ReqTrace
-          </div>
+            style={{ height: '34px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
+          />
 
           {currentVersion && (
             <button

@@ -227,7 +227,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
             src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
             alt="ReqTrace"
             onClick={() => navigate('/')}
-            style={{ height: '34px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
+            style={{ height: '42px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
           />
 
           {currentVersion && (

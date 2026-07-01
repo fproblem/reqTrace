@@ -224,7 +224,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
         {/* Left: brand + version */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
           <img
-            src={`${process.env.PUBLIC_URL}/logo-header.svg`}
+            src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
             alt="ReqTrace"
             onClick={() => navigate('/')}
             style={{ height: '34px', display: 'block', cursor: 'pointer', flexShrink: 0 }}

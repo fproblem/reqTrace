@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useToast } from '../components/Toast';
+import { useCurrentVersion } from '../components/ChangelogModal';
 import { colors, radii, shadows, fonts } from '../styles/tokens';
 
 interface LoginPageProps {
@@ -10,6 +11,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
+  const currentVersion = useCurrentVersion();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +68,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         zIndex: 1,
       }}>
         <img
-          src={`${process.env.PUBLIC_URL}/logo.svg`}
+          src={`${process.env.PUBLIC_URL}/logo.svg?v=${currentVersion}`}
           alt="ReqTrace — Требования, Тесты, Покрытие"
           style={{ height: '58px', display: 'block', marginBottom: '12px' }}
         />

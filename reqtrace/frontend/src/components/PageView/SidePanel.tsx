@@ -83,7 +83,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     }}>
       {/* Header with navigation */}
       <div style={{
-        padding: '16px 20px',
+        padding: '17px 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',

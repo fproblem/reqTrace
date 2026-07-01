@@ -213,7 +213,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '52px',
+        height: '64px',
         flexShrink: 0,
         padding: '0 16px',
         ...glassmorphism,

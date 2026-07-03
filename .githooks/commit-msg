@@ -1,0 +1,29 @@
+#!/bin/sh
+# Требование релизного процесса: feat/fix-коммит в ветке release/v* обязан
+# обновлять changelog (reqtrace/frontend/public/changelog.json) — иначе к
+# релизу забудем, что в него вошло. Осознанный обход: git commit --no-verify.
+# Активация после клонирования (один раз): git config core.hooksPath .githooks
+
+branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
+case "$branch" in
+  release/v*) ;;
+  *) exit 0 ;;
+esac
+
+first_line=$(head -n 1 "$1")
+msg_type=$(printf '%s' "$first_line" | sed -E 's/^([a-z]+)(\([^)]*\))?!?:.*/\1/')
+case "$msg_type" in
+  feat|fix) ;;
+  *) exit 0 ;;
+esac
+
+if git diff --cached --name-only | grep -q '^reqtrace/frontend/public/changelog.json$'; then
+  exit 0
+fi
+
+version=${branch#release/v}
+echo "⛔ ${msg_type}-коммит в ${branch} без записи в changelog." >&2
+echo "   Опиши изменение по-пользовательски в блоке версии ${version}:" >&2
+echo "   reqtrace/frontend/public/changelog.json — и застейджи файл." >&2
+echo "   Осознанный обход: git commit --no-verify" >&2
+exit 1

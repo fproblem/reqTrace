@@ -20,6 +20,63 @@ _STATUS_COLORS = {
 }
 
 
+# Токены structured-macro: открывающий (group(1)="/" если самозакрытый) и закрывающий.
+_MACRO_TOKEN_RE = re.compile(r"<ac:structured-macro\b[^>]*?(/)?>|</ac:structured-macro>")
+_MACRO_NAME_RE = re.compile(r'ac:name="([^"]+)"')
+_RICH_BODY_RE = re.compile(
+    r"<ac:rich-text-body[^>]*>(.*)</ac:rich-text-body>", re.DOTALL
+)
+
+
+def _sub_macro_blocks(html: str, names, repl) -> str:
+    """Заменить парные блоки <ac:structured-macro> с учётом вложенности.
+
+    Нежадный regex `.*?</ac:structured-macro>` обрезает блок на закрывающем теге
+    первого же ВЛОЖЕННОГО макроса (например, anchor внутри expand) — так терялось
+    содержимое. Здесь закрывающий тег ищется подсчётом глубины.
+
+    names — множество имён макросов (None = любой), repl(block) -> str получает
+    полный блок от открывающего до закрывающего тега. Блок без закрывающего тега
+    не трогаем — остатки снимет финальная зачистка ac:-тегов.
+    """
+    out = []
+    pos = 0
+    for m in _MACRO_TOKEN_RE.finditer(html):
+        if m.start() < pos:
+            continue  # токен внутри уже обработанного блока
+        tag = m.group(0)
+        if tag.startswith("</") or m.group(1):
+            continue  # закрывающий или самозакрытый — не начало блока
+        if names is not None:
+            name_m = _MACRO_NAME_RE.search(tag)
+            if not name_m or name_m.group(1) not in names:
+                continue
+        depth = 1
+        end = None
+        for t in _MACRO_TOKEN_RE.finditer(html, m.end()):
+            if t.group(0).startswith("</"):
+                depth -= 1
+                if depth == 0:
+                    end = t.end()
+                    break
+            elif not t.group(1):
+                depth += 1
+        if end is None:
+            continue
+        out.append(html[pos:m.start()])
+        out.append(repl(html[m.start():end]))
+        pos = end
+    out.append(html[pos:])
+    return "".join(out)
+
+
+def _macro_rich_body(block: str) -> str:
+    """Содержимое <ac:rich-text-body> блока (жадно: от первого открывающего до
+    последнего закрывающего — внешнее тело сбалансированного блока), иначе ''."""
+    body_m = _RICH_BODY_RE.search(block)
+    return body_m.group(1) if body_m else ""
+
+
 def process_confluence_html(
     html: str, page_id: str, jira_base_url: str = ""
 ) -> str:
@@ -58,15 +115,16 @@ def process_confluence_html(
             return f'<img src="{url.group(1)}" style="{style}"{size_attrs} />'
         return ""
 
-    result = re.sub(r"<ac:image[^>]*>.*?</ac:image>", _replace_ac_image, html, flags=re.DOTALL)
-    result = re.sub(r"<ac:image[^/]*/\s*>", "", result)
+    # Сначала убрать самозакрытые <ac:image/>: иначе парный regex примет такой
+    # тег за открывающий и съест весь текст до </ac:image> следующей картинки.
+    result = re.sub(r"<ac:image[^>]*/\s*>", "", html)
+    result = re.sub(r"<ac:image[^>]*>.*?</ac:image>", _replace_ac_image, result, flags=re.DOTALL)
 
     # --- 2. Remove self-closing structured macros (e.g. toc) BEFORE paired ones ---
     result = re.sub(r"<ac:structured-macro\s[^>]*/\s*>", "", result)
 
     # --- 3. Jira issue macro → link ---
-    def _replace_jira_macro(m: re.Match) -> str:
-        block = m.group(0)
+    def _replace_jira_macro(block: str) -> str:
         key_m = re.search(r'ac:name="key"[^>]*>([^<]+)<', block)
         if not key_m:
             return ""
@@ -83,14 +141,10 @@ def process_confluence_html(
             f"🔗 {key}</a>"
         )
 
-    result = re.sub(
-        r'<ac:structured-macro\s[^>]*ac:name="jira"[^>]*>.*?</ac:structured-macro>',
-        _replace_jira_macro, result, flags=re.DOTALL,
-    )
+    result = _sub_macro_blocks(result, {"jira"}, _replace_jira_macro)
 
     # --- 4. Status macro → badge ---
-    def _replace_status_macro(m: re.Match) -> str:
-        block = m.group(0)
+    def _replace_status_macro(block: str) -> str:
         title_m = re.search(r'ac:name="title"[^>]*>([^<]+)<', block)
         colour_m = re.search(r'ac:name="colou?r"[^>]*>([^<]+)<', block)
         title = title_m.group(1).strip() if title_m else ""
@@ -104,16 +158,12 @@ def process_confluence_html(
             f"{title}</span>"
         )
 
-    result = re.sub(
-        r'<ac:structured-macro\s[^>]*ac:name="status"[^>]*>.*?</ac:structured-macro>',
-        _replace_status_macro, result, flags=re.DOTALL,
-    )
+    result = _sub_macro_blocks(result, {"status"}, _replace_status_macro)
 
     # --- 5. Code / noformat macro → <pre><code> ---
     import html as html_mod
 
-    def _replace_code_macro(m: re.Match) -> str:
-        block = m.group(0)
+    def _replace_code_macro(block: str) -> str:
         lang_m = re.search(r'ac:name="language"[^>]*>([^<]+)<', block)
         lang = lang_m.group(1).strip() if lang_m else ""
         body_m = re.search(r"<!\[CDATA\[(.*?)\]\]>", block, re.DOTALL)
@@ -127,31 +177,54 @@ def process_confluence_html(
             f"<code{lang_attr}>{code}</code></pre>"
         )
 
-    result = re.sub(
-        r'<ac:structured-macro\s[^>]*ac:name="(?:code|noformat)"[^>]*>'
-        r".*?</ac:structured-macro>",
-        _replace_code_macro, result, flags=re.DOTALL,
-    )
+    result = _sub_macro_blocks(result, {"code", "noformat"}, _replace_code_macro)
 
-    # --- 6. Info/note/warning/tip/expand → keep rich-text body ---
-    def _replace_panel_macro(m: re.Match) -> str:
-        block = m.group(0)
-        body_m = re.search(
-            r"<ac:rich-text-body>(.*?)</ac:rich-text-body>", block, re.DOTALL
+    # --- 5b. Вставки файлов (view-file/multimedia/…) → чип-ссылка на вложение ---
+    # В Confluence это карточка/предпросмотр файла; молчаливое удаление теряет
+    # ссылку на артефакт (методички, записи экрана, отчёты).
+    def _replace_file_macro(block: str) -> str:
+        fn_m = re.search(r'ri:filename="([^"]+)"', block)
+        if not fn_m:
+            return ""
+        fn = fn_m.group(1)
+        enc = urllib.parse.quote(fn, safe="")
+        return (
+            f'<a href="/api/pages/{page_id}/attachments/{enc}" target="_blank" '
+            f'rel="noopener" style="display: inline-flex; align-items: center; '
+            f"gap: 4px; color: #2a6496; font-weight: 500; text-decoration: none; "
+            f"background: rgba(42,100,150,0.06); padding: 2px 8px; "
+            f'border-radius: 4px; font-size: 0.92em;">📎 {html_mod.escape(fn)}</a>'
         )
-        return body_m.group(1) if body_m else ""
 
-    result = re.sub(
-        r'<ac:structured-macro\s[^>]*ac:name="(?:info|note|warning|tip|expand|panel|excerpt)"[^>]*>'
-        r".*?</ac:structured-macro>",
-        _replace_panel_macro, result, flags=re.DOTALL,
+    result = _sub_macro_blocks(
+        result,
+        {"view-file", "viewpdf", "viewdoc", "viewxls", "viewppt", "multimedia"},
+        _replace_file_macro,
     )
 
-    # --- 6. Any remaining paired structured macros → remove ---
-    result = re.sub(
-        r"<ac:structured-macro[^>]*>.*?</ac:structured-macro>",
-        "", result, flags=re.DOTALL,
-    )
+    # --- 5c. Вставка другой страницы (include) → явная пометка ---
+    # Транслируемый контент не тянем, но читатель должен видеть, что здесь
+    # включена другая страница, а не пустое место.
+    def _replace_include_macro(block: str) -> str:
+        title_m = re.search(r'ri:content-title="([^"]+)"', block)
+        if not title_m:
+            return ""
+        return (
+            f'<p style="color: #5e6c84; font-style: italic;">'
+            f"📄 Вставка страницы: {html_mod.escape(title_m.group(1))}</p>"
+        )
+
+    result = _sub_macro_blocks(result, {"include", "excerpt-include"}, _replace_include_macro)
+
+    # --- 6. Остальные парные макросы (info/expand/panel/anchor/…) ---
+    # У любого сохраняем содержимое rich-text-body (потерять текст требований
+    # хуже, чем показать лишний), без тела (anchor и т.п.) — удаляем целиком.
+    # Замена возвращает тело, внутри которого могут быть вложенные макросы, —
+    # повторяем до неподвижной точки (каждый проход снимает уровень вложенности).
+    prev = None
+    while prev != result:
+        prev = result
+        result = _sub_macro_blocks(result, None, _macro_rich_body)
 
     # --- 5. ac:link → <a> ---
     def _replace_ac_link(m: re.Match) -> str:
@@ -162,6 +235,9 @@ def process_confluence_html(
                  else title_m.group(1) if title_m else "ссылка")
         return f'<span style="color: #2a6496; text-decoration: underline;">{label}</span>'
 
+    # Самозакрытые <ac:link/> убрать до парного прохода — по той же причине,
+    # что и у ac:image (иначе съедается текст между двумя ссылками).
+    result = re.sub(r"<ac:link[^>]*/\s*>", "", result)
     result = re.sub(r"<ac:link[^>]*>.*?</ac:link>", _replace_ac_link, result, flags=re.DOTALL)
 
     # --- 6. Emoticons ---

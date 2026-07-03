@@ -1,3 +1,0 @@
-# Generated maps — regenerate with `python3 tools/codemap/codemap.py`.
-# Tracked artifacts drift from the code; keep only the generator in git.
-out/

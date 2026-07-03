@@ -312,18 +312,18 @@ async def get_page_tree(db: AsyncSession = Depends(get_db)):
     )
     pages = result.scalars().all()
 
-    # Compute coverage for tracked pages
+    # Счётчики привязок по статусам — одним GROUP BY-запросом на все страницы
+    counts_result = await db.execute(
+        select(Highlight.page_id, Highlight.status, func.count(Highlight.id))
+        .group_by(Highlight.page_id, Highlight.status)
+    )
+    status_counts: dict = {}
+    for hl_page_id, hl_status, cnt in counts_result.all():
+        status_counts.setdefault(hl_page_id, {})[hl_status] = cnt
+
     nodes: list[TreeNodeItem] = []
     for page in pages:
-        coverage = 0.0
-        if not page.is_virtual:
-            hl_count = await db.execute(
-                select(func.count(Highlight.id))
-                .where(Highlight.page_id == page.id)
-            )
-            highlight_count = hl_count.scalar() or 0
-            coverage = min(highlight_count * 10.0, 100.0)
-
+        by_status = status_counts.get(page.id, {})
         nodes.append(TreeNodeItem(
             id=page.id,
             confluence_page_id=page.confluence_page_id,
@@ -331,7 +331,9 @@ async def get_page_tree(db: AsyncSession = Depends(get_db)):
             space_key=page.space_key,
             is_virtual=page.is_virtual,
             parent_confluence_page_id=page.parent_confluence_page_id,
-            coverage_percent=coverage,
+            highlights_active=by_status.get("active", 0),
+            highlights_outdated=by_status.get("outdated", 0),
+            highlights_lost=by_status.get("lost", 0),
             has_updates=False,
         ))
 

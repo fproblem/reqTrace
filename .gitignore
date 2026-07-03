@@ -1,0 +1,11 @@
+# Зависимости
+node_modules/
+
+# Артефакты сборки фронтенда
+reqtrace/frontend/build/
+
+# Локальные бэкапы (см. CLAUDE.md — не коммитить)
+backups/
+
+# macOS
+.DS_Store

@@ -215,6 +215,18 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     scrollToHighlight(h.id);
   }, [scrollToHighlight]);
 
+  // После «Привязать тесты» открывшаяся правая панель сжимает контент, и
+  // вьюпорт «уезжает» с места выделения. Подскролливаем к созданной привязке,
+  // когда слой фактически отрисовал её <mark>: целиться по таймеру нельзя —
+  // метка появляется только после перезагрузки контента и прогона слоя.
+  const pendingScrollHighlightRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = pendingScrollHighlightRef.current;
+    if (!id || !renderReport || !renderReport.considered.has(id)) return;
+    pendingScrollHighlightRef.current = null;
+    if (renderReport.rendered.has(id)) scrollToHighlight(id);
+  }, [renderReport, scrollToHighlight]);
+
   const handleAddTest = async (highlightId: string, testKey: string) => {
     try {
       await api.addTestLink(highlightId, testKey, userId);
@@ -416,6 +428,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       // «Привязать тесты», поэтому пользователь должен сразу получить форму
       // привязки, а не искать бледную метку «Требует проверки» на странице.
       setSelectedHighlight(created);
+      pendingScrollHighlightRef.current = created.id;
     } catch (e: any) {
       showToast('error', 'Не удалось создать привязку', e.message);
     }

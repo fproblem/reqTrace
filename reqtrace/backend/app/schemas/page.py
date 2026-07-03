@@ -64,7 +64,11 @@ class TreeNodeItem(BaseModel):
     space_key: Optional[str] = None
     is_virtual: bool
     parent_confluence_page_id: Optional[str] = None
-    coverage_percent: float = 0.0
+    # Счётчики привязок страницы по статусам — индикатор в дереве красится
+    # по худшему из них (lost > outdated > active).
+    highlights_active: int = 0
+    highlights_outdated: int = 0
+    highlights_lost: int = 0
     has_updates: bool = False
 
     model_config = {"from_attributes": True}

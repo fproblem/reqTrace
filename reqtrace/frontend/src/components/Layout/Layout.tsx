@@ -213,7 +213,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '52px',
+        height: '64px',
         flexShrink: 0,
         padding: '0 16px',
         ...glassmorphism,
@@ -224,10 +224,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
         {/* Left: brand + version */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
           <img
-            src={`${process.env.PUBLIC_URL}/logo-header.svg`}
+            src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
             alt="ReqTrace"
             onClick={() => navigate('/')}
-            style={{ height: '34px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
+            style={{ height: '42px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
           />
 
           {currentVersion && (

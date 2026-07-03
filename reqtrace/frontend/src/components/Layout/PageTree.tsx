@@ -71,8 +71,8 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
 
   const toggleExpand = useCallback((key: string) => {
     setExpandState(prev => {
-      // Default is expanded (true), so undefined → collapse (false)
-      const current = prev[key] !== false;
+      // Default is collapsed, so undefined → expand (true)
+      const current = prev[key] === true;
       const next = { ...prev, [key]: !current };
       saveExpandState(next);
       return next;
@@ -450,7 +450,7 @@ interface SpaceNodeProps {
 
 const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, activePageId, navigate, isSearching, searchQuery }) => {
   const spaceKey = `space:${space.space_key}`;
-  const isExpanded = isSearching || expandState[spaceKey] !== false; // force expand when searching
+  const isExpanded = isSearching || expandState[spaceKey] === true; // collapsed by default; force expand when searching
 
   // Build children map
   const childrenMap = useMemo(() => {
@@ -570,7 +570,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
   const children = childrenMap[node.confluence_page_id] || [];
   const hasChildren = children.length > 0;
   const nodeKey = `page:${node.confluence_page_id}`;
-  const isExpanded = hasChildren && (isSearching || expandState[nodeKey] !== false);
+  const isExpanded = hasChildren && (isSearching || expandState[nodeKey] === true);
   const isActive = activePageId === node.id;
 
   const handleClick = () => {

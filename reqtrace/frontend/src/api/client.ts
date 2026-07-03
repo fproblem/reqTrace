@@ -1,7 +1,8 @@
 import type {
-  AuthUser, PageListItem, PageDetail,
+  AuthUser, PageDetail,
   Highlight, TestLink, DiffResponse, BaselineInfo,
-  SpaceTree, TreeSyncResult,
+  ProjectTree, TreeSyncResult,
+  Project, CredentialCheckResult,
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -57,7 +58,7 @@ function humanizeError(status: number, detail: string): string {
     return 'Связь с тестом не найдена. Возможно, она была удалена';
   }
   if (status === 502 && detailLower.includes('failed to fetch')) {
-    return 'Не удалось подключиться к Confluence. Проверьте настройки подключения (URL, логин, пароль)';
+    return 'Не удалось подключиться к Confluence. Проверьте адрес сервера и креды проекта в настройках';
   }
 
   // Generic fallbacks by status code
@@ -73,7 +74,9 @@ function humanizeError(status: number, detail: string): string {
     return 'Ресурс не найден';
   }
   if (status === 409) {
-    return 'Конфликт: ресурс уже существует';
+    // Бэкенд шлёт осмысленные русские сообщения (например, про занятое имя
+    // проекта) — не подменяем их общей фразой.
+    return detail && /[а-яё]/i.test(detail) ? detail : 'Конфликт: ресурс уже существует';
   }
   if (status === 502 || status === 503 || status === 504) {
     return 'Сервис временно недоступен. Попробуйте позже';
@@ -142,20 +145,17 @@ export const api = {
     request<void>('/auth/logout', { method: 'POST' }),
 
   // Pages
-  addPage: (confluence_url: string) =>
+  addPage: (confluence_url: string, project_id?: string) =>
     request<PageDetail>('/pages', {
       method: 'POST',
-      body: JSON.stringify({ confluence_url }),
+      body: JSON.stringify(project_id ? { confluence_url, project_id } : { confluence_url }),
     }),
 
   addDemoPage: () =>
     request<PageDetail>('/pages/demo', { method: 'POST' }),
 
-  listPages: () =>
-    request<PageListItem[]>('/pages'),
-
   getPageTree: () =>
-    request<SpaceTree[]>('/pages/tree'),
+    request<ProjectTree[]>('/pages/tree'),
 
   syncTree: () =>
     request<TreeSyncResult>('/pages/sync-tree', { method: 'POST' }),
@@ -219,28 +219,44 @@ export const api = {
   getDiff: (pageId: string) =>
     request<DiffResponse>(`/pages/${pageId}/diff`),
 
-  // Settings
-  getSettings: () =>
-    request<{
-      confluence_base_url: string;
-      confluence_username: string;
-      confluence_password_set: boolean;
-      jira_base_url: string;
-    }>('/settings'),
+  // Projects (v1.5.1): личные креды, живая проверка подключения
+  listProjects: () =>
+    request<Project[]>('/projects'),
 
-  updateSettings: (data: {
+  createProject: (data: {
+    name: string;
     confluence_base_url: string;
+    jira_base_url?: string;
     confluence_username: string;
     confluence_password: string;
-    jira_base_url: string;
   }) =>
-    request<{
-      confluence_base_url: string;
-      confluence_username: string;
-      confluence_password_set: boolean;
-      jira_base_url: string;
-    }>('/settings', {
+    request<Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateProject: (projectId: string, data: { name?: string; jira_base_url?: string }) =>
+    request<Project>(`/projects/${projectId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  /** Апсерт своих кред; первое сохранение = присоединиться к проекту.
+   *  Пустой пароль у уже подключённого участника = не менять пароль. */
+  saveProjectCredentials: (projectId: string, data: {
+    confluence_username: string;
+    confluence_password?: string;
+  }) =>
+    request<Project>(`/projects/${projectId}/credentials`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  checkProjectCredentials: (projectId: string) =>
+    request<CredentialCheckResult>(`/projects/${projectId}/credentials/check`, {
+      method: 'POST',
+    }),
+
+  disconnectProject: (projectId: string) =>
+    request<void>(`/projects/${projectId}/credentials`, { method: 'DELETE' }),
 };

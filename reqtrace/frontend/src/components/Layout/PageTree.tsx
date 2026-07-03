@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
-import { SpaceTree, TreeNodeItem } from '../../types';
+import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { colors, radii } from '../../styles/tokens';
 
@@ -36,12 +36,36 @@ function saveExpandState(state: Record<string, boolean>) {
   localStorage.setItem(TREE_STATE_KEY, JSON.stringify(state));
 }
 
+// Клиентское зеркало серверной нормализации base URL (project_access.py):
+// нужно, чтобы при добавлении страницы заранее понять, каким проектам
+// подходит ссылка, и показать выбор проекта, если их несколько.
+function normalizeBaseUrl(url: string): string {
+  let u = (url || '').trim();
+  if (!u) return '';
+  if (!u.includes('://')) u = 'https://' + u;
+  try {
+    const p = new URL(u);
+    const port = p.port ? `:${p.port}` : '';
+    const path = p.pathname.replace(/\/+$/, '');
+    return `${p.protocol}//${p.hostname.toLowerCase()}${port}${path}`;
+  } catch {
+    return '';
+  }
+}
+
+function urlBelongsToBase(pageUrl: string, baseUrl: string): boolean {
+  if (!baseUrl) return false;
+  const base = normalizeBaseUrl(baseUrl);
+  const page = normalizeBaseUrl(pageUrl);
+  return base !== '' && (page === base || page.startsWith(base + '/'));
+}
+
 interface PageTreeProps {
   onPageAdded?: () => void;
 }
 
 export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
-  const [spaces, setSpaces] = useState<SpaceTree[]>([]);
+  const [projects, setProjects] = useState<ProjectTree[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandState, setExpandState] = useState<Record<string, boolean>>(loadExpandState);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -50,6 +74,9 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  // Список проектов с base URL — для выбора проекта при добавлении страницы.
+  const [myProjects, setMyProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
@@ -57,7 +84,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const loadTree = useCallback(async () => {
     try {
       const data = await api.getPageTree();
-      setSpaces(data);
+      setProjects(data);
     } catch (e: any) {
       showToast('error', 'Не удалось загрузить дерево страниц', e.message);
     } finally {
@@ -67,6 +94,29 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   // Refetch tree on mount and when route changes (covers delete, refresh scenarios)
   useEffect(() => { loadTree(); }, [location.pathname, loadTree]);
+
+  // Проекты с кредами подтягиваются при открытии формы добавления.
+  useEffect(() => {
+    if (!showAddForm) return;
+    api.listProjects()
+      .then(setMyProjects)
+      .catch(() => setMyProjects([]));
+  }, [showAddForm]);
+
+  // Проекты текущего пользователя, которым подходит введённая ссылка.
+  const candidateProjects = useMemo(() => {
+    const url = newUrl.trim();
+    if (!url) return [];
+    return myProjects.filter(
+      p => p.joined && p.my_status === 'ok' && urlBelongsToBase(url, p.confluence_base_url)
+    );
+  }, [newUrl, myProjects]);
+
+  useEffect(() => {
+    if (candidateProjects.length > 0 && !candidateProjects.some(p => p.id === selectedProjectId)) {
+      setSelectedProjectId(candidateProjects[0].id);
+    }
+  }, [candidateProjects, selectedProjectId]);
 
   const toggleExpand = useCallback((key: string) => {
     setExpandState(prev => {
@@ -84,7 +134,8 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     setAdding(true);
     setError('');
     try {
-      const page = await api.addPage(newUrl.trim());
+      const projectId = candidateProjects.length > 1 ? selectedProjectId : undefined;
+      const page = await api.addPage(newUrl.trim(), projectId);
       setNewUrl('');
       setShowAddForm(false);
       await loadTree();
@@ -146,44 +197,53 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     return match ? match[1] : null;
   }, [location.pathname]);
 
-  const filteredSpaces = useMemo(() => {
+  const filterSpace = useCallback((space: SpaceTree, q: string): SpaceTree | null => {
+    const matched = new Set<string>();
+    for (const page of space.pages) {
+      if (page.title.toLowerCase().includes(q)) {
+        matched.add(page.confluence_page_id);
+      }
+    }
+    if (matched.size === 0) return null;
+
+    // Include ancestors of matched pages so the tree stays connected
+    const cpidToPage = new Map(space.pages.map(p => [p.confluence_page_id, p]));
+    const withAncestors = new Set(matched);
+    Array.from(matched).forEach(cpid => {
+      let current = cpidToPage.get(cpid);
+      while (current?.parent_confluence_page_id) {
+        if (withAncestors.has(current.parent_confluence_page_id)) break;
+        withAncestors.add(current.parent_confluence_page_id);
+        current = cpidToPage.get(current.parent_confluence_page_id);
+      }
+    });
+
+    return {
+      ...space,
+      pages: space.pages.filter(p => withAncestors.has(p.confluence_page_id)),
+    };
+  }, []);
+
+  const filteredProjects = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return spaces;
+    if (!q) return projects;
 
-    return spaces
-      .map(space => {
-        const matched = new Set<string>();
-        // Find pages matching the query
-        for (const page of space.pages) {
-          if (page.title.toLowerCase().includes(q)) {
-            matched.add(page.confluence_page_id);
-          }
-        }
-        if (matched.size === 0) return null;
-
-        // Include ancestors of matched pages so the tree stays connected
-        const cpidToPage = new Map(space.pages.map(p => [p.confluence_page_id, p]));
-        const withAncestors = new Set(matched);
-        Array.from(matched).forEach(cpid => {
-          let current = cpidToPage.get(cpid);
-          while (current?.parent_confluence_page_id) {
-            if (withAncestors.has(current.parent_confluence_page_id)) break;
-            withAncestors.add(current.parent_confluence_page_id);
-            current = cpidToPage.get(current.parent_confluence_page_id);
-          }
-        });
-
-        return {
-          ...space,
-          pages: space.pages.filter(p => withAncestors.has(p.confluence_page_id)),
-        } as SpaceTree;
+    return projects
+      .map(project => {
+        if (project.no_access) return null; // содержимое закрыто — не ищется
+        const spaces = project.spaces
+          .map(space => filterSpace(space, q))
+          .filter((s): s is SpaceTree => s !== null);
+        if (spaces.length === 0) return null;
+        return { ...project, spaces } as ProjectTree;
       })
-      .filter((s): s is SpaceTree => s !== null);
-  }, [spaces, searchQuery]);
+      .filter((p): p is ProjectTree => p !== null);
+  }, [projects, searchQuery, filterSpace]);
 
   const isSearching = searchQuery.trim().length > 0;
 
-  const isEmpty = filteredSpaces.length === 0 || filteredSpaces.every(s => s.pages.length === 0);
+  const hasAnyPages = projects.some(p => p.spaces.some(s => s.pages.length > 0));
+  const isEmptySearch = isSearching && filteredProjects.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -208,7 +268,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
         }}>
-          Страницы
+          Проекты
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           <button
@@ -292,6 +352,30 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               marginBottom: '6px',
             }}
           />
+          {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
+          {candidateProjects.length > 1 && (
+            <select
+              value={selectedProjectId}
+              onChange={e => setSelectedProjectId(e.target.value)}
+              title="Проект, в который добавить страницу"
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                borderRadius: radii.sm,
+                border: `1px solid ${colors.border}`,
+                fontSize: '12px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                marginBottom: '6px',
+                background: colors.white,
+              }}
+            >
+              {candidateProjects.map(p => (
+                <option key={p.id} value={p.id}>В проект: {p.name}</option>
+              ))}
+            </select>
+          )}
           <div style={{ display: 'flex', gap: '4px' }}>
             <button
               type="submit"
@@ -338,7 +422,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       )}
 
       {/* Search */}
-      {!loading && spaces.some(s => s.pages.length > 0) && (
+      {!loading && hasAnyPages && (
         <div style={{ padding: '0 4px', marginBottom: '8px', position: 'relative' }}>
           <input
             type="text"
@@ -388,7 +472,47 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           <div style={{ padding: '20px 4px', color: colors.textTertiary, fontSize: '12px' }}>
             Загрузка...
           </div>
-        ) : spaces.length === 0 || spaces.every(s => s.pages.length === 0) ? (
+        ) : projects.length === 0 ? (
+          <div style={{ padding: '20px 4px', textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.3 }}>📄</div>
+            <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
+              Нет проектов. Подключите проект в настройках — или попробуйте демо-страницу
+            </div>
+            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+              <button
+                onClick={() => navigate('/settings')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: 'none',
+                  background: colors.greenAccent,
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                В настройки
+              </button>
+              <button
+                onClick={handleAddDemo}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Демо-страница
+              </button>
+            </div>
+          </div>
+        ) : !hasAnyPages && projects.every(p => !p.no_access) ? (
           <div style={{ padding: '20px 4px', textAlign: 'center' }}>
             <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.3 }}>📄</div>
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
@@ -410,17 +534,17 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               Демо-страница
             </button>
           </div>
-        ) : isEmpty ? (
+        ) : isEmptySearch ? (
           <div style={{ padding: '12px 4px', textAlign: 'center' }}>
             <div style={{ fontSize: '12px', color: colors.textTertiary }}>
               Ничего не найдено
             </div>
           </div>
         ) : (
-          filteredSpaces.map(space => (
-            <SpaceNode
-              key={space.space_key}
-              space={space}
+          filteredProjects.map(project => (
+            <ProjectNode
+              key={project.project_id}
+              project={project}
               expandState={expandState}
               toggleExpand={toggleExpand}
               activePageId={activePageId}
@@ -435,9 +559,133 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   );
 };
 
+// --- Project node (верхний уровень дерева) ---
+
+interface ProjectNodeProps {
+  project: ProjectTree;
+  expandState: Record<string, boolean>;
+  toggleExpand: (key: string) => void;
+  activePageId: string | null;
+  navigate: (path: string) => void;
+  isSearching: boolean;
+  searchQuery: string;
+}
+
+const ProjectNode: React.FC<ProjectNodeProps> = ({
+  project, expandState, toggleExpand, activePageId, navigate, isSearching, searchQuery,
+}) => {
+  const projectKey = `project:${project.project_id}`;
+  const isExpanded = isSearching || expandState[projectKey] === true;
+
+  if (project.no_access) {
+    // Замок: креды невалидны — содержимое закрыто, клик ведёт в настройки.
+    return (
+      <div style={{ marginBottom: '4px' }}>
+        <button
+          onClick={() => navigate('/settings')}
+          title={`Нет доступа к проекту «${project.project_name}» — Confluence отклонил ваши логин/пароль. Нажмите, чтобы обновить креды в настройках`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            width: '100%',
+            padding: '5px 4px',
+            border: 'none',
+            borderRadius: radii.sm,
+            background: 'transparent',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: '11px', flexShrink: 0 }}>🔒</span>
+          <span style={{
+            fontSize: '12.5px',
+            fontWeight: 600,
+            color: colors.textTertiary,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flex: 1,
+            minWidth: 0,
+          }}>
+            {project.project_name}
+          </span>
+          <span style={{ fontSize: '10px', color: colors.textTertiary, flexShrink: 0 }}>
+            нет доступа
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: '6px' }}>
+      <button
+        onClick={() => toggleExpand(projectKey)}
+        title={project.project_name}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+          width: '100%',
+          padding: '5px 4px',
+          border: 'none',
+          borderRadius: radii.sm,
+          background: 'transparent',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          textAlign: 'left',
+        }}
+      >
+        <span style={{
+          fontSize: '10px',
+          color: colors.textTertiary,
+          transition: 'transform 0.15s',
+          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+          display: 'inline-block',
+          flexShrink: 0,
+        }}>
+          ▶
+        </span>
+        <span style={{
+          fontSize: '12.5px',
+          fontWeight: 700,
+          color: colors.textPrimary,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          flex: 1,
+          minWidth: 0,
+        }}>
+          {project.project_name}
+        </span>
+      </button>
+      {isExpanded && (
+        <div style={{ marginLeft: '8px' }}>
+          {project.spaces.map(space => (
+            <SpaceNode
+              key={space.space_key}
+              projectId={project.project_id}
+              space={space}
+              expandState={expandState}
+              toggleExpand={toggleExpand}
+              activePageId={activePageId}
+              navigate={navigate}
+              isSearching={isSearching}
+              searchQuery={searchQuery}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Space node ---
 
 interface SpaceNodeProps {
+  projectId: string;
   space: SpaceTree;
   expandState: Record<string, boolean>;
   toggleExpand: (key: string) => void;
@@ -447,8 +695,8 @@ interface SpaceNodeProps {
   searchQuery: string;
 }
 
-const SpaceNode: React.FC<SpaceNodeProps> = ({ space, expandState, toggleExpand, activePageId, navigate, isSearching, searchQuery }) => {
-  const spaceKey = `space:${space.space_key}`;
+const SpaceNode: React.FC<SpaceNodeProps> = ({ projectId, space, expandState, toggleExpand, activePageId, navigate, isSearching, searchQuery }) => {
+  const spaceKey = `space:${projectId}:${space.space_key}`;
   const isExpanded = isSearching || expandState[spaceKey] === true; // collapsed by default; force expand when searching
 
   // Build children map

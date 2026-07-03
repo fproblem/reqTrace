@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     CONFLUENCE_PASSWORD: str = ""
     JIRA_BASE_URL: str = "http://jira.local"
 
+    GOOGLE_CLIENT_ID: str = ""
+    SESSION_SECRET: str = ""
+    ALLOWED_EMAIL_DOMAIN: str = "surf.dev"
+    SESSION_TTL_DAYS: int = 7
+    COOKIE_SECURE: bool = False
+
     class Config:
         env_file = ".env"
 

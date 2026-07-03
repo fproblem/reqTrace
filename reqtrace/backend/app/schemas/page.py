@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 class PageCreate(BaseModel):
     confluence_url: str
-    user_id: UUID
 
 
 class PageListItem(BaseModel):
@@ -87,10 +86,3 @@ class TreeSyncResult(BaseModel):
     removed: int = 0
     missing_tracked: int = 0
 
-
-class BaselineCreate(BaseModel):
-    user_id: UUID
-
-
-class RefreshRequest(BaseModel):
-    user_id: UUID

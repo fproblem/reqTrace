@@ -11,3 +11,6 @@ python-multipart==0.0.20
 beautifulsoup4==4.12.3
 lxml==5.3.0
 diff-match-patch==20241021
+google-auth==2.38.0
+requests==2.32.3
+PyJWT==2.10.1

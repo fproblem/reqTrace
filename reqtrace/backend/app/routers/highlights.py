@@ -6,15 +6,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.auth import get_current_user
 from app.database import get_db
 from app.models.page import Page
 from app.models.snapshot import PageSnapshot
 from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
+from app.models.user import User
 from app.schemas.highlight import (
     HighlightCreate, HighlightResponse,
     TestLinkCreate, TestLinkResponse,
-    ReanchorRequest,
 )
 from app.services.highlight_projection import extract_text_at_anchor
 
@@ -32,6 +33,7 @@ async def create_highlight(
     page_id: UUID,
     data: HighlightCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     page = await db.get(Page, page_id)
     if not page:
@@ -66,7 +68,7 @@ async def create_highlight(
         # в "актуально" можно вручную через "Актуализировать" (reanchor). Refresh
         # не сбрасывает этот статус автоматически (см. refresh_page).
         status="outdated",
-        created_by=data.user_id,
+        created_by=current_user.id,
     )
     db.add(highlight)
     await db.flush()
@@ -99,8 +101,8 @@ async def delete_highlight(highlight_id: UUID, db: AsyncSession = Depends(get_db
 @router.post("/api/highlights/{highlight_id}/reanchor", response_model=HighlightResponse)
 async def reanchor_highlight(
     highlight_id: UUID,
-    data: ReanchorRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Re-anchor an outdated highlight to current content, making it active."""
     highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
@@ -133,7 +135,7 @@ async def reanchor_highlight(
 
     highlight.status = "active"
     highlight.snapshot_id = latest_snapshot.id
-    highlight.reanchored_by = data.user_id
+    highlight.reanchored_by = current_user.id
     highlight.reanchored_at = datetime.now(timezone.utc)
     await db.flush()
     await db.refresh(highlight, ["tests", "created_by_user", "reanchored_by_user"])
@@ -192,6 +194,7 @@ async def add_test_link(
     highlight_id: UUID,
     data: TestLinkCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     highlight = await db.get(Highlight, highlight_id)
     if not highlight:
@@ -200,7 +203,7 @@ async def add_test_link(
     link = HighlightTest(
         highlight_id=highlight_id,
         test_key=data.test_key.strip().upper(),
-        created_by=data.user_id,
+        created_by=current_user.id,
     )
     db.add(link)
     await db.flush()

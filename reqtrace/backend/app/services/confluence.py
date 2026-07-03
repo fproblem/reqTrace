@@ -179,6 +179,43 @@ def process_confluence_html(
 
     result = _sub_macro_blocks(result, {"code", "noformat"}, _replace_code_macro)
 
+    # --- 5b. Вставки файлов (view-file/multimedia/…) → чип-ссылка на вложение ---
+    # В Confluence это карточка/предпросмотр файла; молчаливое удаление теряет
+    # ссылку на артефакт (методички, записи экрана, отчёты).
+    def _replace_file_macro(block: str) -> str:
+        fn_m = re.search(r'ri:filename="([^"]+)"', block)
+        if not fn_m:
+            return ""
+        fn = fn_m.group(1)
+        enc = urllib.parse.quote(fn, safe="")
+        return (
+            f'<a href="/api/pages/{page_id}/attachments/{enc}" target="_blank" '
+            f'rel="noopener" style="display: inline-flex; align-items: center; '
+            f"gap: 4px; color: #2a6496; font-weight: 500; text-decoration: none; "
+            f"background: rgba(42,100,150,0.06); padding: 2px 8px; "
+            f'border-radius: 4px; font-size: 0.92em;">📎 {html_mod.escape(fn)}</a>'
+        )
+
+    result = _sub_macro_blocks(
+        result,
+        {"view-file", "viewpdf", "viewdoc", "viewxls", "viewppt", "multimedia"},
+        _replace_file_macro,
+    )
+
+    # --- 5c. Вставка другой страницы (include) → явная пометка ---
+    # Транслируемый контент не тянем, но читатель должен видеть, что здесь
+    # включена другая страница, а не пустое место.
+    def _replace_include_macro(block: str) -> str:
+        title_m = re.search(r'ri:content-title="([^"]+)"', block)
+        if not title_m:
+            return ""
+        return (
+            f'<p style="color: #5e6c84; font-style: italic;">'
+            f"📄 Вставка страницы: {html_mod.escape(title_m.group(1))}</p>"
+        )
+
+    result = _sub_macro_blocks(result, {"include", "excerpt-include"}, _replace_include_macro)
+
     # --- 6. Остальные парные макросы (info/expand/panel/anchor/…) ---
     # У любого сохраняем содержимое rich-text-body (потерять текст требований
     # хуже, чем показать лишний), без тела (anchor и т.п.) — удаляем целиком.

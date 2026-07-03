@@ -149,6 +149,32 @@ class ExistingMacroRendering(unittest.TestCase):
         self.assertIn("if (a &lt; b) { return; }", out)
         self.assertIn("<pre", out)
 
+    def test_view_file_macro_becomes_attachment_link(self):
+        html = _macro("view-file", params=(
+            '<ac:parameter ac:name="name">'
+            '<ri:attachment ri:filename="Методичка НТ.pdf" /></ac:parameter>'
+        ))
+        out = process_confluence_html(html, "p1")
+        self.assertIn("Методичка НТ.pdf", out)
+        self.assertIn("/api/pages/p1/attachments/", out)
+
+    def test_multimedia_macro_becomes_attachment_link(self):
+        html = _macro("multimedia", params=(
+            '<ac:parameter ac:name="name">'
+            '<ri:attachment ri:filename="запись экрана.mov" /></ac:parameter>'
+        ))
+        out = process_confluence_html(html, "p1")
+        self.assertIn("запись экрана.mov", out)
+
+    def test_include_macro_becomes_note(self):
+        html = _macro("include", params=(
+            '<ac:parameter ac:name="">'
+            '<ri:page ri:content-title="Общие требования" /></ac:parameter>'
+        ))
+        out = process_confluence_html(html, "p1")
+        self.assertIn("Вставка страницы", out)
+        self.assertIn("Общие требования", out)
+
     def test_self_closing_toc_removed(self):
         html = '<p>шапка</p><ac:structured-macro ac:name="toc" ac:schema-version="1"/><p>тело</p>'
         out = process_confluence_html(html, "p1")

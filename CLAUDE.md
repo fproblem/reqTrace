@@ -12,30 +12,29 @@ Confluence, хранит их снимки, считает диффы относ
 - **Фронтенд** — React + TypeScript (Create React App, react-router), каталог `reqtrace/frontend/src`.
 - Весь код приложения — в `reqtrace/`. В корне — спецификации (`*.md`) и инструменты.
 
-## 🧭 Сначала сориентируйся по карте кода
+## 🧭 Сначала сориентируйся по графу кода (CodeGraph)
 
-Перед тем как анализировать код, планировать фичу или чинить баг — **построй и прочитай карту кода**.
-Это даёт понимание структуры и связей за ~5k токенов вместо чтения десятков файлов (~63k).
+Проект проиндексирован [CodeGraph](https://github.com/colbymchenry/codegraph)
+(каталог `.codegraph/`, индекс синхронизируется автоматически). Перед анализом,
+планированием фичи или багфиксом спрашивай граф — это заменяет grep/чтение
+десятков файлов одним запросом.
+
+- **MCP-инструмент** `codegraph_explore` (подключён в Claude Code) — отвечает на
+  вопросы об архитектуре и потоках одним вызовом: исходники нужных символов,
+  пути вызовов между ними, blast radius.
+- **CLI** — то же самое из шелла:
 
 ```bash
-# 1. Построить/обновить карту (быстро, без зависимостей — только Python 3.8+)
-python3 tools/codemap/codemap.py
-
-# 2. Прочитать общую сводку: слои, импорты, маршруты API, символы,
-#    hotspots (менять осторожно) и кандидаты в мёртвый код
-#    -> tools/codemap/out/repomap.md
-
-# 3. Перед правкой конкретного файла — посмотреть его точную окрестность
-#    (что импортирует, кто зависит, какой у него API-контур):
-python3 tools/codemap/codemap.py --focus routers/pages.py
-python3 tools/codemap/codemap.py --focus DiffView --depth 2
+codegraph explore "как размещаются подсветки"   # обзор области + исходники
+codegraph node PageDetailPage                    # один символ: код + вызывающие
+codegraph callers get_db                         # кто вызывает
+codegraph impact diff_engine --depth 2           # что заденет правка
+codegraph status                                 # состояние индекса
 ```
 
-Дополнительно: `tools/codemap/out/graph.mmd` — Mermaid-диаграмма для человека,
-`graph.json` — машинные данные. Подробности и ограничения — в `tools/codemap/README.md`.
-Карты лежат в `out/` и не коммитятся (см. `.gitignore`) — они регенерируются командой выше.
+Если индекс не построен (нет `.codegraph/`) — `codegraph init` в корне репо.
 
-## Архитектура (кратко; полное и актуальное — в repomap.md)
+## Архитектура (кратко; актуальное — спрашивай CodeGraph)
 
 **Бэкенд `reqtrace/backend/app/`** — слои сверху вниз:
 - `main.py` — точка входа, подключает роутеры.
@@ -54,7 +53,7 @@ python3 tools/codemap/codemap.py --focus DiffView --depth 2
 
 ⚠ **Кандидаты в мёртвый код** (на момент написания, проверяй перед использованием):
 `hooks/useHighlights`, `hooks/useTextSelection`, `pages/DashboardPage` — никем не импортируются.
-Проще всего перепроверить актуальный список через `python3 tools/codemap/codemap.py`.
+Перепроверить: `codegraph callers <символ>` — «No callers found» подтверждает.
 
 ## Запуск и разработка
 
@@ -98,7 +97,7 @@ CI=true npx react-scripts test --watchAll=false src/components/PageView/highligh
 
 - UI и пользовательские сообщения — на русском (см. `api/client.ts`, маппинг ошибок).
 - Бэкенд — async везде (`async def`, `AsyncSession`); новые эндпоинты — тоже async.
-- Не коммить `tools/codemap/out/` и `backups/`.
+- Не коммить `backups/`. Данные `.codegraph/` сами игнорируются (внутренний `.gitignore` — его единственный файл, который стоит закоммитить).
 
 ## Версионирование и теги релизов
 

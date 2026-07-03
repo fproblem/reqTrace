@@ -41,12 +41,15 @@ codegraph status                                 # состояние индек
   закрыты сессией через `include_router(dependencies=[Depends(get_current_user)])` —
   новый роутер подключай так же, иначе тест-обход маршрутов в `tests/test_auth.py` упадёт.
 - `auth.py` — сессии (JWT HS256 в HttpOnly-cookie `reqtrace_session`) и зависимость `get_current_user`.
-- `routers/` — HTTP API: `auth, users, pages, highlights, diff, settings`.
-  ⚠ `routers/pages.py` — самый крупный (~670 строк), тянет почти все модели и сервисы.
+- `project_access.py` — доступ к проектам и походы в Confluence личными кредами
+  (`require_page_access`, `connection_for`, `run_confluence`); `crypto.py` —
+  шифрование паролей кред (Fernet, ключ `CREDENTIALS_KEY`).
+- `routers/` — HTTP API: `auth, users, pages, highlights, diff, projects`.
+  ⚠ `routers/pages.py` — самый крупный (~880 строк), тянет почти все модели и сервисы.
 - `services/` — логика: `confluence` (интеграция с Confluence API),
   `diff_engine` (diff текста), `highlight_projection` (перенос подсветок на изменённый текст).
 - `schemas/` — Pydantic-схемы запросов/ответов.
-- `models/` — ORM (SQLAlchemy): `user, page, snapshot, baseline, highlight, highlight_test, settings`.
+- `models/` — ORM (SQLAlchemy): `user, page, snapshot, baseline, highlight, highlight_test, project`.
 - `database.py`, `config.py` — фундамент. ⚠ `database.py` импортируют ~13 модулей.
 
 **Авторизация (v1.5.0):** вход только через Google (GIS, ID-token flow) для домена
@@ -55,8 +58,19 @@ codegraph status                                 # состояние индек
 (`GOOGLE_CLIENT_ID`, `SESSION_SECRET`, `ALLOWED_EMAIL_DOMAIN`, `SESSION_TTL_DAYS`,
 `COOKIE_SECURE`; образец — `.env.example`). Тесты: `backend/tests/test_auth.py`.
 
+**Мультипроектность и личные креды (v1.5.1):** страницы живут в проектах
+(`projects`); креды Confluence — личные у каждого участника
+(`project_credentials`, пароль шифруется Fernet-ключом `CREDENTIALS_KEY` из
+`.env`). Членство = запись кред; контент проекта виден только участникам со
+статусом `ok`; 401/403 от Confluence помечает подключение `invalid` (замок в
+дереве). Глобальной таблицы `settings` больше нет; Jira URL — свойство проекта;
+демо-страницы — в личном демо-проекте (`is_demo`, без кред). Один Confluence
+может обслуживать несколько проектов — при добавлении страницы возможен выбор
+проекта (`project_id`). Тесты: `backend/tests/test_projects.py`, `test_crypto.py`.
+
 **Фронтенд `reqtrace/frontend/src/`**:
-- `pages/` — экраны (`PageDetailPage` ~1000 строк — главный хаб UI; `LoginPage` — вход через Google).
+- `pages/` — экраны (`PageDetailPage` ~1000 строк — главный хаб UI; `SettingsPage` —
+  «Мои проекты»: карточки с личными кредами и живой проверкой; `LoginPage` — вход через Google).
 - `auth/AuthContext.tsx` — сессия пользователя (`useAuth`): старт с `GET /api/auth/me`,
   глобальный обработчик 401 (сброс на экран входа), `login`/`logout`.
 - `components/` — `Layout/PageTree`, `PageView/*` (ContentRenderer, DiffView, HighlightLayer, SidePanel), `Toast`.
@@ -66,7 +80,7 @@ codegraph status                                 # состояние индек
 
 ```bash
 # Один раз: секреты (без .env компоуз не стартует)
-cd reqtrace && cp .env.example .env   # заполнить POSTGRES_PASSWORD, GOOGLE_CLIENT_ID, SESSION_SECRET
+cd reqtrace && cp .env.example .env   # заполнить POSTGRES_PASSWORD, GOOGLE_CLIENT_ID, SESSION_SECRET, CREDENTIALS_KEY
 
 # Весь стек (postgres + backend + frontend)
 cd reqtrace && docker-compose up

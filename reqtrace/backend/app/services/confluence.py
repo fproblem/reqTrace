@@ -78,7 +78,7 @@ def _macro_rich_body(block: str) -> str:
 
 
 def process_confluence_html(
-    html: str, page_id: str, jira_base_url: str = ""
+    html: str, page_id: str, jira_base_url: str = "", project_id: str = ""
 ) -> str:
     """Transform Confluence storage-format XML into browser-renderable HTML.
 
@@ -265,7 +265,10 @@ def process_confluence_html(
         src = m.group(1)
         if src.startswith("/download/attachments/") or src.startswith("/rest/"):
             enc = urllib.parse.quote(src, safe="/:?=&")
-            return f'src="/api/confluence-proxy?url={enc}"'
+            # project_id говорит прокси, чьим сервером и кредами идти за ресурсом:
+            # относительный URL сам по себе проект не определяет.
+            suffix = f"&project_id={project_id}" if project_id else ""
+            return f'src="/api/confluence-proxy?url={enc}{suffix}"'
         return m.group(0)
 
     result = re.sub(r'src="(/[^"]+)"', _rewrite_relative_img, result)
@@ -300,6 +303,18 @@ class ConfluenceConnection:
     password: str = ""
 
 
+class ConfluenceAuthError(Exception):
+    """Confluence отклонил креды (401) или доступ (403).
+
+    Ловится обёрткой project_access.run_confluence: подключение участника
+    помечается invalid, пользователю уходит 403 с подсказкой обновить креды.
+    """
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+        super().__init__(f"Confluence returned {status_code}")
+
+
 def extract_page_id_from_url(url: str) -> str:
     """Extract Confluence page ID from various URL formats."""
     match = re.search(r"pageId=(\d+)", url)
@@ -317,21 +332,11 @@ def extract_page_id_from_url(url: str) -> str:
     raise ValueError(f"Cannot extract page ID from URL: {url}")
 
 
-async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) -> ConfluencePageData:
-    """Fetch page content from Confluence Server REST API."""
-    if conn is None:
-        from app.config import settings
-        conn = ConfluenceConnection(
-            base_url=settings.CONFLUENCE_BASE_URL,
-            username=settings.CONFLUENCE_USERNAME,
-            password=settings.CONFLUENCE_PASSWORD,
-        )
-
+async def fetch_page(page_id: str, conn: ConfluenceConnection) -> ConfluencePageData:
+    """Fetch page content from Confluence Server REST API (кредами участника)."""
     base_url = conn.base_url.rstrip("/")
     if not base_url:
-        raise ValueError(
-            "Confluence URL is not configured. Open Settings and set a valid Confluence Server URL."
-        )
+        raise ValueError("Confluence URL проекта не настроен.")
 
     api_url = f"{base_url}/rest/api/content/{page_id}"
 
@@ -346,14 +351,8 @@ async def fetch_page(page_id: str, conn: Optional[ConfluenceConnection] = None) 
             response = await client.get(api_url, params=params, auth=auth)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 401:
-                raise ValueError(
-                    "Confluence returned 401 Unauthorized. Check the username/password saved in Settings."
-                ) from exc
-            if exc.response.status_code == 403:
-                raise ValueError(
-                    "Confluence returned 403 Forbidden. Check account permissions for this page."
-                ) from exc
+            if exc.response.status_code in (401, 403):
+                raise ConfluenceAuthError(exc.response.status_code) from exc
             raise
 
         data = response.json()
@@ -382,21 +381,13 @@ class SpacePageInfo:
 
 
 async def fetch_space_pages(
-    space_key: str, conn: Optional[ConfluenceConnection] = None
+    space_key: str, conn: ConfluenceConnection
 ) -> list[SpacePageInfo]:
     """Fetch all pages in a Confluence space with their parent info.
 
     Uses pagination to handle large spaces. Returns a flat list of
     SpacePageInfo with parent_page_id derived from the ancestors array.
     """
-    if conn is None:
-        from app.config import settings
-        conn = ConfluenceConnection(
-            base_url=settings.CONFLUENCE_BASE_URL,
-            username=settings.CONFLUENCE_USERNAME,
-            password=settings.CONFLUENCE_PASSWORD,
-        )
-
     base_url = conn.base_url.rstrip("/")
     if not base_url:
         raise ValueError("Confluence URL is not configured.")
@@ -422,6 +413,8 @@ async def fetch_space_pages(
             }
 
             response = await client.get(api_url, params=params, auth=auth)
+            if response.status_code in (401, 403):
+                raise ConfluenceAuthError(response.status_code)
             response.raise_for_status()
             data = response.json()
 
@@ -444,28 +437,24 @@ async def fetch_space_pages(
     return pages
 
 
-async def get_page_version(page_id: str, conn: Optional[ConfluenceConnection] = None) -> int:
-    """Get current version number of a Confluence page."""
-    if conn is None:
-        from app.config import settings
-        conn = ConfluenceConnection(
-            base_url=settings.CONFLUENCE_BASE_URL,
-            username=settings.CONFLUENCE_USERNAME,
-            password=settings.CONFLUENCE_PASSWORD,
-        )
+async def check_connection(conn: ConfluenceConnection) -> None:
+    """Живая проверка кред: лёгкий запрос /rest/api/space?limit=1.
 
+    ConfluenceAuthError — Confluence отклонил логин/пароль; прочие ошибки
+    (сеть, кривой URL) — httpx-исключения/ValueError.
+    """
     base_url = conn.base_url.rstrip("/")
-    api_url = f"{base_url}/rest/api/content/{page_id}"
+    if not base_url:
+        raise ValueError("Confluence URL проекта не настроен.")
 
-    params = {"expand": "version"}
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         auth = None
         if conn.username and conn.password:
             auth = httpx.BasicAuth(conn.username, conn.password)
 
-        response = await client.get(api_url, params=params, auth=auth)
+        response = await client.get(
+            f"{base_url}/rest/api/space", params={"limit": "1"}, auth=auth
+        )
+        if response.status_code in (401, 403):
+            raise ConfluenceAuthError(response.status_code)
         response.raise_for_status()
-
-        data = response.json()
-        return data["version"]["number"]

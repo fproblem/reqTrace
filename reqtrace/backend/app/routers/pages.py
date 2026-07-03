@@ -1,12 +1,12 @@
 import logging
 import urllib.parse
+from datetime import datetime, timezone
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.database import get_db
@@ -15,17 +15,28 @@ from app.models.snapshot import PageSnapshot
 from app.models.baseline import Baseline
 from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
+from app.models.project import Project, ProjectCredential
 from app.models.user import User
+from app.project_access import (
+    connection_for,
+    get_or_create_demo_project,
+    require_confluence_project,
+    require_page_access,
+    require_project_access,
+    run_confluence,
+    url_belongs_to_base,
+)
 from app.schemas.page import (
     PageCreate, PageListItem, PageDetail,
     SnapshotInfo, BaselineInfo,
-    TreeNodeItem, SpaceTreeResponse, TreeSyncResult,
+    TreeNodeItem, SpaceTreeResponse, ProjectTreeResponse, TreeSyncResult,
 )
 from app.services import confluence
-from app.services.confluence import ConfluenceConnection, process_confluence_html
+from app.services.confluence import (
+    ConfluenceAuthError, ConfluenceConnection, process_confluence_html,
+)
 from app.services.diff_engine import has_text_changed
 from app.services.highlight_projection import project_highlights
-from app.routers.settings import get_confluence_params, get_jira_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +65,65 @@ DEMO_HTML = """
 """
 
 
-async def _render_html(raw_html: str | None, page_id, db: AsyncSession) -> str | None:
+def _render_html(raw_html: str | None, page_id, project: Project) -> str | None:
     """Process stored Confluence HTML so images, Jira links, statuses etc. render correctly."""
     if not raw_html:
         return raw_html
-    jira_url = await get_jira_base_url(db)
-    return process_confluence_html(raw_html, str(page_id), jira_base_url=jira_url)
+    return process_confluence_html(
+        raw_html,
+        str(page_id),
+        jira_base_url=project.jira_base_url or "",
+        # У демо-проекта нет Confluence — прокси-ссылки ему не нужны.
+        project_id="" if project.is_demo else str(project.id),
+    )
+
+
+def _page_detail(
+    page: Page,
+    project: Project,
+    snapshot: PageSnapshot | None,
+    baseline: Baseline | None,
+) -> PageDetail:
+    return PageDetail(
+        id=page.id,
+        project_id=project.id,
+        project_name=project.name,
+        jira_base_url=project.jira_base_url or "",
+        confluence_page_id=page.confluence_page_id,
+        confluence_url=page.confluence_url,
+        title=page.title,
+        space_key=page.space_key,
+        is_virtual=page.is_virtual,
+        created_at=page.created_at,
+        current_snapshot=SnapshotInfo(
+            id=snapshot.id,
+            confluence_version=snapshot.confluence_version,
+            fetched_at=snapshot.fetched_at,
+        ) if snapshot else None,
+        baseline=BaselineInfo(
+            id=baseline.id,
+            snapshot_id=baseline.snapshot_id,
+            confirmed_by=baseline.confirmed_by,
+            confirmed_at=baseline.confirmed_at,
+        ) if baseline else None,
+        content_html=_render_html(snapshot.content_html, page.id, project) if snapshot else None,
+    )
+
+
+async def _visible_project_ids(db: AsyncSession, user: User) -> list[UUID]:
+    """Проекты, контент которых доступен пользователю: креды ok + свои демо."""
+    ok_result = await db.execute(
+        select(ProjectCredential.project_id).where(
+            ProjectCredential.user_id == user.id,
+            ProjectCredential.status == "ok",
+        )
+    )
+    demo_result = await db.execute(
+        select(Project.id).where(
+            Project.is_demo == True, Project.created_by == user.id  # noqa: E712
+        )
+    )
+    return list(ok_result.scalars().all()) + list(demo_result.scalars().all())
 
 
 @router.post("/demo", response_model=PageDetail)
@@ -67,12 +131,17 @@ async def add_demo_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Add a demo page with sample content for testing without Confluence."""
+    """Add a demo page with sample content for testing without Confluence.
+
+    Живёт в личном демо-проекте пользователя (создаётся при первом использовании).
+    """
     import uuid as _uuid
 
+    project = await get_or_create_demo_project(db, current_user)
     demo_id = "demo-" + str(_uuid.uuid4())[:8]
 
     page = Page(
+        project_id=project.id,
         confluence_page_id=demo_id,
         confluence_url=f"https://confluence.example.com/pages/viewpage.action?pageId={demo_id}",
         title="Экран «Каталог товаров» — Требования",
@@ -98,27 +167,7 @@ async def add_demo_page(
     db.add(baseline)
     await db.flush()
 
-    return PageDetail(
-        id=page.id,
-        confluence_page_id=page.confluence_page_id,
-        confluence_url=page.confluence_url,
-        title=page.title,
-        space_key=page.space_key,
-        is_virtual=page.is_virtual,
-        created_at=page.created_at,
-        current_snapshot=SnapshotInfo(
-            id=snapshot.id,
-            confluence_version=snapshot.confluence_version,
-            fetched_at=snapshot.fetched_at,
-        ),
-        baseline=BaselineInfo(
-            id=baseline.id,
-            snapshot_id=baseline.snapshot_id,
-            confirmed_by=baseline.confirmed_by,
-            confirmed_at=baseline.confirmed_at,
-        ),
-        content_html=await _render_html(snapshot.content_html, page.id, db),
-    )
+    return _page_detail(page, project, snapshot, baseline)
 
 
 @router.post("", response_model=PageDetail)
@@ -127,33 +176,82 @@ async def add_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Add a Confluence page by URL. Fetches content and creates initial baseline."""
+    """Add a Confluence page by URL. Fetches content and creates initial baseline.
+
+    Проект определяется по base_url ссылки среди проектов пользователя; если
+    ссылка подходит нескольким проектам (общий сервер) — обязателен project_id.
+    """
     try:
         page_id_str = confluence.extract_page_id_from_url(data.confluence_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    memberships = await db.execute(
+        select(Project, ProjectCredential)
+        .join(ProjectCredential, ProjectCredential.project_id == Project.id)
+        .where(
+            ProjectCredential.user_id == current_user.id,
+            Project.is_demo == False,  # noqa: E712
+        )
+    )
+    candidates = [
+        (project, cred) for project, cred in memberships.all()
+        if url_belongs_to_base(data.confluence_url, project.confluence_base_url)
+    ]
+
+    if data.project_id is not None:
+        matched = [(p, c) for p, c in candidates if p.id == data.project_id]
+        if not matched:
+            raise HTTPException(status_code=400, detail="Ссылка не относится к выбранному проекту")
+        project, cred = matched[0]
+    elif len(candidates) == 1:
+        project, cred = candidates[0]
+    elif not candidates:
+        raise HTTPException(
+            status_code=400,
+            detail="Не найден проект с этим Confluence-сервером. Подключите проект в настройках",
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Ссылка подходит нескольким проектам — укажите, в какой добавить страницу",
+        )
+
+    if cred.status != "ok":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Нет доступа к проекту «{project.name}». Проверьте креды в настройках",
+        )
+
     existing_result = await db.execute(
-        select(Page).where(Page.confluence_page_id == page_id_str)
+        select(Page).where(
+            Page.project_id == project.id,
+            Page.confluence_page_id == page_id_str,
+        )
     )
     existing_page = existing_result.scalar_one_or_none()
     if existing_page and not existing_page.is_virtual:
         raise HTTPException(status_code=409, detail="Page already tracked")
 
-    params = await get_confluence_params(db)
-    conn = ConfluenceConnection(**params)
+    conn = connection_for(project, cred)
 
     try:
-        page_data = await confluence.fetch_page(page_id_str, conn)
+        page_data = await run_confluence(
+            db, project, cred, confluence.fetch_page(page_id_str, conn)
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to fetch Confluence page %s: %s", page_id_str, e)
         raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
 
     # Sync full space tree: create virtual pages for ALL pages in the space
-    conf_base_url = params["base_url"].rstrip("/")
+    conf_base_url = project.confluence_base_url
     try:
         space_pages = await confluence.fetch_space_pages(page_data.space_key, conn)
     except Exception as e:
+        # Сюда попадает и ConfluenceAuthError: страница доступна, а листинг
+        # спейса — нет. Добавление не валим, откатываемся на ancestors.
         logger.warning("Failed to fetch space tree for %s: %s — falling back to ancestors only",
                        page_data.space_key, e)
         space_pages = []
@@ -161,13 +259,17 @@ async def add_page(
     if space_pages:
         # Build a set of confluence_page_ids already in the DB for this space
         space_existing = await db.execute(
-            select(Page.confluence_page_id).where(Page.space_key == page_data.space_key)
+            select(Page.confluence_page_id).where(
+                Page.project_id == project.id,
+                Page.space_key == page_data.space_key,
+            )
         )
         existing_cpids = set(space_existing.scalars().all())
 
         for sp in space_pages:
             if sp.page_id not in existing_cpids and sp.page_id != page_id_str:
                 virtual_page = Page(
+                    project_id=project.id,
                     confluence_page_id=sp.page_id,
                     confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={sp.page_id}",
                     title=sp.title,
@@ -184,10 +286,14 @@ async def add_page(
         prev_ancestor_id: str | None = None
         for ancestor in page_data.ancestors:
             existing_ancestor = await db.execute(
-                select(Page).where(Page.confluence_page_id == ancestor.page_id)
+                select(Page).where(
+                    Page.project_id == project.id,
+                    Page.confluence_page_id == ancestor.page_id,
+                )
             )
             if not existing_ancestor.scalar_one_or_none():
                 virtual_page = Page(
+                    project_id=project.id,
                     confluence_page_id=ancestor.page_id,
                     confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={ancestor.page_id}",
                     title=ancestor.title,
@@ -214,6 +320,7 @@ async def add_page(
         await db.flush()
     else:
         page = Page(
+            project_id=project.id,
             confluence_page_id=page_data.page_id,
             confluence_url=data.confluence_url,
             title=page_data.title,
@@ -240,34 +347,23 @@ async def add_page(
     db.add(baseline)
     await db.flush()
 
-    return PageDetail(
-        id=page.id,
-        confluence_page_id=page.confluence_page_id,
-        confluence_url=page.confluence_url,
-        title=page.title,
-        space_key=page.space_key,
-        is_virtual=page.is_virtual,
-        created_at=page.created_at,
-        current_snapshot=SnapshotInfo(
-            id=snapshot.id,
-            confluence_version=snapshot.confluence_version,
-            fetched_at=snapshot.fetched_at,
-        ),
-        baseline=BaselineInfo(
-            id=baseline.id,
-            snapshot_id=baseline.snapshot_id,
-            confirmed_by=baseline.confirmed_by,
-            confirmed_at=baseline.confirmed_at,
-        ),
-        content_html=await _render_html(snapshot.content_html, page.id, db),
-    )
+    return _page_detail(page, project, snapshot, baseline)
 
 
 @router.get("", response_model=list[PageListItem])
-async def list_pages(db: AsyncSession = Depends(get_db)):
-    """List all tracked pages with coverage stats."""
+async def list_pages(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List tracked pages of the user's projects with coverage stats."""
+    project_ids = await _visible_project_ids(db, current_user)
+    if not project_ids:
+        return []
+
     result = await db.execute(
-        select(Page).where(Page.is_virtual == False).order_by(Page.created_at.desc())
+        select(Page)
+        .where(Page.is_virtual == False, Page.project_id.in_(project_ids))  # noqa: E712
+        .order_by(Page.created_at.desc())
     )
     pages = result.scalars().all()
 
@@ -299,6 +395,7 @@ async def list_pages(db: AsyncSession = Depends(get_db)):
 
         items.append(PageListItem(
             id=page.id,
+            project_id=page.project_id,
             confluence_page_id=page.confluence_page_id,
             confluence_url=page.confluence_url,
             title=page.title,
@@ -313,49 +410,86 @@ async def list_pages(db: AsyncSession = Depends(get_db)):
     return items
 
 
-@router.get("/tree", response_model=list[SpaceTreeResponse])
-async def get_page_tree(db: AsyncSession = Depends(get_db)):
-    """Get all pages grouped by space as a tree structure."""
-    result = await db.execute(
-        select(Page).order_by(Page.space_key, Page.title)
-    )
-    pages = result.scalars().all()
+@router.get("/tree", response_model=list[ProjectTreeResponse])
+async def get_page_tree(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Дерево: проекты пользователя → спейсы → страницы.
 
-    # Счётчики привязок по статусам — одним GROUP BY-запросом на все страницы
-    counts_result = await db.execute(
-        select(Highlight.page_id, Highlight.status, func.count(Highlight.id))
-        .group_by(Highlight.page_id, Highlight.status)
+    Чужие проекты не видны вовсе; проект с нерабочими кредами — узел
+    no_access без спейсов (замок в UI). Демо-проект — в конце списка.
+    """
+    memberships = await db.execute(
+        select(Project, ProjectCredential)
+        .join(ProjectCredential, ProjectCredential.project_id == Project.id)
+        .where(
+            ProjectCredential.user_id == current_user.id,
+            Project.is_demo == False,  # noqa: E712
+        )
+        .order_by(Project.name)
     )
+    entries: list[tuple[Project, bool]] = [
+        (project, cred.status != "ok") for project, cred in memberships.all()
+    ]
+    demo_result = await db.execute(
+        select(Project).where(
+            Project.is_demo == True, Project.created_by == current_user.id  # noqa: E712
+        )
+    )
+    entries += [(project, False) for project in demo_result.scalars().all()]
+
+    visible_ids = [project.id for project, no_access in entries if not no_access]
+
+    pages_by_project: dict[UUID, list[Page]] = {}
     status_counts: dict = {}
-    for hl_page_id, hl_status, cnt in counts_result.all():
-        status_counts.setdefault(hl_page_id, {})[hl_status] = cnt
+    if visible_ids:
+        pages_result = await db.execute(
+            select(Page)
+            .where(Page.project_id.in_(visible_ids))
+            .order_by(Page.space_key, Page.title)
+        )
+        for page in pages_result.scalars().all():
+            pages_by_project.setdefault(page.project_id, []).append(page)
 
-    nodes: list[TreeNodeItem] = []
-    for page in pages:
-        by_status = status_counts.get(page.id, {})
-        nodes.append(TreeNodeItem(
-            id=page.id,
-            confluence_page_id=page.confluence_page_id,
-            title=page.title,
-            space_key=page.space_key,
-            is_virtual=page.is_virtual,
-            parent_confluence_page_id=page.parent_confluence_page_id,
-            highlights_active=by_status.get("active", 0),
-            highlights_outdated=by_status.get("outdated", 0),
-            highlights_lost=by_status.get("lost", 0),
-            has_updates=False,
+        # Счётчики привязок по статусам — одним GROUP BY-запросом на все страницы
+        counts_result = await db.execute(
+            select(Highlight.page_id, Highlight.status, func.count(Highlight.id))
+            .join(Page, Page.id == Highlight.page_id)
+            .where(Page.project_id.in_(visible_ids))
+            .group_by(Highlight.page_id, Highlight.status)
+        )
+        for hl_page_id, hl_status, cnt in counts_result.all():
+            status_counts.setdefault(hl_page_id, {})[hl_status] = cnt
+
+    response: list[ProjectTreeResponse] = []
+    for project, no_access in entries:
+        spaces: dict[str, list[TreeNodeItem]] = {}
+        for page in pages_by_project.get(project.id, []):
+            by_status = status_counts.get(page.id, {})
+            node = TreeNodeItem(
+                id=page.id,
+                confluence_page_id=page.confluence_page_id,
+                title=page.title,
+                space_key=page.space_key,
+                is_virtual=page.is_virtual,
+                parent_confluence_page_id=page.parent_confluence_page_id,
+                highlights_active=by_status.get("active", 0),
+                highlights_outdated=by_status.get("outdated", 0),
+                highlights_lost=by_status.get("lost", 0),
+                has_updates=False,
+            )
+            spaces.setdefault(page.space_key or "OTHER", []).append(node)
+
+        response.append(ProjectTreeResponse(
+            project_id=project.id,
+            project_name=project.name,
+            is_demo=project.is_demo,
+            no_access=no_access,
+            spaces=[SpaceTreeResponse(space_key=sk, pages=pg) for sk, pg in spaces.items()],
         ))
 
-    # Group by space_key
-    spaces: dict[str, list[TreeNodeItem]] = {}
-    for node in nodes:
-        key = node.space_key or "OTHER"
-        spaces.setdefault(key, []).append(node)
-
-    return [
-        SpaceTreeResponse(space_key=sk, pages=pg)
-        for sk, pg in spaces.items()
-    ]
+    return response
 
 
 @router.post("/sync-tree", response_model=TreeSyncResult)
@@ -363,7 +497,11 @@ async def sync_tree(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Re-sync the page hierarchy from Confluence for every tracked space.
+    """Re-sync the page hierarchy from Confluence for the user's projects.
+
+    Обходит проекты пользователя с рабочими кредами, каждый — его кредами.
+    Отказ Confluence (401/403) помечает подключение invalid, синк продолжается
+    по остальным проектам.
 
     Reflects pages that were moved (re-nested) in Confluence by updating their
     ``parent_confluence_page_id``/``title``, creates virtual pages for pages
@@ -371,73 +509,105 @@ async def sync_tree(
     there. Tracked (real) pages are never deleted — if one disappears from
     Confluence it is kept and only counted in ``missing_tracked``.
     """
-    params = await get_confluence_params(db)
-    conn = ConfluenceConnection(**params)
-    conf_base_url = params["base_url"].rstrip("/")
-
-    # Spaces that contain at least one tracked (real) page — virtual pages only
-    # ever exist alongside a tracked page in the same space.
-    spaces_result = await db.execute(
-        select(Page.space_key)
-        .where(Page.is_virtual == False, Page.space_key.isnot(None))
-        .distinct()
+    memberships = await db.execute(
+        select(Project, ProjectCredential)
+        .join(ProjectCredential, ProjectCredential.project_id == Project.id)
+        .where(
+            ProjectCredential.user_id == current_user.id,
+            ProjectCredential.status == "ok",
+            Project.is_demo == False,  # noqa: E712
+        )
+        .order_by(Project.name)
     )
-    space_keys = [s for s in spaces_result.scalars().all() if s]
 
+    synced_spaces = 0
     moved = added = removed = missing_tracked = 0
 
-    for space_key in space_keys:
-        try:
-            space_pages = await confluence.fetch_space_pages(space_key, conn)
-        except Exception as e:
-            logger.warning("sync-tree: failed to fetch space %s: %s — skipping", space_key, e)
+    for project, cred in memberships.all():
+        conn = connection_for(project, cred)
+
+        # Spaces that contain at least one tracked (real) page — virtual pages
+        # only ever exist alongside a tracked page in the same space.
+        spaces_result = await db.execute(
+            select(Page.space_key)
+            .where(
+                Page.project_id == project.id,
+                Page.is_virtual == False,  # noqa: E712
+                Page.space_key.isnot(None),
+            )
+            .distinct()
+        )
+        space_keys = [s for s in spaces_result.scalars().all() if s]
+
+        auth_failed = False
+        for space_key in space_keys:
+            try:
+                space_pages = await confluence.fetch_space_pages(space_key, conn)
+            except ConfluenceAuthError:
+                # Креды протухли — помечаем и идём к следующему проекту;
+                # замок появится при следующей загрузке дерева.
+                cred.status = "invalid"
+                cred.last_check_at = datetime.now(timezone.utc)
+                await db.flush()
+                auth_failed = True
+                break
+            except Exception as e:
+                logger.warning("sync-tree: failed to fetch space %s: %s — skipping", space_key, e)
+                continue
+
+            synced_spaces += 1
+            fresh = {sp.page_id: sp for sp in space_pages}
+
+            db_pages_result = await db.execute(
+                select(Page).where(
+                    Page.project_id == project.id,
+                    Page.space_key == space_key,
+                )
+            )
+            db_pages = db_pages_result.scalars().all()
+            db_cpids = {p.confluence_page_id for p in db_pages}
+
+            # 1. Update existing pages (re-parent + title); handle disappeared ones.
+            #    parent_confluence_page_id has no FK to other pages, so deleting a
+            #    stale virtual parent here never breaks its (already re-parented) children.
+            for page in db_pages:
+                sp = fresh.get(page.confluence_page_id)
+                if sp is not None:
+                    if page.parent_confluence_page_id != sp.parent_page_id:
+                        page.parent_confluence_page_id = sp.parent_page_id
+                        moved += 1
+                    if page.title != sp.title:
+                        page.title = sp.title
+                elif page.is_virtual:
+                    # Virtual placeholder gone from Confluence — safe to drop.
+                    await db.delete(page)
+                    removed += 1
+                else:
+                    # Tracked page with real data — keep it, just flag it.
+                    missing_tracked += 1
+
+            # 2. Create virtual pages for Confluence pages not yet known locally.
+            for cpid, sp in fresh.items():
+                if cpid not in db_cpids:
+                    db.add(Page(
+                        project_id=project.id,
+                        confluence_page_id=cpid,
+                        confluence_url=f"{project.confluence_base_url}/pages/viewpage.action?pageId={cpid}",
+                        title=sp.title,
+                        space_key=space_key,
+                        parent_confluence_page_id=sp.parent_page_id,
+                        is_virtual=True,
+                        added_by=current_user.id,
+                    ))
+                    added += 1
+
+            await db.flush()
+
+        if auth_failed:
             continue
 
-        fresh = {sp.page_id: sp for sp in space_pages}
-
-        db_pages_result = await db.execute(
-            select(Page).where(Page.space_key == space_key)
-        )
-        db_pages = db_pages_result.scalars().all()
-        db_cpids = {p.confluence_page_id for p in db_pages}
-
-        # 1. Update existing pages (re-parent + title); handle disappeared ones.
-        #    parent_confluence_page_id has no FK to other pages, so deleting a
-        #    stale virtual parent here never breaks its (already re-parented) children.
-        for page in db_pages:
-            sp = fresh.get(page.confluence_page_id)
-            if sp is not None:
-                if page.parent_confluence_page_id != sp.parent_page_id:
-                    page.parent_confluence_page_id = sp.parent_page_id
-                    moved += 1
-                if page.title != sp.title:
-                    page.title = sp.title
-            elif page.is_virtual:
-                # Virtual placeholder gone from Confluence — safe to drop.
-                await db.delete(page)
-                removed += 1
-            else:
-                # Tracked page with real data — keep it, just flag it.
-                missing_tracked += 1
-
-        # 2. Create virtual pages for Confluence pages not yet known locally.
-        for cpid, sp in fresh.items():
-            if cpid not in db_cpids:
-                db.add(Page(
-                    confluence_page_id=cpid,
-                    confluence_url=f"{conf_base_url}/pages/viewpage.action?pageId={cpid}",
-                    title=sp.title,
-                    space_key=space_key,
-                    parent_confluence_page_id=sp.parent_page_id,
-                    is_virtual=True,
-                    added_by=current_user.id,
-                ))
-                added += 1
-
-        await db.flush()
-
     return TreeSyncResult(
-        spaces=len(space_keys),
+        spaces=synced_spaces,
         moved=moved,
         added=added,
         removed=removed,
@@ -446,11 +616,13 @@ async def sync_tree(
 
 
 @router.get("/{page_id}", response_model=PageDetail)
-async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Get detailed page information with current content."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+async def get_page(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get detailed page information with current content (участникам проекта)."""
+    page, project, _ = await require_page_access(db, page_id, current_user)
 
     snap_result = await db.execute(
         select(PageSnapshot)
@@ -468,27 +640,7 @@ async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     )
     latest_baseline = bl_result.scalar_one_or_none()
 
-    return PageDetail(
-        id=page.id,
-        confluence_page_id=page.confluence_page_id,
-        confluence_url=page.confluence_url,
-        title=page.title,
-        space_key=page.space_key,
-        is_virtual=page.is_virtual,
-        created_at=page.created_at,
-        current_snapshot=SnapshotInfo(
-            id=latest_snapshot.id,
-            confluence_version=latest_snapshot.confluence_version,
-            fetched_at=latest_snapshot.fetched_at,
-        ) if latest_snapshot else None,
-        baseline=BaselineInfo(
-            id=latest_baseline.id,
-            snapshot_id=latest_baseline.snapshot_id,
-            confirmed_by=latest_baseline.confirmed_by,
-            confirmed_at=latest_baseline.confirmed_at,
-        ) if latest_baseline else None,
-        content_html=(await _render_html(latest_snapshot.content_html, page.id, db)) if latest_snapshot else None,
-    )
+    return _page_detail(page, project, latest_snapshot, latest_baseline)
 
 
 @router.post("/{page_id}/promote", response_model=PageDetail)
@@ -498,24 +650,25 @@ async def promote_page(
     current_user: User = Depends(get_current_user),
 ):
     """Promote a virtual page to a fully tracked page by fetching its content from Confluence."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    page, project, cred = await require_page_access(db, page_id, current_user)
     if not page.is_virtual:
         raise HTTPException(status_code=400, detail="Page is already tracked")
+    require_confluence_project(project)
 
-    params = await get_confluence_params(db)
-    conn = ConfluenceConnection(**params)
-
+    conn = connection_for(project, cred)
     try:
-        page_data = await confluence.fetch_page(page.confluence_page_id, conn)
+        page_data = await run_confluence(
+            db, project, cred, confluence.fetch_page(page.confluence_page_id, conn)
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to fetch Confluence page %s: %s", page.confluence_page_id, e)
         raise HTTPException(status_code=502, detail=f"Failed to fetch page from Confluence: {e}")
 
     page.is_virtual = False
     page.title = page_data.title
-    page.confluence_url = f"{params['base_url'].rstrip('/')}/pages/viewpage.action?pageId={page.confluence_page_id}"
+    page.confluence_url = f"{project.confluence_base_url}/pages/viewpage.action?pageId={page.confluence_page_id}"
     await db.flush()
 
     snapshot = PageSnapshot(
@@ -534,41 +687,26 @@ async def promote_page(
     db.add(baseline)
     await db.flush()
 
-    return PageDetail(
-        id=page.id,
-        confluence_page_id=page.confluence_page_id,
-        confluence_url=page.confluence_url,
-        title=page.title,
-        space_key=page.space_key,
-        is_virtual=page.is_virtual,
-        created_at=page.created_at,
-        current_snapshot=SnapshotInfo(
-            id=snapshot.id,
-            confluence_version=snapshot.confluence_version,
-            fetched_at=snapshot.fetched_at,
-        ),
-        baseline=BaselineInfo(
-            id=baseline.id,
-            snapshot_id=baseline.snapshot_id,
-            confirmed_by=baseline.confirmed_by,
-            confirmed_at=baseline.confirmed_at,
-        ),
-        content_html=await _render_html(snapshot.content_html, page.id, db),
-    )
+    return _page_detail(page, project, snapshot, baseline)
 
 
 @router.post("/{page_id}/refresh", response_model=PageDetail)
-async def refresh_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
+async def refresh_page(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Refresh page content from Confluence. Projects highlights if content changed."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    page, project, cred = await require_page_access(db, page_id, current_user)
+    require_confluence_project(project)
 
-    params = await get_confluence_params(db)
-    conn = ConfluenceConnection(**params)
-
+    conn = connection_for(project, cred)
     try:
-        page_data = await confluence.fetch_page(page.confluence_page_id, conn)
+        page_data = await run_confluence(
+            db, project, cred, confluence.fetch_page(page.confluence_page_id, conn)
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch from Confluence: {e}")
 
@@ -588,7 +726,7 @@ async def refresh_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     latest_snapshot = snap_result.scalar_one_or_none()
 
     if latest_snapshot and not has_text_changed(latest_snapshot.content_html, page_data.content_html):
-        return await get_page(page_id, db)
+        return await get_page(page_id, db, current_user)
 
     new_snapshot = PageSnapshot(
         page_id=page.id,
@@ -641,7 +779,7 @@ async def refresh_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
                     break
 
     await db.flush()
-    return await get_page(page_id, db)
+    return await get_page(page_id, db, current_user)
 
 
 @router.post("/{page_id}/baseline", response_model=BaselineInfo)
@@ -651,9 +789,7 @@ async def set_baseline(
     current_user: User = Depends(get_current_user),
 ):
     """Set the current snapshot as the new baseline."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    page, _, _ = await require_page_access(db, page_id, current_user)
 
     snap_result = await db.execute(
         select(PageSnapshot)
@@ -684,12 +820,14 @@ async def set_baseline(
 
 
 @router.delete("/{page_id}", status_code=204)
-async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_page(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Delete a tracked page and all its related data (snapshots, baselines, highlights).
     Also cleans up orphaned virtual ancestors."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    page, project, _ = await require_page_access(db, page_id, current_user)
 
     # Remember space key before deletion
     space_key = page.space_key
@@ -709,14 +847,22 @@ async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     if space_key:
         real_count_result = await db.execute(
             select(func.count(Page.id))
-            .where(Page.space_key == space_key, Page.is_virtual == False)
+            .where(
+                Page.project_id == project.id,
+                Page.space_key == space_key,
+                Page.is_virtual == False,  # noqa: E712
+            )
         )
         real_count = real_count_result.scalar() or 0
 
         if real_count == 0:
             # Bulk-remove all remaining virtual pages in this space
             await db.execute(
-                delete(Page).where(Page.space_key == space_key, Page.is_virtual == True)
+                delete(Page).where(
+                    Page.project_id == project.id,
+                    Page.space_key == space_key,
+                    Page.is_virtual == True,  # noqa: E712
+                )
             )
             await db.flush()
 
@@ -724,16 +870,20 @@ async def delete_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 async def _confluence_image_response(
-    download_url: str, params: dict
+    download_url: str, conn: ConfluenceConnection
 ) -> Response:
     """Fetch an image from Confluence and return it as a FastAPI Response."""
     auth = None
-    if params["username"] and params["password"]:
-        auth = httpx.BasicAuth(params["username"], params["password"])
+    if conn.username and conn.password:
+        auth = httpx.BasicAuth(conn.username, conn.password)
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         resp = await client.get(download_url, auth=auth)
 
+    if resp.status_code in (401, 403):
+        # Протухшие креды должны пометить подключение (см. run_confluence),
+        # а не маскироваться под «вложение не найдено».
+        raise ConfluenceAuthError(resp.status_code)
     if resp.status_code != 200:
         raise HTTPException(status_code=404, detail="Attachment not found on Confluence")
 
@@ -747,21 +897,24 @@ async def _confluence_image_response(
 
 @router.get("/{page_id}/attachments/{filename:path}")
 async def get_attachment(
-    page_id: UUID, filename: str, db: AsyncSession = Depends(get_db)
+    page_id: UUID,
+    filename: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Proxy a page attachment image from Confluence."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    """Proxy a page attachment image from Confluence (кредами участника)."""
+    page, project, cred = await require_page_access(db, page_id, current_user)
+    require_confluence_project(project)
 
-    params = await get_confluence_params(db)
-    base_url = params["base_url"].rstrip("/")
+    conn = connection_for(project, cred)
 
     decoded = urllib.parse.unquote(filename)
     encoded = urllib.parse.quote(decoded, safe="")
-    download_url = f"{base_url}/download/attachments/{page.confluence_page_id}/{encoded}"
+    download_url = f"{project.confluence_base_url}/download/attachments/{page.confluence_page_id}/{encoded}"
 
-    return await _confluence_image_response(download_url, params)
+    return await run_confluence(
+        db, project, cred, _confluence_image_response(download_url, conn)
+    )
 
 
 confluence_proxy_router = APIRouter(prefix="/api", tags=["proxy"])
@@ -770,14 +923,26 @@ confluence_proxy_router = APIRouter(prefix="/api", tags=["proxy"])
 @confluence_proxy_router.get("/confluence-proxy")
 async def proxy_confluence_resource(
     url: str = Query(..., description="Relative Confluence URL to proxy"),
+    project_id: UUID = Query(..., description="Проект, чьим сервером и кредами идти"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Proxy any relative Confluence resource (images, thumbnails, etc.)."""
+    """Proxy any relative Confluence resource (images, thumbnails, etc.).
+
+    Относительный URL сам по себе проект не определяет, поэтому project_id
+    обязателен — он вшивается в прокси-ссылки при рендере контента.
+    """
     if not url.startswith("/"):
         raise HTTPException(status_code=400, detail="Only relative URLs are allowed")
 
-    params = await get_confluence_params(db)
-    base_url = params["base_url"].rstrip("/")
-    full_url = base_url + url
+    project = await db.get(Project, project_id)
+    if not project or project.is_demo:
+        raise HTTPException(status_code=404, detail="Project not found")
+    cred = await require_project_access(db, project, current_user)
 
-    return await _confluence_image_response(full_url, params)
+    conn = connection_for(project, cred)
+    full_url = project.confluence_base_url + url
+
+    return await run_confluence(
+        db, project, cred, _confluence_image_response(full_url, conn)
+    )

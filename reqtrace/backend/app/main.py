@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import get_current_user
-from app.routers import auth, users, pages, highlights, diff, settings
+from app.routers import auth, users, pages, highlights, diff, projects
 from app.routers.pages import confluence_proxy_router
 
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +34,7 @@ app.include_router(pages.router, dependencies=protected)
 app.include_router(confluence_proxy_router, dependencies=protected)
 app.include_router(highlights.router, dependencies=protected)
 app.include_router(diff.router, dependencies=protected)
-app.include_router(settings.router, dependencies=protected)
+app.include_router(projects.router, dependencies=protected)
 
 
 @app.get("/api/health")

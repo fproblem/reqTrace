@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models.page import Page
 from app.models.snapshot import PageSnapshot
 from app.models.baseline import Baseline
+from app.models.user import User
+from app.project_access import require_page_access
 from app.schemas.diff import DiffResponse
 from app.services.diff_engine import compute_diff_html
 
@@ -15,11 +17,13 @@ router = APIRouter(prefix="/api/pages", tags=["diff"])
 
 
 @router.get("/{page_id}/diff", response_model=DiffResponse)
-async def get_diff(page_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_diff(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get diff between baseline and latest snapshot."""
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    page, _, _ = await require_page_access(db, page_id, current_user)
 
     bl_result = await db.execute(
         select(Baseline)

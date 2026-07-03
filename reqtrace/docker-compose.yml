@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: reqtrace
       POSTGRES_USER: reqtrace
-      POSTGRES_PASSWORD: reqtrace_secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Создайте reqtrace/.env по образцу .env.example}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -19,13 +19,10 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://reqtrace:reqtrace_secret@postgres:5432/reqtrace
-      DATABASE_URL_SYNC: postgresql://reqtrace:reqtrace_secret@postgres:5432/reqtrace
-      CONFLUENCE_BASE_URL: ${CONFLUENCE_BASE_URL:-http://confluence.local}
-      CONFLUENCE_USERNAME: ${CONFLUENCE_USERNAME:-}
-      CONFLUENCE_PASSWORD: ${CONFLUENCE_PASSWORD:-}
-      JIRA_BASE_URL: ${JIRA_BASE_URL:-http://jira.local}
+      DATABASE_URL: postgresql+asyncpg://reqtrace:${POSTGRES_PASSWORD}@postgres:5432/reqtrace
+      DATABASE_URL_SYNC: postgresql://reqtrace:${POSTGRES_PASSWORD}@postgres:5432/reqtrace
     depends_on:
       postgres:
         condition: service_healthy

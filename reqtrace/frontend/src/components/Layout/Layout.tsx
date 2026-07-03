@@ -1,14 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { PageTree } from './PageTree';
 
 interface LayoutProps {
   children: React.ReactNode;
-  userName?: string;
-  userId?: string;
-  onLogout?: () => void;
 }
 
 const SIDEBAR_KEY = 'reqtrace_sidebar';
@@ -54,9 +52,10 @@ const Chevron: React.FC<{ dir: 'left' | 'right'; size?: number }> = ({ dir, size
   </svg>
 );
 
-export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
   const [changelogOpen, setChangelogOpen] = useState(false);
   const currentVersion = useCurrentVersion();
 
@@ -268,27 +267,40 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
             Настройки
           </button>
 
-          {userName && (
+          {user && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '10px',
               paddingLeft: '12px', marginLeft: '4px',
               borderLeft: `1px solid ${colors.border}`,
             }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textPrimary }}>
-                {userName}
-              </span>
-              {onLogout && (
-                <button
-                  onClick={onLogout}
+              {user.avatar_url && (
+                <img
+                  src={user.avatar_url}
+                  alt=""
+                  referrerPolicy="no-referrer"
                   style={{
-                    background: 'none', border: 'none', color: colors.textSecondary,
-                    cursor: 'pointer', fontSize: '12px', padding: 0,
-                    textDecoration: 'underline', fontFamily: 'inherit',
+                    width: '26px', height: '26px', borderRadius: '50%',
+                    display: 'block', flexShrink: 0,
+                    border: `1px solid ${colors.border}`,
                   }}
-                >
-                  Выйти
-                </button>
+                />
               )}
+              <span
+                title={user.email ?? undefined}
+                style={{ fontSize: '13px', fontWeight: 600, color: colors.textPrimary }}
+              >
+                {user.name}
+              </span>
+              <button
+                onClick={() => { void logout(); }}
+                style={{
+                  background: 'none', border: 'none', color: colors.textSecondary,
+                  cursor: 'pointer', fontSize: '12px', padding: 0,
+                  textDecoration: 'underline', fontFamily: 'inherit',
+                }}
+              >
+                Выйти
+              </button>
             </div>
           )}
         </div>
@@ -334,7 +346,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, userName, userId, onLo
           ) : (
             <>
               <div style={{ flex: 1, overflow: 'hidden', padding: '14px 10px 4px', minWidth: 0 }}>
-                {userId && <PageTree userId={userId} />}
+                <PageTree />
               </div>
 
               {/* Collapse control — bottom-right corner, Confluence-style */}

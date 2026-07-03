@@ -4,6 +4,14 @@ export interface User {
   created_at: string;
 }
 
+/** Пользователь текущей сессии (GET /api/auth/me). */
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string | null;
+  avatar_url: string | null;
+}
+
 export interface PageListItem {
   id: string;
   confluence_page_id: string;

@@ -1,9 +1,10 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import users, pages, highlights, diff, settings
+from app.auth import get_current_user
+from app.routers import auth, users, pages, highlights, diff, settings
 from app.routers.pages import confluence_proxy_router
 
 logging.basicConfig(level=logging.INFO)
@@ -22,12 +23,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(users.router)
-app.include_router(pages.router)
-app.include_router(confluence_proxy_router)
-app.include_router(highlights.router)
-app.include_router(diff.router)
-app.include_router(settings.router)
+# Все роутеры, кроме auth, закрыты сессией на уровне include_router —
+# новый эндпоинт в любом из них защищён автоматически (страховка — обход
+# app.routes в tests/test_auth.py).
+protected = [Depends(get_current_user)]
+
+app.include_router(auth.router)
+app.include_router(users.router, dependencies=protected)
+app.include_router(pages.router, dependencies=protected)
+app.include_router(confluence_proxy_router, dependencies=protected)
+app.include_router(highlights.router, dependencies=protected)
+app.include_router(diff.router, dependencies=protected)
+app.include_router(settings.router, dependencies=protected)
 
 
 @app.get("/api/health")

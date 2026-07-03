@@ -17,16 +17,10 @@ class HighlightCreate(BaseModel):
     anchor_block_end: Optional[int] = None
     start_char_offset: Optional[int] = None
     end_char_offset: Optional[int] = None
-    user_id: UUID
-
-
-class ReanchorRequest(BaseModel):
-    user_id: UUID
 
 
 class TestLinkCreate(BaseModel):
     test_key: str
-    user_id: UUID
 
 
 class TestLinkResponse(BaseModel):

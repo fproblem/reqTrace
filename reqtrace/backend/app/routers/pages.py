@@ -8,15 +8,17 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.auth import get_current_user
 from app.database import get_db
 from app.models.page import Page
 from app.models.snapshot import PageSnapshot
 from app.models.baseline import Baseline
 from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
+from app.models.user import User
 from app.schemas.page import (
     PageCreate, PageListItem, PageDetail,
-    SnapshotInfo, BaselineInfo, BaselineCreate, RefreshRequest,
+    SnapshotInfo, BaselineInfo,
     TreeNodeItem, SpaceTreeResponse, TreeSyncResult,
 )
 from app.services import confluence
@@ -61,7 +63,10 @@ async def _render_html(raw_html: str | None, page_id, db: AsyncSession) -> str |
 
 
 @router.post("/demo", response_model=PageDetail)
-async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)):
+async def add_demo_page(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Add a demo page with sample content for testing without Confluence."""
     import uuid as _uuid
 
@@ -72,7 +77,7 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
         confluence_url=f"https://confluence.example.com/pages/viewpage.action?pageId={demo_id}",
         title="Экран «Каталог товаров» — Требования",
         space_key="DEMO",
-        added_by=data.user_id,
+        added_by=current_user.id,
     )
     db.add(page)
     await db.flush()
@@ -88,7 +93,7 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
     baseline = Baseline(
         page_id=page.id,
         snapshot_id=snapshot.id,
-        confirmed_by=data.user_id,
+        confirmed_by=current_user.id,
     )
     db.add(baseline)
     await db.flush()
@@ -117,7 +122,11 @@ async def add_demo_page(data: BaselineCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.post("", response_model=PageDetail)
-async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
+async def add_page(
+    data: PageCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Add a Confluence page by URL. Fetches content and creates initial baseline."""
     try:
         page_id_str = confluence.extract_page_id_from_url(data.confluence_url)
@@ -165,7 +174,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
                     space_key=page_data.space_key,
                     parent_confluence_page_id=sp.parent_page_id,
                     is_virtual=True,
-                    added_by=data.user_id,
+                    added_by=current_user.id,
                 )
                 db.add(virtual_page)
                 existing_cpids.add(sp.page_id)
@@ -185,7 +194,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
                     space_key=page_data.space_key,
                     parent_confluence_page_id=prev_ancestor_id,
                     is_virtual=True,
-                    added_by=data.user_id,
+                    added_by=current_user.id,
                 )
                 db.add(virtual_page)
                 await db.flush()
@@ -210,7 +219,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
             title=page_data.title,
             space_key=page_data.space_key,
             parent_confluence_page_id=parent_cpid,
-            added_by=data.user_id,
+            added_by=current_user.id,
         )
         db.add(page)
         await db.flush()
@@ -226,7 +235,7 @@ async def add_page(data: PageCreate, db: AsyncSession = Depends(get_db)):
     baseline = Baseline(
         page_id=page.id,
         snapshot_id=snapshot.id,
-        confirmed_by=data.user_id,
+        confirmed_by=current_user.id,
     )
     db.add(baseline)
     await db.flush()
@@ -350,7 +359,10 @@ async def get_page_tree(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/sync-tree", response_model=TreeSyncResult)
-async def sync_tree(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def sync_tree(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Re-sync the page hierarchy from Confluence for every tracked space.
 
     Reflects pages that were moved (re-nested) in Confluence by updating their
@@ -418,7 +430,7 @@ async def sync_tree(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
                     space_key=space_key,
                     parent_confluence_page_id=sp.parent_page_id,
                     is_virtual=True,
-                    added_by=data.user_id,
+                    added_by=current_user.id,
                 ))
                 added += 1
 
@@ -480,7 +492,11 @@ async def get_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{page_id}/promote", response_model=PageDetail)
-async def promote_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def promote_page(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Promote a virtual page to a fully tracked page by fetching its content from Confluence."""
     page = await db.get(Page, page_id)
     if not page:
@@ -513,7 +529,7 @@ async def promote_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = D
     baseline = Baseline(
         page_id=page.id,
         snapshot_id=snapshot.id,
-        confirmed_by=data.user_id,
+        confirmed_by=current_user.id,
     )
     db.add(baseline)
     await db.flush()
@@ -542,7 +558,7 @@ async def promote_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = D
 
 
 @router.post("/{page_id}/refresh", response_model=PageDetail)
-async def refresh_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def refresh_page(page_id: UUID, db: AsyncSession = Depends(get_db)):
     """Refresh page content from Confluence. Projects highlights if content changed."""
     page = await db.get(Page, page_id)
     if not page:
@@ -629,7 +645,11 @@ async def refresh_page(page_id: UUID, data: RefreshRequest, db: AsyncSession = D
 
 
 @router.post("/{page_id}/baseline", response_model=BaselineInfo)
-async def set_baseline(page_id: UUID, data: BaselineCreate, db: AsyncSession = Depends(get_db)):
+async def set_baseline(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Set the current snapshot as the new baseline."""
     page = await db.get(Page, page_id)
     if not page:
@@ -648,7 +668,7 @@ async def set_baseline(page_id: UUID, data: BaselineCreate, db: AsyncSession = D
     baseline = Baseline(
         page_id=page.id,
         snapshot_id=latest_snapshot.id,
-        confirmed_by=data.user_id,
+        confirmed_by=current_user.id,
     )
     db.add(baseline)
 

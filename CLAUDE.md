@@ -37,8 +37,11 @@ codegraph status                                 # состояние индек
 ## Архитектура (кратко; актуальное — спрашивай CodeGraph)
 
 **Бэкенд `reqtrace/backend/app/`** — слои сверху вниз:
-- `main.py` — точка входа, подключает роутеры.
-- `routers/` — HTTP API: `users, pages, highlights, diff, settings`.
+- `main.py` — точка входа, подключает роутеры. ⚠ Все роутеры, кроме `auth`,
+  закрыты сессией через `include_router(dependencies=[Depends(get_current_user)])` —
+  новый роутер подключай так же, иначе тест-обход маршрутов в `tests/test_auth.py` упадёт.
+- `auth.py` — сессии (JWT HS256 в HttpOnly-cookie `reqtrace_session`) и зависимость `get_current_user`.
+- `routers/` — HTTP API: `auth, users, pages, highlights, diff, settings`.
   ⚠ `routers/pages.py` — самый крупный (~670 строк), тянет почти все модели и сервисы.
 - `services/` — логика: `confluence` (интеграция с Confluence API),
   `diff_engine` (diff текста), `highlight_projection` (перенос подсветок на изменённый текст).
@@ -46,18 +49,25 @@ codegraph status                                 # состояние индек
 - `models/` — ORM (SQLAlchemy): `user, page, snapshot, baseline, highlight, highlight_test, settings`.
 - `database.py`, `config.py` — фундамент. ⚠ `database.py` импортируют ~13 модулей.
 
+**Авторизация (v1.5.0):** вход только через Google (GIS, ID-token flow) для домена
+`surf.dev` (двойная проверка: `hd`-claim + суффикс почты). Автор действия берётся
+из сессии — `user_id` в телах запросов не передаётся. Конфиг — `reqtrace/.env`
+(`GOOGLE_CLIENT_ID`, `SESSION_SECRET`, `ALLOWED_EMAIL_DOMAIN`, `SESSION_TTL_DAYS`,
+`COOKIE_SECURE`; образец — `.env.example`). Тесты: `backend/tests/test_auth.py`.
+
 **Фронтенд `reqtrace/frontend/src/`**:
-- `pages/` — экраны (`PageDetailPage` ~1000 строк — главный хаб UI).
+- `pages/` — экраны (`PageDetailPage` ~1000 строк — главный хаб UI; `LoginPage` — вход через Google).
+- `auth/AuthContext.tsx` — сессия пользователя (`useAuth`): старт с `GET /api/auth/me`,
+  глобальный обработчик 401 (сброс на экран входа), `login`/`logout`.
 - `components/` — `Layout/PageTree`, `PageView/*` (ContentRenderer, DiffView, HighlightLayer, SidePanel), `Toast`.
 - `hooks/`, `api/client.ts` (типизированный клиент API), `types/`, `styles/tokens.ts`.
-
-⚠ **Кандидаты в мёртвый код** (на момент написания, проверяй перед использованием):
-`hooks/useHighlights`, `hooks/useTextSelection`, `pages/DashboardPage` — никем не импортируются.
-Перепроверить: `codegraph callers <символ>` — «No callers found» подтверждает.
 
 ## Запуск и разработка
 
 ```bash
+# Один раз: секреты (без .env компоуз не стартует)
+cd reqtrace && cp .env.example .env   # заполнить POSTGRES_PASSWORD, GOOGLE_CLIENT_ID, SESSION_SECRET
+
 # Весь стек (postgres + backend + frontend)
 cd reqtrace && docker-compose up
 
@@ -66,6 +76,9 @@ cd reqtrace/backend && alembic upgrade head && uvicorn app.main:app --reload
 
 # Только фронтенд
 cd reqtrace/frontend && npm install && npm start   # сборка: npm run build, тесты: npm test
+
+# Тесты бэкенда (внутри контейнера; python на хосте не нужен)
+cd reqtrace && docker compose run --rm --no-deps backend python -m unittest discover tests
 ```
 
 ## Тесты логики подсветки (highlight)

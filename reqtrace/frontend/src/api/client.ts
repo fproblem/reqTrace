@@ -1,5 +1,5 @@
 import type {
-  User, PageListItem, PageDetail,
+  AuthUser, PageListItem, PageDetail,
   Highlight, TestLink, DiffResponse, BaselineInfo,
   SpaceTree, TreeSyncResult,
 } from '../types';
@@ -61,8 +61,13 @@ function humanizeError(status: number, detail: string): string {
   }
 
   // Generic fallbacks by status code
-  if (status === 401 || status === 403) {
-    return 'Ошибка авторизации. Проверьте учётные данные Confluence в настройках';
+  if (status === 401) {
+    // Бэкенд шлёт русские сообщения («Требуется вход», «Не удалось подтвердить
+    // вход через Google») — показываем их как есть.
+    return detail && /[а-яё]/i.test(detail) ? detail : 'Требуется вход. Сессия могла истечь';
+  }
+  if (status === 403) {
+    return detail && /[а-яё]/i.test(detail) ? detail : 'Доступ запрещён';
   }
   if (status === 404) {
     return 'Ресурс не найден';
@@ -80,6 +85,14 @@ function humanizeError(status: number, detail: string): string {
   return detail || 'Неизвестная ошибка';
 }
 
+// Глобальная реакция на 401 (сессия истекла где угодно → экран входа);
+// регистрируется AuthProvider'ом.
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -90,6 +103,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   } catch (e) {
     // Network error — server unreachable
     throw new ApiError(0, 'Сервер недоступен. Проверьте подключение к сети');
+  }
+
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    unauthorizedHandler?.();
   }
 
   if (!res.ok) {
@@ -108,25 +125,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  // Users
-  loginUser: (name: string) =>
-    request<User>('/users', { method: 'POST', body: JSON.stringify({ name }) }),
+  // Auth
+  getAuthConfig: () =>
+    request<{ google_client_id: string }>('/auth/config'),
 
-  listUsers: () =>
-    request<User[]>('/users'),
+  loginWithGoogle: (credential: string) =>
+    request<AuthUser>('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential }),
+    }),
+
+  getMe: () =>
+    request<AuthUser>('/auth/me'),
+
+  logout: () =>
+    request<void>('/auth/logout', { method: 'POST' }),
 
   // Pages
-  addPage: (confluence_url: string, user_id: string) =>
+  addPage: (confluence_url: string) =>
     request<PageDetail>('/pages', {
       method: 'POST',
-      body: JSON.stringify({ confluence_url, user_id }),
+      body: JSON.stringify({ confluence_url }),
     }),
 
-  addDemoPage: (user_id: string) =>
-    request<PageDetail>('/pages/demo', {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
+  addDemoPage: () =>
+    request<PageDetail>('/pages/demo', { method: 'POST' }),
 
   listPages: () =>
     request<PageListItem[]>('/pages'),
@@ -134,32 +157,20 @@ export const api = {
   getPageTree: () =>
     request<SpaceTree[]>('/pages/tree'),
 
-  syncTree: (user_id: string) =>
-    request<TreeSyncResult>('/pages/sync-tree', {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
+  syncTree: () =>
+    request<TreeSyncResult>('/pages/sync-tree', { method: 'POST' }),
 
   getPage: (pageId: string) =>
     request<PageDetail>(`/pages/${pageId}`),
 
-  promotePage: (pageId: string, user_id: string) =>
-    request<PageDetail>(`/pages/${pageId}/promote`, {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
+  promotePage: (pageId: string) =>
+    request<PageDetail>(`/pages/${pageId}/promote`, { method: 'POST' }),
 
-  refreshPage: (pageId: string, user_id: string) =>
-    request<PageDetail>(`/pages/${pageId}/refresh`, {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
+  refreshPage: (pageId: string) =>
+    request<PageDetail>(`/pages/${pageId}/refresh`, { method: 'POST' }),
 
-  setBaseline: (pageId: string, user_id: string) =>
-    request<BaselineInfo>(`/pages/${pageId}/baseline`, {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
+  setBaseline: (pageId: string) =>
+    request<BaselineInfo>(`/pages/${pageId}/baseline`, { method: 'POST' }),
 
   deletePage: (pageId: string) =>
     request<void>(`/pages/${pageId}`, { method: 'DELETE' }),
@@ -173,7 +184,6 @@ export const api = {
     anchor_block_end: number | null;
     start_char_offset: number | null;
     end_char_offset: number | null;
-    user_id: string;
   }) =>
     request<Highlight>(`/pages/${pageId}/highlights`, {
       method: 'POST',
@@ -186,11 +196,8 @@ export const api = {
   deleteHighlight: (highlightId: string) =>
     request<void>(`/highlights/${highlightId}`, { method: 'DELETE' }),
 
-  reanchorHighlight: (highlightId: string, user_id: string) =>
-    request<Highlight>(`/highlights/${highlightId}/reanchor`, {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
+  reanchorHighlight: (highlightId: string) =>
+    request<Highlight>(`/highlights/${highlightId}/reanchor`, { method: 'POST' }),
 
   markHighlightLost: (highlightId: string) =>
     request<Highlight>(`/highlights/${highlightId}/mark-lost`, { method: 'POST' }),
@@ -199,10 +206,10 @@ export const api = {
     request<Highlight>(`/highlights/${highlightId}/unmark-lost`, { method: 'POST' }),
 
   // Test links
-  addTestLink: (highlightId: string, test_key: string, user_id: string) =>
+  addTestLink: (highlightId: string, test_key: string) =>
     request<TestLink>(`/highlights/${highlightId}/tests`, {
       method: 'POST',
-      body: JSON.stringify({ test_key, user_id }),
+      body: JSON.stringify({ test_key }),
     }),
 
   removeTestLink: (linkId: string) =>

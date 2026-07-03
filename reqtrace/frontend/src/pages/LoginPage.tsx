@@ -1,30 +1,133 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { api, ApiError } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { useCurrentVersion } from '../components/ChangelogModal';
 import { colors, radii, shadows, fonts } from '../styles/tokens';
 
-interface LoginPageProps {
-  onLogin: (name: string) => void;
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+          }) => void;
+          renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
+        };
+      };
+    };
+  }
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
+const GIS_SRC = 'https://accounts.google.com/gsi/client';
+const GIS_TIMEOUT_MS = 8000;
+
+/** Загрузка скрипта Google Identity Services с таймаутом (может быть заблокирован/офлайн). */
+function loadGisScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.google?.accounts?.id) {
+      resolve();
+      return;
+    }
+    const fail = () => reject(new Error('gis-unavailable'));
+    const timer = window.setTimeout(fail, GIS_TIMEOUT_MS);
+
+    let script = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SRC}"]`);
+    if (!script) {
+      script = document.createElement('script');
+      script.src = GIS_SRC;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+    script.addEventListener('load', () => {
+      window.clearTimeout(timer);
+      if (window.google?.accounts?.id) {
+        resolve();
+      } else {
+        fail();
+      }
+    });
+    script.addEventListener('error', () => {
+      window.clearTimeout(timer);
+      fail();
+    });
+  });
+}
+
+export const LoginPage: React.FC = () => {
+  const { login } = useAuth();
   const { showToast } = useToast();
   const currentVersion = useCurrentVersion();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setLoading(true);
+  // gisState — доступность самой кнопки Google; loginError — отказ уже при входе
+  // (не тот домен, невалидный токен), кнопка при этом остаётся рабочей.
+  const [gisState, setGisState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [gisError, setGisError] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const buttonRef = useRef<HTMLDivElement>(null);
+
+  const handleCredential = useCallback(async (credential: string) => {
+    setSubmitting(true);
+    setLoginError('');
     try {
-      await onLogin(name.trim());
-    } catch (err: any) {
-      showToast('error', 'Не удалось войти', err.message);
+      await login(credential); // AuthContext переключит приложение на рабочий экран
+    } catch (e) {
+      const message = e instanceof ApiError && e.message
+        ? e.message
+        : 'Не удалось войти. Попробуйте ещё раз';
+      setLoginError(message);
+      showToast('error', 'Не удалось войти', message);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
-  };
+  }, [login, showToast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGisState('loading');
+    setGisError('');
+
+    (async () => {
+      try {
+        const { google_client_id } = await api.getAuthConfig();
+        if (!google_client_id) {
+          throw new Error('Авторизация не настроена на сервере: не задан GOOGLE_CLIENT_ID');
+        }
+        await loadGisScript();
+        if (cancelled || !buttonRef.current) return;
+
+        const gis = window.google!.accounts.id;
+        gis.initialize({
+          client_id: google_client_id,
+          callback: response => { void handleCredential(response.credential); },
+        });
+        buttonRef.current.innerHTML = '';
+        gis.renderButton(buttonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          width: 300,
+          locale: 'ru',
+          text: 'signin_with',
+        });
+        setGisState('ready');
+      } catch (e) {
+        if (cancelled) return;
+        setGisState('error');
+        setGisError(
+          e instanceof Error && e.message !== 'gis-unavailable'
+            ? e.message
+            : 'Не удалось загрузить вход через Google. Проверьте доступ к accounts.google.com и попробуйте ещё раз',
+        );
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [attempt, handleCredential]);
 
   return (
     <div style={{
@@ -75,63 +178,73 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <div style={{
           fontSize: '14px',
           color: colors.textSecondary,
-          marginBottom: '32px',
+          marginBottom: '28px',
         }}>
           Трассировка покрытия требований
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <label style={{
-            display: 'block',
-            fontSize: '13px',
-            fontWeight: 500,
-            color: colors.textSecondary,
-            marginBottom: '6px',
+        {/* Контейнер кнопки Google — GIS отрисовывает её сюда сам */}
+        <div style={{ display: 'flex', justifyContent: 'center', minHeight: '44px', marginBottom: '16px' }}>
+          {gisState === 'error' ? (
+            <div style={{ width: '100%' }}>
+              <div style={{
+                padding: '12px 14px', borderRadius: radii.md,
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: colors.textSecondary, fontSize: '13px', lineHeight: 1.5,
+              }}>
+                {gisError}
+              </div>
+              <button
+                onClick={() => setAttempt(a => a + 1)}
+                style={{
+                  width: '100%', marginTop: '12px', padding: '10px',
+                  borderRadius: radii.md, border: `1px solid ${colors.border}`,
+                  background: colors.white, color: colors.textPrimary,
+                  fontSize: '14px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Повторить
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div ref={buttonRef} style={{ display: 'flex', justifyContent: 'center' }} />
+              {gisState === 'loading' && (
+                <div style={{ fontSize: '13px', color: colors.textTertiary, textAlign: 'center' }}>
+                  Загрузка входа через Google…
+                </div>
+              )}
+              {submitting && (
+                <div style={{ fontSize: '13px', color: colors.textSecondary, textAlign: 'center', marginTop: '8px' }}>
+                  Входим…
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {loginError && (
+          <div style={{
+            padding: '12px 14px', marginBottom: '16px', borderRadius: radii.md,
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            color: '#B91C1C', fontSize: '13px', lineHeight: 1.5,
           }}>
-            Ваше имя
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Введите имя..."
-            autoFocus
-            style={{
-              width: '100%',
-              padding: '12px 16px',
-              borderRadius: radii.md,
-              border: `1px solid ${colors.border}`,
-              fontSize: '15px',
-              fontFamily: 'inherit',
-              outline: 'none',
-              transition: 'border-color 0.15s',
-              background: colors.white,
-              boxSizing: 'border-box',
-            }}
-            onFocus={e => e.target.style.borderColor = colors.greenAccent}
-            onBlur={e => e.target.style.borderColor = 'rgba(0,0,0,0.07)'}
-          />
-          <button
-            type="submit"
-            disabled={!name.trim() || loading}
-            style={{
-              width: '100%',
-              marginTop: '20px',
-              padding: '12px',
-              borderRadius: radii.md,
-              border: 'none',
-              background: name.trim() ? colors.greenAccent : '#E5E7EB',
-              color: name.trim() ? '#fff' : colors.textTertiary,
-              fontSize: '15px',
-              fontWeight: 600,
-              cursor: name.trim() ? 'pointer' : 'default',
-              fontFamily: 'inherit',
-              transition: 'all 0.15s',
-            }}
-          >
-            {loading ? 'Вход...' : 'Войти'}
-          </button>
-        </form>
+            {loginError}
+          </div>
+        )}
+
+        <div style={{
+          padding: '12px 14px', borderRadius: radii.md,
+          background: 'rgba(122, 224, 90, 0.10)',
+          border: '1px solid rgba(122, 224, 90, 0.25)',
+          fontSize: '12px', color: colors.textSecondary, lineHeight: 1.6,
+        }}>
+          Вход через корпоративный Google-аккаунт{' '}
+          <span style={{ color: colors.greenDark, fontWeight: 600 }}>@surf.dev</span>.
+          Доступ только для сотрудников Surf.
+        </div>
       </div>
     </div>
   );

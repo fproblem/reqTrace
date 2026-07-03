@@ -11,7 +11,6 @@ import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface PageDetailPageProps {
-  userId: string;
   jiraBaseUrl?: string;
 }
 
@@ -44,7 +43,7 @@ function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderRep
   return !!a && sameIdSet(a.rendered, b.rendered) && sameIdSet(a.considered, b.considered);
 }
 
-export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
+export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -134,7 +133,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     const prevSnapshotId = page?.current_snapshot?.id ?? null;
     const prevStatusById = new Map(highlights.map(h => [h.id, h.status] as const));
     try {
-      const refreshed = await api.refreshPage(pageId, userId);
+      const refreshed = await api.refreshPage(pageId);
       const newHighlights = (await loadPage()) ?? [];
 
       const changed = (refreshed.current_snapshot?.id ?? null) !== prevSnapshotId;
@@ -180,7 +179,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
     if (!pageId) return;
     setShowBaselineWarning(false);
     try {
-      await api.setBaseline(pageId, userId);
+      await api.setBaseline(pageId);
       await loadPage();
     } catch (e: any) {
       showToast('error', 'Не удалось закрепить baseline', e.message);
@@ -229,7 +228,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
 
   const handleAddTest = async (highlightId: string, testKey: string) => {
     try {
-      await api.addTestLink(highlightId, testKey, userId);
+      await api.addTestLink(highlightId, testKey);
       await loadPage();
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);
@@ -257,7 +256,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
 
   const handleReanchor = async (highlightId: string) => {
     try {
-      await api.reanchorHighlight(highlightId, userId);
+      await api.reanchorHighlight(highlightId);
       await loadPage();
       if (pageId) {
         const refreshed = await api.listHighlights(pageId);
@@ -413,7 +412,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
         anchor_block_end: anchorBlockEnd,
         start_char_offset: startCharOffset,
         end_char_offset: endCharOffset,
-        user_id: userId,
       });
       window.getSelection()?.removeAllRanges();
       setShowSelectionPopup(false);
@@ -492,7 +490,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = ({ userId }) => {
       if (!pageId) return;
       setPromoting(true);
       try {
-        await api.promotePage(pageId, userId);
+        await api.promotePage(pageId);
         await loadPage();
         showToast('success', 'Страница подключена', 'Содержимое загружено из Confluence');
       } catch (e: any) {

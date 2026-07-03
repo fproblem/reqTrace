@@ -37,11 +37,10 @@ function saveExpandState(state: Record<string, boolean>) {
 }
 
 interface PageTreeProps {
-  userId: string;
   onPageAdded?: () => void;
 }
 
-export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
+export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [spaces, setSpaces] = useState<SpaceTree[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandState, setExpandState] = useState<Record<string, boolean>>(loadExpandState);
@@ -85,7 +84,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
     setAdding(true);
     setError('');
     try {
-      const page = await api.addPage(newUrl.trim(), userId);
+      const page = await api.addPage(newUrl.trim());
       setNewUrl('');
       setShowAddForm(false);
       await loadTree();
@@ -102,7 +101,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
 
   const handleAddDemo = async () => {
     try {
-      const page = await api.addDemoPage(userId);
+      const page = await api.addDemoPage();
       await loadTree();
       navigate(`/pages/${page.id}`);
     } catch (e: any) {
@@ -114,7 +113,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ userId, onPageAdded }) => {
     if (syncing) return;
     setSyncing(true);
     try {
-      const res = await api.syncTree(userId);
+      const res = await api.syncTree();
       await loadTree();
 
       const parts: string[] = [];

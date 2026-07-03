@@ -34,6 +34,12 @@ def _verify_google_credential(credential: str) -> dict:
     )
 
 
+@router.get("/config")
+async def auth_config():
+    """Публичная конфигурация для страницы входа. client_id — не секрет."""
+    return {"google_client_id": settings.GOOGLE_CLIENT_ID}
+
+
 @router.post("/google", response_model=AuthUserResponse)
 async def login_with_google(
     data: GoogleLoginRequest,

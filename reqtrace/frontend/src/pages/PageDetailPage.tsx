@@ -87,14 +87,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const loadPage = useCallback(async () => {
     if (!pageId) return;
     try {
-      const [pageData, hlData, settingsData] = await Promise.all([
+      const [pageData, hlData] = await Promise.all([
         api.getPage(pageId),
         api.listHighlights(pageId),
-        api.getSettings(),
       ]);
       setPage(pageData);
       setHighlights(hlData);
-      setJiraBaseUrl(settingsData.jira_base_url || '');
+      // Jira теперь свойство проекта страницы — приходит вместе с ней.
+      setJiraBaseUrl(pageData.jira_base_url || '');
       return hlData;
     } catch (e: any) {
       showToast('error', 'Не удалось загрузить страницу', e.message);

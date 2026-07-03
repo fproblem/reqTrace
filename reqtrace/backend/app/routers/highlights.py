@@ -8,11 +8,11 @@ from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models.page import Page
 from app.models.snapshot import PageSnapshot
 from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
 from app.models.user import User
+from app.project_access import require_page_access
 from app.schemas.highlight import (
     HighlightCreate, HighlightResponse,
     TestLinkCreate, TestLinkResponse,
@@ -35,9 +35,7 @@ async def create_highlight(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    page = await db.get(Page, page_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
+    page, _, _ = await require_page_access(db, page_id, current_user)
 
     snap_result = await db.execute(
         select(PageSnapshot)
@@ -78,7 +76,12 @@ async def create_highlight(
 
 
 @router.get("/api/pages/{page_id}/highlights", response_model=list[HighlightResponse])
-async def list_highlights(page_id: UUID, db: AsyncSession = Depends(get_db)):
+async def list_highlights(
+    page_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_page_access(db, page_id, current_user)
     result = await db.execute(
         select(Highlight)
         .where(Highlight.page_id == page_id)
@@ -89,10 +92,15 @@ async def list_highlights(page_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/api/highlights/{highlight_id}", status_code=204)
-async def delete_highlight(highlight_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_highlight(
+    highlight_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     highlight = await db.get(Highlight, highlight_id)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
+    await require_page_access(db, highlight.page_id, current_user)
 
     await db.delete(highlight)
     await db.flush()
@@ -108,6 +116,7 @@ async def reanchor_highlight(
     highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
+    await require_page_access(db, highlight.page_id, current_user)
     if highlight.status != "outdated":
         raise HTTPException(status_code=400, detail="Only outdated highlights can be reanchored")
 
@@ -147,6 +156,7 @@ async def reanchor_highlight(
 async def mark_highlight_lost(
     highlight_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Перевести привязку в статус "утрачено".
 
@@ -157,6 +167,7 @@ async def mark_highlight_lost(
     highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
+    await require_page_access(db, highlight.page_id, current_user)
 
     if highlight.status != "lost":
         highlight.status = "lost"
@@ -170,6 +181,7 @@ async def mark_highlight_lost(
 async def unmark_highlight_lost(
     highlight_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Вернуть привязку из «Утрачено», если она снова отображается на странице.
 
@@ -180,6 +192,7 @@ async def unmark_highlight_lost(
     highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
+    await require_page_access(db, highlight.page_id, current_user)
 
     if highlight.status == "lost":
         highlight.status = "outdated"
@@ -199,6 +212,7 @@ async def add_test_link(
     highlight = await db.get(Highlight, highlight_id)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
+    await require_page_access(db, highlight.page_id, current_user)
 
     link = HighlightTest(
         highlight_id=highlight_id,
@@ -213,10 +227,17 @@ async def add_test_link(
 
 
 @router.delete("/api/highlight-tests/{link_id}", status_code=204)
-async def remove_test_link(link_id: UUID, db: AsyncSession = Depends(get_db)):
+async def remove_test_link(
+    link_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     link = await db.get(HighlightTest, link_id)
     if not link:
         raise HTTPException(status_code=404, detail="Test link not found")
+    highlight = await db.get(Highlight, link.highlight_id)
+    if highlight:
+        await require_page_access(db, highlight.page_id, current_user)
 
     await db.delete(link)
     await db.flush()

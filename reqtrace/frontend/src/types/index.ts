@@ -12,8 +12,26 @@ export interface AuthUser {
   avatar_url: string | null;
 }
 
+/** Проект: Confluence-сервер + личные креды участников (v1.5.1). */
+export interface Project {
+  id: string;
+  name: string;
+  confluence_base_url: string;
+  jira_base_url: string | null;
+  joined: boolean;
+  my_status: 'ok' | 'invalid' | 'unchecked' | null;
+  my_username: string | null;
+  last_check_at: string | null;
+}
+
+export interface CredentialCheckResult {
+  status: 'ok' | 'invalid';
+  last_check_at: string;
+}
+
 export interface PageListItem {
   id: string;
+  project_id: string;
   confluence_page_id: string;
   confluence_url: string;
   title: string;
@@ -40,6 +58,10 @@ export interface BaselineInfo {
 
 export interface PageDetail {
   id: string;
+  project_id: string;
+  project_name: string;
+  /** Jira проекта страницы — из него строятся ссылки на тест-кейсы. */
+  jira_base_url: string;
   confluence_page_id: string;
   confluence_url: string;
   title: string;
@@ -99,6 +121,16 @@ export interface TreeNodeItem {
 export interface SpaceTree {
   space_key: string;
   pages: TreeNodeItem[];
+}
+
+/** Верхний уровень дерева — проект пользователя (v1.5.1).
+ *  no_access=true (креды невалидны) — спейсы не приходят, UI показывает замок. */
+export interface ProjectTree {
+  project_id: string;
+  project_name: string;
+  is_demo: boolean;
+  no_access: boolean;
+  spaces: SpaceTree[];
 }
 
 export interface TreeSyncResult {

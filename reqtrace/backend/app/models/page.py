@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, func
+from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,9 +10,17 @@ from app.database import Base
 
 class Page(Base):
     __tablename__ = "pages"
+    __table_args__ = (
+        # Одна и та же Confluence-страница может быть заведена в двух проектах —
+        # это две независимые записи (уникальность в пределах проекта, v1.5.1).
+        UniqueConstraint("project_id", "confluence_page_id", name="uq_pages_project_confluence_page_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    confluence_page_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True
+    )
+    confluence_page_id: Mapped[str] = mapped_column(String(64), nullable=False)
     confluence_url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     space_key: Mapped[str] = mapped_column(String(64), nullable=True)

@@ -587,17 +587,26 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
     toggleExpand(nodeKey);
   };
 
-  const coverageDotColor = node.is_virtual ? undefined
-    : node.coverage_percent >= 70 ? colors.statusActive
-    : node.coverage_percent >= 30 ? colors.statusOutdated
-    : node.coverage_percent > 0 ? colors.statusLost
+  // Точка — худший статус привязок страницы: утрачено > требует проверки >
+  // актуально. Нет привязок (или виртуальная страница) — нет точки.
+  const statusDotColor = node.is_virtual ? undefined
+    : node.highlights_lost > 0 ? colors.statusLost
+    : node.highlights_outdated > 0 ? colors.statusOutdated
+    : node.highlights_active > 0 ? colors.statusActive
     : undefined;
+
+  const breakdown = [
+    node.highlights_active > 0 && `актуально: ${node.highlights_active}`,
+    node.highlights_outdated > 0 && `требует проверки: ${node.highlights_outdated}`,
+    node.highlights_lost > 0 && `утрачено: ${node.highlights_lost}`,
+  ].filter(Boolean).join(', ');
+  const nodeTooltip = breakdown ? `${node.title}\nПривязки — ${breakdown}` : node.title;
 
   return (
     <div>
       <button
         onClick={handleClick}
-        title={node.title}
+        title={nodeTooltip}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -643,13 +652,13 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
           <span style={{ width: '12px', flexShrink: 0 }} />
         )}
 
-        {/* Coverage dot */}
-        {coverageDotColor && (
+        {/* Точка худшего статуса привязок */}
+        {statusDotColor && (
           <span style={{
             width: '6px',
             height: '6px',
             borderRadius: '50%',
-            background: coverageDotColor,
+            background: statusDotColor,
             flexShrink: 0,
           }} />
         )}

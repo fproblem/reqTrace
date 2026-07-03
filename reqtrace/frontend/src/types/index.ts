@@ -82,7 +82,9 @@ export interface TreeNodeItem {
   space_key: string | null;
   is_virtual: boolean;
   parent_confluence_page_id: string | null;
-  coverage_percent: number;
+  highlights_active: number;
+  highlights_outdated: number;
+  highlights_lost: number;
   has_updates: boolean;
 }
 

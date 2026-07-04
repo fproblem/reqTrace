@@ -495,8 +495,12 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
   }, [menuOpen]);
 
   const status = project.my_status;
-  const statusColor = status === 'ok' ? colors.statusActive
-    : status === 'invalid' ? colors.statusLost
+  // Сервер был недоступен при последней проверке — креды не виноваты, но и не
+  // подтверждены: жёлтая индикация вместо зелёного «Подключено».
+  const unreachable = status === 'ok' && project.my_last_check_result === 'unreachable';
+  const statusColor = status === 'invalid' ? colors.statusLost
+    : unreachable ? colors.statusOutdated
+    : status === 'ok' ? colors.statusActive
     : colors.textTertiary;
 
   const handleCheck = async () => {
@@ -510,7 +514,13 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       }
       onChanged();
     } catch (e: any) {
-      showToast('error', 'Не удалось проверить подключение', e.message);
+      if (e?.status === 502) {
+        // Недоступность сервера — не ошибка кред и не поломка reqtrace:
+        // некритичное жёлтое предупреждение вместо красной ошибки.
+        showToast('warning', 'Confluence недоступен', e.message);
+      } else {
+        showToast('error', 'Не удалось проверить подключение', e.message);
+      }
       // Неудачная попытка тоже фиксируется на бэке (unreachable) — подтянуть её на карточку.
       onChanged();
     } finally {
@@ -613,15 +623,12 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       {/* Статусная строка */}
       <div style={{ marginTop: '8px', fontSize: '13px' }}>
         {status === 'ok' && (
-          project.my_last_check_result === 'unreachable' ? (
-            <>
-              <span style={{ color: colors.statusActive }}>● Подключено</span>
-              <div style={{ color: colors.statusOutdated, marginTop: '2px' }}>
-                ⚠ Confluence был недоступен при проверке
-                {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — проверьте
-                VPN или сеть
-              </div>
-            </>
+          unreachable ? (
+            <span style={{ color: colors.statusOutdated }}>
+              ⚠ Confluence был недоступен при проверке
+              {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — дело не
+              в кредах: проверьте VPN или сеть
+            </span>
           ) : (
             <span style={{ color: colors.statusActive }}>
               ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}

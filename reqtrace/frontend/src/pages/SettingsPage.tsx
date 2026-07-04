@@ -702,7 +702,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           onMouseLeave={iconButtonHoverOff}
         >
           <RefreshIcon spinning={checking} />
-          {checking ? 'Проверка…' : 'Проверить'}
+          Проверить
         </button>
         <div style={{ position: 'relative' }} ref={menuRef}>
           <button

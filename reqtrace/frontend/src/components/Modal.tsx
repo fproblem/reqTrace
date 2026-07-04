@@ -28,10 +28,13 @@ const windowStyle: React.CSSProperties = {
   background: colors.white,
   borderRadius: radii.lg,
   boxShadow: shadows.card,
-  padding: '24px',
   maxWidth: 'calc(100vw - 48px)',
   maxHeight: 'calc(100vh - 48px)',
-  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+  // Скроллится внутренняя область контента (шапка на месте): скроллбар на
+  // самом окне налезал бы на скругление углов.
+  overflow: 'hidden',
 };
 
 /** Сплошной текст в модалках: единый размер, интервал, выравнивание по ширине.
@@ -40,7 +43,7 @@ const windowStyle: React.CSSProperties = {
  *  line box своей строки — межстрочные отступы становятся неровными. */
 export const modalTextStyle: React.CSSProperties = {
   fontSize: '13px',
-  lineHeight: 1.6,
+  lineHeight: 1.45,  // как у контента страниц (ContentRenderer/DiffView)
   color: colors.textSecondary,
   textAlign: 'justify',
   // Без pretty последняя строка-«сирота» оставляет предыдущую строку
@@ -112,7 +115,8 @@ export const Modal: React.FC<{
     <div style={overlayStyle} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={windowRef} role="dialog" aria-modal="true" style={{ ...windowStyle, width }}>
         <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '24px 24px 0', marginBottom: '18px', flexShrink: 0,
         }}>
           <h2 style={{ fontSize: '17px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
             {title}
@@ -140,7 +144,9 @@ export const Modal: React.FC<{
             <XIcon />
           </button>
         </div>
-        {children}
+        <div style={{ padding: '0 24px 24px', overflowY: 'auto' }}>
+          {children}
+        </div>
       </div>
     </div>,
     document.body,

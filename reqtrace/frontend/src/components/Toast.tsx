@@ -61,16 +61,18 @@ const typeStyles: Record<ToastType, { bg: string; border: string; titleColor: st
 };
 
 // \u041a\u043e\u043b\u044c\u0446\u043e \u043e\u0431\u0440\u0430\u0442\u043d\u043e\u0433\u043e \u043e\u0442\u0441\u0447\u0451\u0442\u0430 undo-\u0442\u043e\u0441\u0442\u0430: \u0446\u0438\u0444\u0440\u0430 \u0441\u0435\u043a\u0443\u043d\u0434 \u0432 \u0446\u0435\u043d\u0442\u0440\u0435, \u0432\u043e\u043a\u0440\u0443\u0433 \u2014
-// \u0434\u0443\u0433\u0430, \u043f\u043b\u0430\u0432\u043d\u043e \u0442\u0430\u044e\u0449\u0430\u044f \u043f\u043e \u0447\u0430\u0441\u043e\u0432\u043e\u0439 (stroke-dashoffset + transition 1s linear,
-// \u0442\u043e\u0442 \u0436\u0435 \u043f\u0440\u0438\u0451\u043c \u043d\u0435\u043f\u0440\u0435\u0440\u044b\u0432\u043d\u043e\u0441\u0442\u0438, \u0447\u0442\u043e \u0431\u044b\u043b \u0443 \u043f\u043b\u043e\u0441\u043a\u043e\u0433\u043e \u0431\u0430\u0440\u0430). \u0414\u0443\u0433\u0430 \u0446\u0435\u043b\u0438\u0442\u0441\u044f \u0432
-// (secondsLeft - 1)/total \u0438 \u043f\u043e\u0442\u043e\u043c\u0443 \u0434\u043e\u0433\u043e\u0440\u0430\u0435\u0442 \u0440\u043e\u0432\u043d\u043e \u043a \u0441\u043a\u0440\u044b\u0442\u0438\u044e \u0442\u043e\u0441\u0442\u0430, \u0430 \u043d\u0435 \u043a
-// \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0446\u0438\u0444\u0440\u0435; \u043d\u0430 \u043f\u0435\u0440\u0432\u043e\u043c \u043a\u0430\u0434\u0440\u0435 \u0440\u0438\u0441\u0443\u0435\u0442\u0441\u044f \u043f\u043e\u043b\u043d\u043e\u0439 \u0438 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u0441\u043e \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e
-// \u043a\u0430\u0434\u0440\u0430 (armed), \u0438\u043d\u0430\u0447\u0435 transition \u043d\u0435 \u0441\u044b\u0433\u0440\u0430\u0435\u0442 \u043d\u0430 initial render.
-const RING_SIZE = 48;
-const RING_STROKE = 4;
+// \u0434\u0443\u0433\u0430, \u043f\u043b\u0430\u0432\u043d\u043e \u0442\u0430\u044e\u0449\u0430\u044f \u043f\u043e \u0447\u0430\u0441\u043e\u0432\u043e\u0439 (stroke-dashoffset + transition 1s linear).
+// \u041a\u043e\u043c\u043f\u0430\u043a\u0442\u043d\u043e\u0435 (26px) \u2014 \u0437\u0430\u043d\u0438\u043c\u0430\u0435\u0442 \u0441\u043b\u043e\u0442 \u043a\u0440\u0435\u0441\u0442\u0438\u043a\u0430 \u0437\u0430\u043a\u0440\u044b\u0442\u0438\u044f \u043e\u0431\u044b\u0447\u043d\u043e\u0433\u043e \u0442\u043e\u0441\u0442\u0430, \u0442\u0430\u043a
+// \u0447\u0442\u043e \u0430\u043d\u0430\u0442\u043e\u043c\u0438\u044f \u0432\u0441\u0435\u0445 \u0442\u043e\u0441\u0442\u043e\u0432 \u0435\u0434\u0438\u043d\u0430; \u0437\u0430\u043e\u0434\u043d\u043e \u0447\u0435\u0441\u0442\u043d\u043e \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u0442, \u043a\u043e\u0433\u0434\u0430 \u0442\u043e\u0441\u0442
+// \u0437\u0430\u043a\u0440\u043e\u0435\u0442\u0441\u044f. \u0414\u0443\u0433\u0430 \u0446\u0435\u043b\u0438\u0442\u0441\u044f \u0432 (secondsLeft - 1)/total \u0438 \u043f\u043e\u0442\u043e\u043c\u0443 \u0434\u043e\u0433\u043e\u0440\u0430\u0435\u0442 \u0440\u043e\u0432\u043d\u043e
+// \u043a \u0441\u043a\u0440\u044b\u0442\u0438\u044e \u0442\u043e\u0441\u0442\u0430, \u0430 \u043d\u0435 \u043a \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0446\u0438\u0444\u0440\u0435; \u043d\u0430 \u043f\u0435\u0440\u0432\u043e\u043c \u043a\u0430\u0434\u0440\u0435 \u0440\u0438\u0441\u0443\u0435\u0442\u0441\u044f \u043f\u043e\u043b\u043d\u043e\u0439
+// \u0438 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u0441\u043e \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u043a\u0430\u0434\u0440\u0430 (armed), \u0438\u043d\u0430\u0447\u0435 transition \u043d\u0435 \u0441\u044b\u0433\u0440\u0430\u0435\u0442 \u043d\u0430
+// initial render.
+const RING_SIZE = 26;
+const RING_STROKE = 2.5;
 
-const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: string }> = ({
-  secondsLeft, total, color,
+const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: string; style?: React.CSSProperties }> = ({
+  secondsLeft, total, color, style: styleProp,
 }) => {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
@@ -83,7 +85,7 @@ const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: strin
   const fraction = Math.max(0, (armed ? secondsLeft - 1 : secondsLeft) / total);
 
   return (
-    <div style={{ position: 'relative', width: RING_SIZE, height: RING_SIZE, flexShrink: 0 }}>
+    <div style={{ position: 'relative', width: RING_SIZE, height: RING_SIZE, flexShrink: 0, ...styleProp }}>
       <svg width={RING_SIZE} height={RING_SIZE} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
         <circle
           cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={r}
@@ -104,7 +106,7 @@ const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: strin
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '16px',
+        fontSize: '11px',
         fontWeight: 700,
         color,
         fontVariantNumeric: 'tabular-nums',
@@ -199,9 +201,7 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         boxShadow: shadows.panel,
         display: 'flex',
         gap: '12px',
-        // Кольцо undo-тоста центрируется по всему контенту (заголовок +
-        // текст + кнопка), у обычного тоста иконка сидит на первой строке.
-        alignItems: undo ? 'center' : 'flex-start',
+        alignItems: 'flex-start',
         maxWidth: '420px',
         width: '100%',
         opacity: exiting ? 0 : 1,
@@ -210,27 +210,21 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         animation: 'toast-in 0.3s ease-out',
       }}
     >
-      {/* Слева: у undo-тоста — кольцо отсчёта с цифрой (оно же — знак типа:
-          цвет дуги), у обычного — кружок 22px со знаком, заголовок выровнен
-          на его высоту (line-height 22) */}
-      {undo ? (
-        <CountdownRing secondsLeft={secondsLeft} total={undo.seconds} color={style.titleColor} />
-      ) : (
-        <div style={{
-          width: '22px',
-          height: '22px',
-          borderRadius: '50%',
-          background: style.bg,
-          border: `1.5px solid ${style.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: style.titleColor,
-          flexShrink: 0,
-        }}>
-          <TypeIcon type={toast.type} />
-        </div>
-      )}
+      {/* Icon — кружок 22px, заголовок выровнен на его высоту (line-height 22) */}
+      <div style={{
+        width: '22px',
+        height: '22px',
+        borderRadius: '50%',
+        background: style.bg,
+        border: `1.5px solid ${style.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: style.titleColor,
+        flexShrink: 0,
+      }}>
+        <TypeIcon type={toast.type} />
+      </div>
 
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -292,10 +286,19 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         )}
       </div>
 
-      {/* Close — как в модалках (XIcon, ховер/пресс); у undo-тоста крестика
-          нет: закрытие было бы неоднозначным. Отрицательные отступы — чтобы
-          26px-кнопка центрировалась на 22px-строке заголовка и не раздувала
-          правый паддинг тоста. */}
+      {/* Правый верхний слот: у обычного тоста — крестик закрытия, у
+          undo-тоста вместо него кольцо отсчёта (закрытие крестиком было бы
+          неоднозначным, а кольцо как раз показывает, когда тост закроется).
+          Отрицательные отступы — чтобы 26px-элемент центрировался на
+          22px-строке заголовка и не раздувал правый паддинг тоста. */}
+      {undo && (
+        <CountdownRing
+          secondsLeft={secondsLeft}
+          total={undo.seconds}
+          color={style.titleColor}
+          style={{ marginTop: '-2px', marginRight: '-4px' }}
+        />
+      )}
       {!undo && (
         <button
           onClick={handleDismiss}

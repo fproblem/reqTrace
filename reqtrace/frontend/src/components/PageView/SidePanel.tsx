@@ -439,19 +439,41 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
         )}
 
-        {/* Text excerpt */}
-        <div style={{
-          background: 'rgba(0,0,0,0.02)',
-          borderRadius: radii.md,
-          padding: '12px 16px',
-          fontSize: '13px',
-          lineHeight: '1.5',
-          color: colors.textPrimary,
-          marginBottom: '20px',
-          maxHeight: '150px',
-          overflow: 'auto',
-          border: `1px solid ${colors.border}`,
-        }}>
+        {/* Text excerpt — клик возвращает страницу к самому выделению
+            (полистал контент → потерял место). Для не отображающихся на
+            странице привязок скроллить некуда — цитата остаётся текстом. */}
+        <div
+          onClick={notOnPage ? undefined : () => {
+            // Выделение текста цитаты (для копирования) кликом не считаем.
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed) return;
+            onNavigate(highlight);
+          }}
+          title={notOnPage ? undefined : 'Показать выделение на странице'}
+          style={{
+            background: 'rgba(0,0,0,0.02)',
+            borderRadius: radii.md,
+            padding: '12px 16px',
+            fontSize: '13px',
+            lineHeight: '1.5',
+            color: colors.textPrimary,
+            marginBottom: '20px',
+            maxHeight: '150px',
+            overflow: 'auto',
+            border: `1px solid ${colors.border}`,
+            cursor: notOnPage ? 'default' : 'pointer',
+            transition: 'background 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={e => {
+            if (notOnPage) return;
+            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+            e.currentTarget.style.borderColor = colors.borderHover;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = colors.border;
+          }}
+        >
           {highlight.text_content}
         </div>
 

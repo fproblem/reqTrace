@@ -10,7 +10,8 @@
    403 «проверьте креды»; участник ok видит страницу; дерево не содержит
    чужих проектов, invalid → узел no_access без спейсов.
 5. add_page: неоднозначный base_url без project_id → 400; ноль кандидатов → 400.
-6. Демо: авто-создание личного демо-проекта; refresh демо-страницы → 400.
+6. Демо: авто-создание личного демо-проекта; refresh демо-страницы → 400;
+   удаление последней демо-страницы удаляет и опустевший демо-проект.
 
 БД не нужна: get_db подменяется FakeSession. Обход всех маршрутов на 401 без
 cookie — в test_auth.py, он накрывает и роутер projects.
@@ -532,6 +533,48 @@ class TestDemoPages(ProjectTestBase):
 
         resp = self.client.get(f"/api/pages/{page.id}")
         self.assertEqual(resp.status_code, 404)
+
+    def _make_demo_with_page(self):
+        demo = make_project(name="Демо — QA Surf", base_url="", is_demo=True,
+                            created_by=self.user.id, jira=None)
+        page = make_page(demo, self.user, cpid="demo-12345678")
+        page.space_key = "DEMO"
+        self.session.objects[(Project, demo.id)] = demo
+        self.session.objects[(Page, page.id)] = page
+        return demo, page
+
+    def test_delete_last_demo_page_removes_demo_project(self):
+        demo, page = self._make_demo_with_page()
+        self.session.execute_results = [
+            None,           # delete HighlightTest
+            None,           # delete Highlight
+            None,           # delete Baseline
+            None,           # delete PageSnapshot
+            FakeResult(0),  # реальных страниц в спейсе не осталось
+            None,           # bulk-delete виртуальных страниц спейса
+            FakeResult(0),  # страниц в демо-проекте не осталось
+        ]
+
+        resp = self.client.delete(f"/api/pages/{page.id}")
+        self.assertEqual(resp.status_code, 204, resp.text)
+        self.assertIn(page, self.session.deleted)
+        self.assertIn(demo, self.session.deleted)
+
+    def test_delete_demo_page_keeps_project_with_remaining_pages(self):
+        demo, page = self._make_demo_with_page()
+        self.session.execute_results = [
+            None,           # delete HighlightTest
+            None,           # delete Highlight
+            None,           # delete Baseline
+            None,           # delete PageSnapshot
+            FakeResult(1),  # в спейсе осталась другая демо-страница
+            FakeResult(1),  # в проекте остались страницы — проект живёт
+        ]
+
+        resp = self.client.delete(f"/api/pages/{page.id}")
+        self.assertEqual(resp.status_code, 204, resp.text)
+        self.assertIn(page, self.session.deleted)
+        self.assertNotIn(demo, self.session.deleted)
 
 
 if __name__ == "__main__":

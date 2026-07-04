@@ -866,6 +866,17 @@ async def delete_page(
             )
             await db.flush()
 
+    # Опустевший демо-проект удаляем вместе с последней страницей: пустой он
+    # только висит в дереве, а при следующей демо-странице создастся заново
+    # (get_or_create_demo_project). У демо нет кред — терять нечего.
+    if project.is_demo:
+        remaining_result = await db.execute(
+            select(func.count(Page.id)).where(Page.project_id == project.id)
+        )
+        if (remaining_result.scalar() or 0) == 0:
+            await db.delete(project)
+            await db.flush()
+
     return Response(status_code=204)
 
 

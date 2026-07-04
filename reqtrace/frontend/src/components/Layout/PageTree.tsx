@@ -3,6 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
+import { RefreshIcon } from '../RefreshIcon';
+import { Select } from '../Select';
+import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
 
@@ -57,6 +60,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
+  const { version: treeVersion } = useTreeRefresh();
 
   const loadTree = useCallback(async () => {
     try {
@@ -69,8 +73,9 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     }
   }, [showToast]);
 
-  // Refetch tree on mount and when route changes (covers delete, refresh scenarios)
-  useEffect(() => { loadTree(); }, [location.pathname, loadTree]);
+  // Refetch tree on mount, when route changes (covers delete, refresh scenarios)
+  // and on explicit refresh signal (изменения проектов на экране настроек).
+  useEffect(() => { loadTree(); }, [location.pathname, treeVersion, loadTree]);
 
   // Проекты с кредами подтягиваются при открытии формы добавления.
   useEffect(() => {
@@ -224,12 +229,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <style>{`
-        @keyframes reqtrace-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
       {/* Header */}
       <div style={{
         display: 'flex',
@@ -266,23 +265,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               transition: 'all 0.15s',
             }}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{
-                display: 'block',
-                animation: syncing ? 'reqtrace-spin 0.8s linear infinite' : undefined,
-              }}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <RefreshIcon size={12} spinning={syncing} />
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -331,27 +314,17 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           />
           {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
           {candidateProjects.length > 1 && (
-            <select
+            <Select
               value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
+              onChange={setSelectedProjectId}
+              size="sm"
               title="Проект, в который добавить страницу"
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                borderRadius: radii.sm,
-                border: `1px solid ${colors.border}`,
-                fontSize: '12px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                marginBottom: '6px',
-                background: colors.white,
-              }}
-            >
-              {candidateProjects.map(p => (
-                <option key={p.id} value={p.id}>В проект: {p.name}</option>
-              ))}
-            </select>
+              style={{ marginBottom: '6px' }}
+              options={candidateProjects.map(p => ({
+                value: p.id,
+                label: `В проект: ${p.name}`,
+              }))}
+            />
           )}
           <div style={{ display: 'flex', gap: '4px' }}>
             <button

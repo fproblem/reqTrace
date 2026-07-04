@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
+import { XIcon } from '../Modal';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 
 interface SidePanelProps {
@@ -21,6 +22,32 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   outdated: { label: 'Требует проверки', color: colors.statusOutdated },
   lost: { label: 'Утрачено', color: colors.statusLost },
 };
+
+// Иконка алерта статуса: залитый круг цвета статуса с белым знаком —
+// галочка (актуально), «!» (требует проверки), крестик (утрачено).
+const StatusAlertIcon: React.FC<{ status: string }> = ({ status }) => (
+  <svg width={16} height={16} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10" fill="currentColor" />
+    {status === 'active' && (
+      <polyline
+        points="8 12.5 11 15.5 16.5 9.5" fill="none" stroke="#fff"
+        strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+      />
+    )}
+    {status === 'outdated' && (
+      <>
+        <line x1="12" y1="7" x2="12" y2="13" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <circle cx="12" cy="16.6" r="1.3" fill="#fff" />
+      </>
+    )}
+    {status === 'lost' && (
+      <>
+        <line x1="9" y1="9" x2="15" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <line x1="15" y1="9" x2="9" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+      </>
+    )}
+  </svg>
+);
 
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
@@ -77,13 +104,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       background: 'rgba(255,255,255,0.92)',
       backdropFilter: 'blur(20px)',
       height: '100%',
-      overflow: 'auto',
+      overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Header with navigation */}
+      {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
+          (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
+          ровно под «⋮», стрелка «вниз» — под «Обновить». */}
       <div style={{
-        padding: '17px 20px',
+        padding: '12px 24px 12px 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',
@@ -101,7 +130,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {sorted.length > 1 && (
             <>
               <button
@@ -109,16 +138,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 disabled={!hasPrev}
                 title="Предыдущее выделение"
                 style={{
+                  width: '34px',
+                  height: '34px',
                   background: colors.white,
                   border: `1px solid ${colors.border}`,
                   cursor: hasPrev ? 'pointer' : 'default',
-                  padding: '3px 8px',
-                  borderRadius: radii.sm,
+                  borderRadius: radii.md,
                   color: hasPrev ? colors.textSecondary : colors.textTertiary,
                   opacity: hasPrev ? 1 : 0.4,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                   transition: 'all 0.15s',
                 }}
                 onMouseEnter={e => {
@@ -132,9 +163,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   e.currentTarget.style.borderColor = colors.border;
                   e.currentTarget.style.color = hasPrev ? colors.textSecondary : colors.textTertiary;
                 }}
+                onMouseDown={e => { if (hasPrev) e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                onMouseUp={e => { if (hasPrev) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
               >
                 <svg
-                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth={2}
                   strokeLinecap="round" strokeLinejoin="round"
                   style={{ display: 'block' }}
@@ -148,16 +181,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 disabled={!hasNext}
                 title="Следующее выделение"
                 style={{
+                  width: '34px',
+                  height: '34px',
                   background: colors.white,
                   border: `1px solid ${colors.border}`,
                   cursor: hasNext ? 'pointer' : 'default',
-                  padding: '3px 8px',
-                  borderRadius: radii.sm,
+                  borderRadius: radii.md,
                   color: hasNext ? colors.textSecondary : colors.textTertiary,
                   opacity: hasNext ? 1 : 0.4,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                   transition: 'all 0.15s',
                 }}
                 onMouseEnter={e => {
@@ -171,9 +206,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   e.currentTarget.style.borderColor = colors.border;
                   e.currentTarget.style.color = hasNext ? colors.textSecondary : colors.textTertiary;
                 }}
+                onMouseDown={e => { if (hasNext) e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                onMouseUp={e => { if (hasNext) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
               >
                 <svg
-                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth={2}
                   strokeLinecap="round" strokeLinejoin="round"
                   style={{ display: 'block' }}
@@ -184,36 +221,49 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               </button>
             </>
           )}
+          {/* Крестик — как в модалках (XIcon, прозрачный фон, тот же ховер);
+              34×34 вместо модальных 30×30 — ради колонки с «⋮» верхнего бара. */}
           <button
             onClick={onClose}
+            title="Закрыть"
             style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: '18px', color: colors.textSecondary, padding: '4px',
+              width: '34px', height: '34px', borderRadius: radii.sm,
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: colors.textTertiary, display: 'flex', flexShrink: 0,
+              alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
             }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = colors.textTertiary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
           >
-            ✕
+            <XIcon />
           </button>
         </div>
       </div>
 
-      <div style={{ padding: '20px', flex: 1 }}>
-        {/* Status */}
+      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю */}
         <div style={{
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '4px 12px',
-          borderRadius: radii.pill,
+          gap: '10px',
+          padding: '12px 14px',
+          borderRadius: radii.md,
           background: `${statusInfo.color}15`,
+          border: `1px solid ${statusInfo.color}33`,
           color: statusInfo.color,
-          fontSize: '12px',
+          fontSize: '13px',
           fontWeight: 600,
           marginBottom: '16px',
         }}>
-          <span style={{
-            width: '6px', height: '6px', borderRadius: '50%',
-            background: statusInfo.color,
-          }} />
+          <StatusAlertIcon status={statusLabels[highlight.status] ? highlight.status : 'active'} />
           {statusInfo.label}
         </div>
 
@@ -260,7 +310,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               width: '100%',
               padding: '10px 14px',
               marginBottom: '16px',
-              borderRadius: radii.sm,
+              borderRadius: radii.md,
               border: `1px solid rgba(245,158,11,0.3)`,
               background: 'rgba(245,158,11,0.06)',
               color: colors.statusOutdated,
@@ -276,6 +326,12 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
+            }}
+            onMouseDown={e => {
+              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
+            }}
+            onMouseUp={e => {
+              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
             }}
           >
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}
@@ -299,12 +355,26 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
 
         {/* Tests */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{
-            fontSize: '13px', fontWeight: 600,
-            color: colors.textSecondary, marginBottom: '10px',
-          }}>
-            Привязанные тесты ({highlight.tests.length})
+        <div style={{ marginBottom: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
+              Привязанные тесты
+            </span>
+            {/* Число — нейтральной пилюлей, а не «(2)» в скобках; без цветового
+                акцента — в панели их и так достаточно */}
+            {highlight.tests.length > 0 && (
+              <span style={{
+                padding: '2px 8px',
+                borderRadius: radii.pill,
+                background: 'rgba(0,0,0,0.05)',
+                color: colors.textSecondary,
+                fontSize: '11px',
+                fontWeight: 600,
+                lineHeight: 1.4,
+              }}>
+                {highlight.tests.length}
+              </span>
+            )}
           </div>
 
           {highlight.tests.length === 0 ? (
@@ -321,7 +391,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 12px',
-                    borderRadius: radii.sm,
+                    borderRadius: radii.md,
                     border: `1px solid ${colors.border}`,
                     background: colors.white,
                   }}
@@ -340,15 +410,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   >
                     {test.test_key}
                   </a>
+                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
                   <button
                     onClick={() => onRemoveTest(test.id)}
                     style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: colors.textTertiary, fontSize: '14px', padding: '2px 4px',
+                      width: '26px', height: '26px', borderRadius: radii.sm,
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      color: colors.textTertiary, display: 'flex', flexShrink: 0,
+                      alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
                     }}
                     title="Отвязать тест"
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                      e.currentTarget.style.color = colors.textPrimary;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = colors.textTertiary;
+                    }}
+                    onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                    onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
                   >
-                    ✕
+                    <XIcon />
                   </button>
                 </div>
               ))}
@@ -369,7 +452,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             style={{
               flex: 1,
               padding: '8px 12px',
-              borderRadius: radii.sm,
+              borderRadius: radii.md,
               border: `1px solid ${colors.border}`,
               fontSize: '13px',
               fontFamily: 'inherit',
@@ -382,15 +465,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             disabled={!testKey.trim() || adding}
             style={{
               padding: '8px 14px',
-              borderRadius: radii.sm,
+              borderRadius: radii.md,
               border: 'none',
               background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
               color: '#fff',
               fontWeight: 600,
               fontSize: '13px',
-              cursor: testKey.trim() ? 'pointer' : 'default',
+              cursor: testKey.trim() && !adding ? 'pointer' : 'default',
               fontFamily: 'inherit',
               whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = testKey.trim() ? colors.greenAccent : '#E5E7EB';
+            }}
+            onMouseDown={e => {
+              if (testKey.trim() && !adding) e.currentTarget.style.background = '#3F9E27';
+            }}
+            onMouseUp={e => {
+              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
             }}
           >
             {adding ? '...' : 'Добавить'}
@@ -424,21 +520,40 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           )}
         </div>
 
-        {/* Delete button */}
+      </div>
+
+      {/* Футер с удалением — прижат к низу панели и отделён от контента
+          линией, как шапка: деструктивное действие не смешивается с работой
+          над привязкой. */}
+      <div style={{
+        padding: '14px 20px',
+        borderTop: `1px solid ${colors.border}`,
+        flexShrink: 0,
+      }}>
         <button
           onClick={() => onDeleteHighlight(highlight.id)}
           style={{
-            marginTop: '20px',
             width: '100%',
             padding: '8px',
-            borderRadius: radii.sm,
+            borderRadius: radii.md,
             border: `1px solid rgba(239,68,68,0.2)`,
             background: 'rgba(239,68,68,0.05)',
             color: colors.statusLost,
             fontSize: '13px',
             cursor: 'pointer',
             fontFamily: 'inherit',
+            transition: 'all 0.15s',
           }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
+            e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(239,68,68,0.05)';
+            e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)';
+          }}
+          onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
+          onMouseUp={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
         >
           Удалить выделение
         </button>

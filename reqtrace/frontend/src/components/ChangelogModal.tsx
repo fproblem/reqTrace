@@ -4,6 +4,7 @@ import { colors, radii } from '../styles/tokens';
 
 interface ChangelogEntry {
   version: string;
+  title?: string;
   date: string;
   changes: string[];
 }
@@ -62,12 +63,13 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
                       : colors.white,
                   }}
                 >
-                  {/* Version header */}
+                  {/* Version header: номер слева, дата справа; заголовок релиза — строкой ниже */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'baseline',
-                    marginBottom: '12px',
+                    gap: '12px',
+                    marginBottom: entry.title ? '2px' : '12px',
                   }}>
                     <span style={{
                       fontSize: '15px',
@@ -80,10 +82,22 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
                     <span style={{
                       fontSize: '13px',
                       color: colors.textTertiary,
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
                     }}>
                       {formatDate(entry.date)}
                     </span>
                   </div>
+                  {entry.title && (
+                    <div style={{
+                      fontSize: '13.5px',
+                      fontWeight: 600,
+                      color: colors.textSecondary,
+                      marginBottom: '12px',
+                    }}>
+                      {entry.title}
+                    </div>
+                  )}
 
                   {/* Changes list */}
                   <ul style={{

@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
+import { RefreshIcon } from '../components/RefreshIcon';
+import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
+import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
@@ -83,17 +86,6 @@ const featherProps = {
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
 } as const;
-
-// Та же иконка, что у «Обновить» страницы и синхронизации дерева.
-const RefreshIcon: React.FC<{ spinning?: boolean }> = ({ spinning }) => (
-  <svg {...featherProps} style={{
-    display: 'block', flexShrink: 0,
-    animation: spinning ? 'reqtrace-spin 0.8s linear infinite' : undefined,
-  }}>
-    <polyline points="23 4 23 10 17 10" />
-    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-  </svg>
-);
 
 // Та же иконка, что у меню «⋮» страницы.
 const DotsIcon: React.FC = () => (
@@ -250,17 +242,14 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
             <>
               <div style={fieldStyle}>
                 <label style={labelStyle}>Проект</label>
-                <select
+                <Select
                   value={joinProjectId}
-                  onChange={e => setJoinProjectId(e.target.value)}
-                  style={{ ...inputStyle, appearance: 'auto' }}
-                >
-                  {available.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — {p.confluence_base_url}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setJoinProjectId}
+                  options={available.map(p => ({
+                    value: p.id,
+                    label: `${p.name} — ${p.confluence_base_url}`,
+                  }))}
+                />
               </div>
               <div style={fieldStyle}>
                 <label style={labelStyle}>Логин Confluence</label>
@@ -840,6 +829,7 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
   const { showToast } = useToast();
+  const { refreshTree } = useTreeRefresh();
 
   const load = async () => {
     try {
@@ -849,6 +839,14 @@ export const SettingsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Любое изменение проектов (подключение, креды, переименование, отключение,
+  // удаление, результат проверки) меняет и дерево страниц в сайдбаре —
+  // обновляем его сразу, не дожидаясь смены маршрута.
+  const handleProjectsChanged = () => {
+    void load();
+    refreshTree();
   };
 
   useEffect(() => {
@@ -868,12 +866,6 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
-      <style>{`
-        @keyframes reqtrace-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
         Настройки
       </h1>
@@ -911,7 +903,7 @@ export const SettingsPage: React.FC = () => {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
           {joined.map(project => (
-            <ProjectCard key={project.id} project={project} onChanged={load} />
+            <ProjectCard key={project.id} project={project} onChanged={handleProjectsChanged} />
           ))}
         </div>
       )}
@@ -921,7 +913,7 @@ export const SettingsPage: React.FC = () => {
           available={available}
           existing={projects}
           onClose={() => setShowConnect(false)}
-          onDone={load}
+          onDone={handleProjectsChanged}
         />
       )}
     </div>

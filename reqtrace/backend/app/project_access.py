@@ -122,6 +122,7 @@ async def mark_invalid(db: AsyncSession, cred: ProjectCredential) -> None:
     следом, откатит транзакцию get_db — пометка должна пережить откат."""
     cred.status = "invalid"
     cred.last_check_at = datetime.now(timezone.utc)
+    cred.last_check_result = "invalid"
     await db.commit()
 
 

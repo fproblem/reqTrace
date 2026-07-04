@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
+import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
+import { normalizeBaseUrl } from '../utils/baseUrl';
 
 // --- Общие стили форм и модалок ---
 
@@ -40,38 +42,97 @@ const primaryButtonStyle: React.CSSProperties = {
   fontFamily: 'inherit',
 };
 
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: '9px 18px',
-  borderRadius: radii.pill,
+// Кнопки-иконки — один в один с кнопками верхнего бара страницы (PageDetailPage):
+// 34×34, рамка, hover перекрашивает фон/рамку/иконку, «нажатое» = открытое меню.
+const iconButtonStyle: React.CSSProperties = {
+  width: '34px',
+  height: '34px',
+  borderRadius: radii.md,
   border: `1px solid ${colors.border}`,
-  background: 'transparent',
+  background: colors.white,
   color: colors.textSecondary,
-  fontSize: '14px',
-  fontWeight: 500,
   cursor: 'pointer',
-  fontFamily: 'inherit',
-};
-
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.35)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  zIndex: 100,
+  flexShrink: 0,
+  transition: 'all 0.15s',
 };
 
-const modalStyle: React.CSSProperties = {
-  background: colors.white,
-  borderRadius: radii.lg,
-  boxShadow: shadows.card,
-  padding: '24px',
-  width: '440px',
-  maxWidth: 'calc(100vw - 48px)',
-  maxHeight: 'calc(100vh - 48px)',
-  overflowY: 'auto',
+const iconButtonHoverOn = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+  e.currentTarget.style.borderColor = colors.borderHover;
+  e.currentTarget.style.color = colors.textPrimary;
 };
+
+const iconButtonHoverOff = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = colors.white;
+  e.currentTarget.style.borderColor = colors.border;
+  e.currentTarget.style.color = colors.textSecondary;
+};
+
+// --- Иконки (feather-стиль, повторяют иконки верхнего бара страницы) ---
+
+const featherProps = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
+
+// Та же иконка, что у «Обновить» страницы и синхронизации дерева.
+const RefreshIcon: React.FC<{ spinning?: boolean }> = ({ spinning }) => (
+  <svg {...featherProps} style={{
+    display: 'block', flexShrink: 0,
+    animation: spinning ? 'reqtrace-spin 0.8s linear infinite' : undefined,
+  }}>
+    <polyline points="23 4 23 10 17 10" />
+    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+  </svg>
+);
+
+// Та же иконка, что у меню «⋮» страницы.
+const DotsIcon: React.FC = () => (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }}>
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
+
+const KeyIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
+    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+  </svg>
+);
+
+const PencilIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+  </svg>
+);
+
+const LogoutIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+// Та же корзина, что у «Удалить» в меню действий страницы.
+const TrashIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
 
 function formatCheckedAt(iso: string | null): string {
   if (!iso) return '';
@@ -81,43 +142,16 @@ function formatCheckedAt(iso: string | null): string {
   });
 }
 
-// --- Модал-обёртка ---
-
-const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
-  title, onClose, children,
-}) => (
-  <div style={overlayStyle} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div style={modalStyle}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px',
-      }}>
-        <h2 style={{ fontSize: '17px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
-          {title}
-        </h2>
-        <button
-          onClick={onClose}
-          style={{
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            fontSize: '16px', color: colors.textTertiary, padding: '2px 6px',
-          }}
-        >
-          ✕
-        </button>
-      </div>
-      {children}
-    </div>
-  </div>
-);
-
 // --- Модал «Подключить проект»: присоединиться / создать новый ---
 
 interface ConnectModalProps {
   available: Project[];          // чужие проекты, к которым можно присоединиться
+  existing: Project[];           // все проекты — для предупреждения о дубле Confluence URL
   onClose: () => void;
   onDone: () => void;
 }
 
-const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, onDone }) => {
+const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing, onClose, onDone }) => {
   const [tab, setTab] = useState<'join' | 'create'>(available.length > 0 ? 'join' : 'create');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -187,8 +221,17 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, 
     </button>
   );
 
+  // Дубль Confluence URL запрещён (бэкенд ответит 409): проекты-двойники вели
+  // бы одинаковые страницы с раздельным покрытием. Подсказка и блокировка
+  // кнопки — ещё до сабмита.
+  const normalizedNewUrl = normalizeBaseUrl(confUrl);
+  const sameServer = normalizedNewUrl
+    ? existing.filter(p => normalizeBaseUrl(p.confluence_base_url) === normalizedNewUrl)
+    : [];
+
   const joinDisabled = !joinProjectId || !joinUser.trim() || !joinPass;
-  const createDisabled = !name.trim() || !confUrl.trim() || !createUser.trim() || !createPass;
+  const createDisabled = !name.trim() || !confUrl.trim() || !createUser.trim() || !createPass
+    || sameServer.length > 0;
 
   return (
     <Modal title="Подключить проект" onClose={onClose}>
@@ -200,7 +243,7 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, 
       <form onSubmit={handleSubmit}>
         {tab === 'join' ? (
           available.length === 0 ? (
-            <p style={{ fontSize: '13px', color: colors.textSecondary }}>
+            <p style={modalTextStyle}>
               Нет проектов, к которым можно присоединиться. Создайте новый на соседней вкладке.
             </p>
           ) : (
@@ -245,6 +288,12 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, 
               <label style={labelStyle}>Confluence URL</label>
               <input type="text" value={confUrl} onChange={e => setConfUrl(e.target.value)}
                      placeholder="https://confluence.company.com" style={inputStyle} />
+              {sameServer.length > 0 && (
+                <div style={{ fontSize: '12px', color: colors.statusLost, marginTop: '4px', lineHeight: 1.5 }}>
+                  Этот Confluence уже подключён: {sameServer.map(p => `«${p.name}»`).join(', ')}.
+                  Создать проект-дубль нельзя — присоединитесь к существующему на вкладке «Присоединиться»
+                </div>
+              )}
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>
@@ -275,17 +324,14 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, 
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-          <button
+          <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+          <ModalButton
             type="submit"
+            variant="primary"
             disabled={busy || (tab === 'join' ? joinDisabled : createDisabled)}
-            style={{
-              ...primaryButtonStyle,
-              opacity: busy || (tab === 'join' ? joinDisabled : createDisabled) ? 0.5 : 1,
-            }}
           >
             {busy ? 'Проверка подключения…' : tab === 'join' ? 'Присоединиться' : 'Создать проект'}
-          </button>
+          </ModalButton>
         </div>
       </form>
     </Modal>
@@ -333,9 +379,15 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
         <div style={fieldStyle}>
           <label style={labelStyle}>
             Пароль
-            <span style={{ color: colors.statusActive, fontWeight: 400, marginLeft: '8px' }}>
-              (установлен)
-            </span>
+            {project.my_status === 'invalid' ? (
+              <span style={{ color: colors.statusLost, fontWeight: 400, marginLeft: '8px' }}>
+                (установлен, но подключение не работает)
+              </span>
+            ) : (
+              <span style={{ color: colors.statusActive, fontWeight: 400, marginLeft: '8px' }}>
+                (установлен)
+              </span>
+            )}
           </label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                  placeholder="••••••••" style={inputStyle} />
@@ -349,11 +401,10 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-          <button type="submit" disabled={busy || !username.trim()}
-                  style={{ ...primaryButtonStyle, opacity: busy || !username.trim() ? 0.5 : 1 }}>
+          <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+          <ModalButton type="submit" variant="primary" disabled={busy || !username.trim()}>
             {busy ? 'Проверка подключения…' : 'Сохранить'}
-          </button>
+          </ModalButton>
         </div>
       </form>
     </Modal>
@@ -408,11 +459,10 @@ const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onDone
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-          <button type="submit" disabled={busy || !name.trim()}
-                  style={{ ...primaryButtonStyle, opacity: busy || !name.trim() ? 0.5 : 1 }}>
+          <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+          <ModalButton type="submit" variant="primary" disabled={busy || !name.trim()}>
             {busy ? 'Сохранение…' : 'Сохранить'}
-          </button>
+          </ModalButton>
         </div>
       </form>
     </Modal>
@@ -442,21 +492,76 @@ const DisconnectModal: React.FC<{ project: Project; onClose: () => void; onDone:
 
   return (
     <Modal title="Отключиться от проекта?" onClose={onClose}>
-      <p style={{ fontSize: '14px', color: colors.textSecondary, marginTop: 0, marginBottom: '18px' }}>
+      <p style={{ ...modalTextStyle, marginBottom: '18px' }}>
         Ваши креды для проекта «{project.name}» будут удалены, его страницы исчезнут из вашего
         дерева. Сам проект, страницы и привязки останутся у других участников. Вернуться можно
-        в любой момент — через «Подключить проект → Присоединиться».
+        в любой момент: «Подключить проект», вкладка «Присоединиться».
       </p>
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-        <button
-          type="button"
-          onClick={handleDisconnect}
-          disabled={busy}
-          style={{ ...primaryButtonStyle, background: colors.statusLost, opacity: busy ? 0.5 : 1 }}
-        >
+        <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+        <ModalButton type="button" variant="danger" onClick={handleDisconnect} disabled={busy}>
           {busy ? 'Отключение…' : 'Отключиться'}
-        </button>
+        </ModalButton>
+      </div>
+    </Modal>
+  );
+};
+
+// --- Модал удаления проекта (подтверждение словом, как у удаления страницы) ---
+
+const DeleteProjectModal: React.FC<{ project: Project; onClose: () => void; onDone: () => void }> = ({
+  project, onClose, onDone,
+}) => {
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { showToast } = useToast();
+  const confirmed = confirmText === 'Удалить';
+
+  const handleDelete = async () => {
+    if (!confirmed || busy) return;
+    setBusy(true);
+    try {
+      await api.deleteProject(project.id);
+      showToast('success', 'Проект удалён', `Проект «${project.name}» и все его страницы удалены у всех участников`);
+      onDone();
+      onClose();
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить проект', e.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Удаление проекта" onClose={onClose}>
+      <p style={{ ...modalTextStyle, marginBottom: '6px' }}>
+        Вы собираетесь удалить проект <strong style={{ color: colors.textPrimary }}>«{project.name}»</strong>{' '}
+        целиком — у всех участников. Это действие необратимо: все страницы проекта, их снимки,
+        baseline и привязки к тестам будут удалены. Если хотите убрать проект только у себя —
+        используйте «Отключиться».
+      </p>
+      <p style={{ ...modalTextStyle, marginBottom: '16px' }}>
+        Для подтверждения введите слово <strong style={{ color: colors.statusLost }}>Удалить</strong>
+      </p>
+      <input
+        type="text"
+        value={confirmText}
+        onChange={e => setConfirmText(e.target.value)}
+        placeholder="Введите «Удалить»"
+        autoFocus
+        style={{
+          ...inputStyle,
+          border: `1.5px solid ${confirmed ? colors.statusLost : colors.border}`,
+          transition: 'border-color 0.15s',
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && confirmed) handleDelete();
+        }}
+      />
+      <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
+        <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+        <ModalButton type="button" variant="danger" onClick={handleDelete} disabled={!confirmed || busy}>
+          {busy ? 'Удаление…' : 'Удалить проект'}
+        </ModalButton>
       </div>
     </Modal>
   );
@@ -467,12 +572,29 @@ const DisconnectModal: React.FC<{ project: Project; onClose: () => void; onDone:
 const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ project, onChanged }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | null>(null);
+  const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | 'delete' | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
 
+  // Меню закрывается кликом в любом месте документа. Fixed-«ловец кликов»
+  // внутри карточки не работает: backdrop-filter делает карточку containing
+  // block для position:fixed, и ловец покрывал только саму карточку.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
   const status = project.my_status;
-  const statusColor = status === 'ok' ? colors.statusActive
-    : status === 'invalid' ? colors.statusLost
+  // Сервер был недоступен при последней проверке — креды не виноваты, но и не
+  // подтверждены: жёлтая индикация вместо зелёного «Подключено».
+  const unreachable = status === 'ok' && project.my_last_check_result === 'unreachable';
+  const statusColor = status === 'invalid' ? colors.statusLost
+    : unreachable ? colors.statusOutdated
+    : status === 'ok' ? colors.statusActive
     : colors.textTertiary;
 
   const handleCheck = async () => {
@@ -486,36 +608,64 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       }
       onChanged();
     } catch (e: any) {
-      showToast('error', 'Не удалось проверить подключение', e.message);
+      if (e?.status === 502) {
+        // Недоступность сервера — не ошибка кред и не поломка reqtrace:
+        // некритичное жёлтое предупреждение вместо красной ошибки.
+        showToast('warning', 'Confluence недоступен', e.message);
+      } else {
+        showToast('error', 'Не удалось проверить подключение', e.message);
+      }
+      // Неудачная попытка тоже фиксируется на бэке (unreachable) — подтянуть её на карточку.
+      onChanged();
     } finally {
       setChecking(false);
     }
   };
 
+  // Пункты меню — как в меню действий страницы (иконка + текст, скругление, ховер).
   const menuItemStyle: React.CSSProperties = {
-    display: 'block',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
     width: '100%',
-    padding: '8px 14px',
+    padding: '9px 10px',
     border: 'none',
     background: 'transparent',
-    textAlign: 'left',
-    fontSize: '13px',
     color: colors.textPrimary,
-    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 500,
     fontFamily: 'inherit',
+    textAlign: 'left',
+    borderRadius: radii.sm,
+    cursor: 'pointer',
+    transition: 'background 0.15s',
     whiteSpace: 'nowrap',
   };
 
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.85)',
-      backdropFilter: 'blur(20px)',
-      border: `1px solid ${colors.border}`,
-      borderRadius: radii.lg,
-      padding: '18px 22px',
-      marginBottom: '14px',
-      boxShadow: shadows.card,
-    }}>
+    <div
+      style={{
+        background: 'rgba(255,255,255,0.85)',
+        backdropFilter: 'blur(20px)',
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.lg,
+        padding: '18px 22px',
+        boxShadow: shadows.card,
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        // Каждая карточка — stacking context (backdrop-filter): без подъёма
+        // открытое меню пряталось бы под следующей по DOM карточкой.
+        position: 'relative',
+        zIndex: menuOpen ? 20 : 'auto',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = colors.borderHover;
+        e.currentTarget.style.boxShadow = shadows.cardHover;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = colors.border;
+        e.currentTarget.style.boxShadow = shadows.card;
+      }}
+    >
       {/* Заголовок карточки: индикатор + имя + действия */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{
@@ -531,44 +681,93 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         <button
           onClick={handleCheck}
           disabled={checking}
-          style={{ ...secondaryButtonStyle, padding: '6px 14px', fontSize: '13px', opacity: checking ? 0.6 : 1 }}
+          title="Проверить подключение к Confluence"
+          style={{
+            ...iconButtonStyle,
+            width: 'auto',
+            padding: '0 12px',
+            gap: '8px',
+            fontSize: '13px',
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            cursor: checking ? 'default' : 'pointer',
+          }}
+          onMouseEnter={e => { if (!checking) iconButtonHoverOn(e); }}
+          onMouseLeave={iconButtonHoverOff}
         >
-          {checking ? 'Проверка…' : 'Проверить'}
+          <RefreshIcon spinning={checking} />
+          Проверить
         </button>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             title="Действия"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             style={{
-              width: '30px', height: '30px', borderRadius: radii.sm,
-              border: `1px solid ${colors.border}`, background: 'transparent',
-              color: colors.textSecondary, fontSize: '16px', cursor: 'pointer',
+              ...iconButtonStyle,
+              border: `1px solid ${menuOpen ? colors.borderHover : colors.border}`,
+              background: menuOpen ? 'rgba(0,0,0,0.03)' : colors.white,
+              color: menuOpen ? colors.textPrimary : colors.textSecondary,
             }}
+            onMouseEnter={e => { if (!menuOpen) iconButtonHoverOn(e); }}
+            onMouseLeave={e => { if (!menuOpen) iconButtonHoverOff(e); }}
           >
-            ⋮
+            <DotsIcon />
           </button>
           {menuOpen && (
-            <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setMenuOpen(false)} />
-              <div style={{
-                position: 'absolute', right: 0, top: '34px', zIndex: 11,
-                background: colors.white, border: `1px solid ${colors.border}`,
-                borderRadius: radii.md, boxShadow: shadows.card, padding: '4px 0', minWidth: '180px',
-              }}>
-                <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('creds'); }}>
-                  Изменить креды
-                </button>
-                <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('edit'); }}>
-                  Изменить проект
-                </button>
-                <button
-                  style={{ ...menuItemStyle, color: colors.statusLost }}
-                  onClick={() => { setMenuOpen(false); setModal('disconnect'); }}
-                >
-                  Отключиться
-                </button>
-              </div>
-            </>
+            <div
+              role="menu"
+              style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 11,
+                minWidth: '212px', padding: '6px',
+                background: colors.cardBgSolid, border: `1px solid ${colors.border}`,
+                borderRadius: radii.md, boxShadow: shadows.panel,
+                display: 'flex', flexDirection: 'column', gap: '2px',
+              }}
+            >
+              <button
+                role="menuitem"
+                style={menuItemStyle}
+                onClick={() => { setMenuOpen(false); setModal('creds'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <KeyIcon />
+                Изменить креды
+              </button>
+              <button
+                role="menuitem"
+                style={menuItemStyle}
+                onClick={() => { setMenuOpen(false); setModal('edit'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <PencilIcon />
+                Изменить проект
+              </button>
+              <button
+                role="menuitem"
+                style={{ ...menuItemStyle, color: colors.statusLost }}
+                onClick={() => { setMenuOpen(false); setModal('disconnect'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <LogoutIcon />
+                Отключиться
+              </button>
+              <button
+                role="menuitem"
+                title="Удалить проект со всеми страницами и привязками — у всех участников, необратимо"
+                style={{ ...menuItemStyle, color: colors.statusLost }}
+                onClick={() => { setMenuOpen(false); setModal('delete'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <TrashIcon />
+                Удалить проект
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -586,9 +785,17 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       {/* Статусная строка */}
       <div style={{ marginTop: '8px', fontSize: '13px' }}>
         {status === 'ok' && (
-          <span style={{ color: colors.statusActive }}>
-            ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
-          </span>
+          unreachable ? (
+            <span style={{ color: colors.statusOutdated }}>
+              ⚠ Confluence был недоступен при проверке
+              {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — проверьте
+              VPN или сеть
+            </span>
+          ) : (
+            <span style={{ color: colors.statusActive }}>
+              ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
+            </span>
+          )
         )}
         {status === 'invalid' && (
           <span style={{ color: colors.statusLost }}>
@@ -618,6 +825,9 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       )}
       {modal === 'disconnect' && (
         <DisconnectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
+      )}
+      {modal === 'delete' && (
+        <DeleteProjectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
       )}
     </div>
   );
@@ -657,7 +867,13 @@ export const SettingsPage: React.FC = () => {
   const available = projects.filter(p => !p.joined);
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '700px' }}>
+    <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
+      <style>{`
+        @keyframes reqtrace-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
         Настройки
       </h1>
@@ -693,14 +909,17 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       ) : (
-        joined.map(project => (
-          <ProjectCard key={project.id} project={project} onChanged={load} />
-        ))
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          {joined.map(project => (
+            <ProjectCard key={project.id} project={project} onChanged={load} />
+          ))}
+        </div>
       )}
 
       {showConnect && (
         <ConnectProjectModal
           available={available}
+          existing={projects}
           onClose={() => setShowConnect(false)}
           onDone={load}
         />

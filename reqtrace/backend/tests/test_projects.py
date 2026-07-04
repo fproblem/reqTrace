@@ -257,6 +257,20 @@ class TestCreateProject(ProjectTestBase):
         self.assertIn("присоединиться", resp.json()["detail"])
         self.assertEqual(self.session.added, [])
 
+    def test_create_duplicate_confluence_url_409(self):
+        """Дубль по нормализованному URL (регистр/слэш не спасают) → 409,
+        ничего не создано, до живой проверки кред дело не доходит."""
+        other = make_project(name="Другой проект", base_url="https://conf.bank-x.ru")
+        self.session.execute_results = [None, other]  # имя свободно, URL занят
+        with patch(CHECK_CONNECTION, new=AsyncMock(return_value=None)) as check:
+            resp = self.client.post("/api/projects", json=self.PAYLOAD)
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("уже подключён", resp.json()["detail"])
+        self.assertIn("Другой проект", resp.json()["detail"])
+        check.assert_not_awaited()
+        self.assertEqual(self.session.added, [])
+
 
 class TestCredentials(ProjectTestBase):
     def test_upsert_joins_project_with_ok_status(self):
@@ -316,6 +330,24 @@ class TestCredentials(ProjectTestBase):
 
         self.assertEqual(resp.json()["status"], "ok")
         self.assertEqual(cred.status, "ok")
+        self.assertEqual(cred.last_check_result, "ok")
+
+    def test_check_unreachable_records_attempt_without_touching_status(self):
+        """Confluence недоступен (VPN, сеть): 502, статус ok не сбит, но след
+        попытки (unreachable + время) сохранён и закоммичен до отката."""
+        project = make_project()
+        cred = make_cred(project, self.user, status="ok")
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [cred]
+
+        with patch(CHECK_CONNECTION, new=AsyncMock(side_effect=RuntimeError("connect timeout"))):
+            resp = self.client.post(f"/api/projects/{project.id}/credentials/check")
+
+        self.assertEqual(resp.status_code, 502)
+        self.assertEqual(cred.status, "ok")
+        self.assertEqual(cred.last_check_result, "unreachable")
+        self.assertIsNotNone(cred.last_check_at)
+        self.assertTrue(self.session.committed)
 
     def test_disconnect_deletes_my_credential(self):
         project = make_project()
@@ -327,6 +359,29 @@ class TestCredentials(ProjectTestBase):
 
         self.assertEqual(resp.status_code, 204)
         self.assertIn(cred, self.session.deleted)
+
+    def test_delete_project_by_member(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        # get_my_credential + 5 bulk-delete запросов (тесты, привязки,
+        # baseline'ы, снимки, страницы)
+        self.session.execute_results = [cred, None, None, None, None, None]
+
+        resp = self.client.delete(f"/api/projects/{project.id}")
+
+        self.assertEqual(resp.status_code, 204)
+        self.assertIn(project, self.session.deleted)
+
+    def test_delete_project_requires_membership(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [None]
+
+        resp = self.client.delete(f"/api/projects/{project.id}")
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(self.session.deleted, [])
 
 
 class TestPageScoping(ProjectTestBase):

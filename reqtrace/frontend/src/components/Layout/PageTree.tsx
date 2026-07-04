@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { colors, radii } from '../../styles/tokens';
+import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
@@ -34,30 +35,6 @@ function loadExpandState(): Record<string, boolean> {
 
 function saveExpandState(state: Record<string, boolean>) {
   localStorage.setItem(TREE_STATE_KEY, JSON.stringify(state));
-}
-
-// Клиентское зеркало серверной нормализации base URL (project_access.py):
-// нужно, чтобы при добавлении страницы заранее понять, каким проектам
-// подходит ссылка, и показать выбор проекта, если их несколько.
-function normalizeBaseUrl(url: string): string {
-  let u = (url || '').trim();
-  if (!u) return '';
-  if (!u.includes('://')) u = 'https://' + u;
-  try {
-    const p = new URL(u);
-    const port = p.port ? `:${p.port}` : '';
-    const path = p.pathname.replace(/\/+$/, '');
-    return `${p.protocol}//${p.hostname.toLowerCase()}${port}${path}`;
-  } catch {
-    return '';
-  }
-}
-
-function urlBelongsToBase(pageUrl: string, baseUrl: string): boolean {
-  if (!baseUrl) return false;
-  const base = normalizeBaseUrl(baseUrl);
-  const page = normalizeBaseUrl(pageUrl);
-  return base !== '' && (page === base || page.startsWith(base + '/'));
 }
 
 interface PageTreeProps {

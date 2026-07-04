@@ -495,7 +495,7 @@ const DisconnectModal: React.FC<{ project: Project; onClose: () => void; onDone:
       <p style={{ ...modalTextStyle, marginBottom: '18px' }}>
         Ваши креды для проекта «{project.name}» будут удалены, его страницы исчезнут из вашего
         дерева. Сам проект, страницы и привязки останутся у других участников. Вернуться можно
-        в любой момент — через «Подключить проект → Присоединиться».
+        в любой момент: «Подключить проект», вкладка «Присоединиться».
       </p>
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
         <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>

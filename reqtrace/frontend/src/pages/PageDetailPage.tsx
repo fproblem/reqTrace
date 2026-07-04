@@ -48,7 +48,7 @@ function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderRep
 export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
+  const { showToast, showUndoToast, dismissToast } = useToast();
 
   const [page, setPage] = useState<PageDetail | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -270,14 +270,49 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     }
   };
 
+  // Отложенное удаление выделения: с экрана оно исчезает сразу, но DELETE
+  // уходит на сервер только когда undo-тост дотикал до конца. «Отменить»
+  // просто перечитывает привязки — сервер ещё ничего не удалял. Одновременно
+  // живёт одно отложенное удаление: новое немедленно коммитит предыдущее.
+  const pendingDeleteRef = useRef<{ toastId: number; commit: () => void } | null>(null);
+
   const handleDeleteHighlight = async (highlightId: string) => {
-    try {
-      await api.deleteHighlight(highlightId);
-      setSelectedHighlight(null);
-      await loadPage();
-    } catch (e: any) {
-      showToast('error', 'Не удалось удалить привязку', e.message);
+    if (pendingDeleteRef.current) {
+      const prev = pendingDeleteRef.current;
+      pendingDeleteRef.current = null;
+      dismissToast(prev.toastId);
+      prev.commit();
     }
+
+    setSelectedHighlight(null);
+    setHighlights(prev => prev.filter(h => h.id !== highlightId));
+
+    const restore = async () => {
+      pendingDeleteRef.current = null;
+      try {
+        const refreshed = await api.listHighlights(pageId!);
+        setHighlights(refreshed);
+      } catch (e: any) {
+        showToast('error', 'Не удалось восстановить привязку', e.message);
+      }
+    };
+
+    const commit = () => {
+      pendingDeleteRef.current = null;
+      api.deleteHighlight(highlightId).catch((e: any) => {
+        showToast('error', 'Не удалось удалить привязку', e.message);
+        void restore();
+      });
+    };
+
+    const toastId = showUndoToast('warning', 'Выделение удалено', {
+      message: 'Связи с тестами удалены вместе с ним',
+      seconds: 7,
+      actionLabel: 'Отменить',
+      onExpire: commit,
+      onAction: restore,
+    });
+    pendingDeleteRef.current = { toastId, commit };
   };
 
   const handleDeletePage = async () => {

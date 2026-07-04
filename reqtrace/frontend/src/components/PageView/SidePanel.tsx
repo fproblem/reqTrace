@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
@@ -62,6 +62,29 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const [testKey, setTestKey] = useState('');
   const [adding, setAdding] = useState(false);
   const [reanchoring, setReanchoring] = useState(false);
+  // Компактное подтверждение удаления — поповер над кнопкой в футере.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const confirmRef = useRef<HTMLDivElement>(null);
+
+  // Закрытие поповера: клик вне футера или Escape (как у меню «⋮»).
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!confirmRef.current?.contains(e.target as Node)) setConfirmOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [confirmOpen]);
+
+  // Переключились на другое выделение — вопрос больше не актуален.
+  useEffect(() => { setConfirmOpen(false); }, [highlight?.id]);
 
   if (!highlight) return null;
 
@@ -524,14 +547,94 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
       {/* Футер с удалением — прижат к низу панели и отделён от контента
           линией, как шапка: деструктивное действие не смешивается с работой
-          над привязкой. */}
-      <div style={{
-        padding: '14px 20px',
-        borderTop: `1px solid ${colors.border}`,
-        flexShrink: 0,
-      }}>
+          над привязкой. Клик открывает компактный поповер-подтверждение
+          (стиль меню «⋮»), само удаление отложенное — с тостом «Отменить». */}
+      <div
+        ref={confirmRef}
+        style={{
+          padding: '14px 20px',
+          borderTop: `1px solid ${colors.border}`,
+          flexShrink: 0,
+          position: 'relative',
+        }}
+      >
+        {confirmOpen && (
+          <div style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            left: '20px',
+            right: '20px',
+            zIndex: 11,
+            background: colors.cardBgSolid,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.md,
+            boxShadow: shadows.panel,
+            padding: '12px 14px',
+          }}>
+            <div style={{
+              fontSize: '12.5px',
+              color: colors.textSecondary,
+              lineHeight: 1.45,
+              marginBottom: '10px',
+            }}>
+              Удалить выделение и его связи с тестами?
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmOpen(false)}
+                style={{
+                  padding: '5px 14px',
+                  borderRadius: radii.pill,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.borderColor = colors.borderHover;
+                  e.currentTarget.style.color = colors.textPrimary;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = colors.textSecondary;
+                }}
+                onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => { setConfirmOpen(false); onDeleteHighlight(highlight.id); }}
+                style={{
+                  padding: '5px 16px',
+                  borderRadius: radii.pill,
+                  border: 'none',
+                  background: colors.statusLost,
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#DC2626'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = colors.statusLost; }}
+                onMouseDown={e => { e.currentTarget.style.background = '#B91C1C'; }}
+                onMouseUp={e => { e.currentTarget.style.background = '#DC2626'; }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        )}
         <button
-          onClick={() => onDeleteHighlight(highlight.id)}
+          onClick={() => setConfirmOpen(o => !o)}
           style={{
             width: '100%',
             padding: '8px',

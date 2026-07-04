@@ -3,15 +3,32 @@ import { colors, radii, shadows } from '../styles/tokens';
 
 type ToastType = 'error' | 'success' | 'warning';
 
+/** Тост с обратным отсчётом и кнопкой отмены (отложенные действия).
+ *  Живёт ровно `seconds` секунд с анимированным таймером и прогресс-баром:
+ *  дотикал до конца — onExpire (действие совершается), нажали кнопку —
+ *  onAction (действие отменяется). Обычного крестика у такого тоста нет:
+ *  закрытие было бы неоднозначным (совершить или отменить?). */
+interface ToastUndo {
+  seconds: number;
+  actionLabel: string;
+  onAction: () => void;
+  onExpire: () => void;
+}
+
 interface Toast {
   id: number;
   type: ToastType;
   title: string;
   message?: string;
+  undo?: ToastUndo;
 }
 
 interface ToastContextValue {
   showToast: (type: ToastType, title: string, message?: string) => void;
+  /** Возвращает id — им можно снять тост досрочно через dismissToast
+   *  (onExpire при этом НЕ вызывается — вызывающий сам решает судьбу действия). */
+  showUndoToast: (type: ToastType, title: string, opts: ToastUndo & { message?: string }) => number;
+  dismissToast: (id: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -49,19 +66,50 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
   const style = typeStyles[toast.type];
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const undo = toast.undo;
+  const [secondsLeft, setSecondsLeft] = useState(undo?.seconds ?? 0);
+  // Гарантия «ровно один исход»: либо onExpire, либо onAction.
+  const firedRef = useRef(false);
 
+  const dismissAnimated = () => {
+    setExiting(true);
+    setTimeout(() => onDismiss(toast.id), 300);
+  };
+
+  // Обычный тост — стандартное время жизни.
   useEffect(() => {
-    timerRef.current = setTimeout(() => {
-      setExiting(true);
-      setTimeout(() => onDismiss(toast.id), 300);
-    }, TOAST_DURATION);
+    if (undo) return;
+    timerRef.current = setTimeout(dismissAnimated, TOAST_DURATION);
     return () => clearTimeout(timerRef.current);
-  }, [toast.id, onDismiss]);
+  }, [toast.id]);
+
+  // Undo-тост — цепочка секундных тиков: 7 → … → 1 → onExpire.
+  // Внешний dismissToast(id) размонтирует тост, cleanup снимет таймер и
+  // onExpire не сработает — досрочную судьбу действия решает вызывающий.
+  useEffect(() => {
+    if (!undo || firedRef.current) return;
+    const t = setTimeout(() => {
+      if (secondsLeft > 1) {
+        setSecondsLeft(secondsLeft - 1);
+      } else {
+        firedRef.current = true;
+        undo.onExpire();
+        dismissAnimated();
+      }
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [secondsLeft]);
+
+  const handleUndo = () => {
+    if (!undo || firedRef.current) return;
+    firedRef.current = true;
+    undo.onAction();
+    dismissAnimated();
+  };
 
   const handleDismiss = () => {
     clearTimeout(timerRef.current);
-    setExiting(true);
-    setTimeout(() => onDismiss(toast.id), 300);
+    dismissAnimated();
   };
 
   return (
@@ -121,27 +169,97 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
             {toast.message}
           </div>
         )}
+
+        {/* Обратный отсчёт: прогресс-бар тает к следующей цифре, цифра
+            сменяется с лёгким въездом сверху, справа — кнопка отмены */}
+        {undo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+            <div style={{
+              flex: 1,
+              height: '4px',
+              borderRadius: '2px',
+              background: 'rgba(0,0,0,0.08)',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                borderRadius: '2px',
+                background: style.titleColor,
+                width: `${(secondsLeft / undo.seconds) * 100}%`,
+                transition: 'width 1s linear',
+              }} />
+            </div>
+            <span style={{
+              width: '14px',
+              textAlign: 'center',
+              fontSize: '12px',
+              fontWeight: 700,
+              color: style.titleColor,
+              fontVariantNumeric: 'tabular-nums',
+              flexShrink: 0,
+            }}>
+              <span
+                key={secondsLeft}
+                style={{ display: 'inline-block', animation: 'toast-digit-in 0.25s ease-out' }}
+              >
+                {secondsLeft}
+              </span>
+            </span>
+            <button
+              onClick={handleUndo}
+              style={{
+                padding: '4px 12px',
+                borderRadius: radii.pill,
+                border: `1px solid ${colors.border}`,
+                background: 'transparent',
+                color: colors.textSecondary,
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                flexShrink: 0,
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+              onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+              onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+            >
+              {undo.actionLabel}
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Close */}
-      <button
-        onClick={handleDismiss}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: colors.textTertiary,
-          fontSize: '16px',
-          padding: 0,
-          flexShrink: 0,
-          lineHeight: '22px',
-          height: '22px',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
-        ✕
-      </button>
+      {/* Close — у undo-тоста крестика нет: закрытие было бы неоднозначным */}
+      {!undo && (
+        <button
+          onClick={handleDismiss}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: colors.textTertiary,
+            fontSize: '16px',
+            padding: 0,
+            flexShrink: 0,
+            lineHeight: '22px',
+            height: '22px',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 };
@@ -155,12 +273,21 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts(prev => [...prev, { id, type, title, message }]);
   }, []);
 
+  const showUndoToast = useCallback((
+    type: ToastType, title: string, opts: ToastUndo & { message?: string },
+  ) => {
+    const id = nextId.current++;
+    const { message, ...undo } = opts;
+    setToasts(prev => [...prev, { id, type, title, message, undo }]);
+    return id;
+  }, []);
+
   const dismissToast = useCallback((id: number) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, showUndoToast, dismissToast }}>
       {children}
 
       {/* Toast container */}
@@ -179,6 +306,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             @keyframes toast-in {
               from { opacity: 0; transform: translateX(40px); }
               to { opacity: 1; transform: translateX(0); }
+            }
+            @keyframes toast-digit-in {
+              from { opacity: 0; transform: translateY(-6px); }
+              to { opacity: 1; transform: translateY(0); }
             }
           `}</style>
           {toasts.map(t => (

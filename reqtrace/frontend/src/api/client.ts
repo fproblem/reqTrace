@@ -71,7 +71,9 @@ function humanizeError(status: number, detail: string): string {
     return detail && /[а-яё]/i.test(detail) ? detail : 'Доступ запрещён';
   }
   if (status === 404) {
-    return 'Ресурс не найден';
+    // Бэкенд шлёт осмысленные русские сообщения (например, «Вы не подключены
+    // к этому проекту») — не подменяем их общей фразой.
+    return detail && /[а-яё]/i.test(detail) ? detail : 'Ресурс не найден';
   }
   if (status === 409) {
     // Бэкенд шлёт осмысленные русские сообщения (например, про занятое имя
@@ -79,7 +81,10 @@ function humanizeError(status: number, detail: string): string {
     return detail && /[а-яё]/i.test(detail) ? detail : 'Конфликт: ресурс уже существует';
   }
   if (status === 502 || status === 503 || status === 504) {
-    return 'Сервис временно недоступен. Попробуйте позже';
+    // Русские 502 от бэкенда («Не удалось подключиться к Confluence (url).
+    // Проверьте адрес сервера») точнее общей фразы — иначе кажется, что
+    // недоступен сам reqtrace, а не Confluence проекта.
+    return detail && /[а-яё]/i.test(detail) ? detail : 'Сервис временно недоступен. Попробуйте позже';
   }
   if (status >= 500) {
     return 'Внутренняя ошибка сервера. Обратитесь к администратору';

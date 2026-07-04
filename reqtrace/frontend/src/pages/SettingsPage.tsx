@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { useToast } from '../components/Toast';
@@ -83,9 +84,12 @@ function formatCheckedAt(iso: string | null): string {
 
 // --- Модал-обёртка ---
 
+// Портал в body обязателен: внутри карточки с backdrop-filter position:fixed
+// отсчитывается от карточки (containing block), а не от вьюпорта — оверлей
+// затемнял только карточку, а окно пряталось под соседними карточками.
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
   title, onClose, children,
-}) => (
+}) => createPortal(
   <div style={overlayStyle} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div style={modalStyle}>
       <div style={{
@@ -106,7 +110,8 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
       </div>
       {children}
     </div>
-  </div>
+  </div>,
+  document.body,
 );
 
 // --- Модал «Подключить проект»: присоединиться / создать новый ---
@@ -474,7 +479,20 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
   const [menuOpen, setMenuOpen] = useState(false);
   const [checking, setChecking] = useState(false);
   const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
+
+  // Меню закрывается кликом в любом месте документа. Fixed-«ловец кликов»
+  // внутри карточки не работает: backdrop-filter делает карточку containing
+  // block для position:fixed, и ловец покрывал только саму карточку.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
 
   const status = project.my_status;
   const statusColor = status === 'ok' ? colors.statusActive
@@ -523,6 +541,10 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       padding: '18px 22px',
       marginBottom: '14px',
       boxShadow: shadows.card,
+      // Каждая карточка — stacking context (backdrop-filter): без подъёма
+      // открытое меню пряталось бы под следующей по DOM карточкой.
+      position: 'relative',
+      zIndex: menuOpen ? 20 : 'auto',
     }}>
       {/* Заголовок карточки: индикатор + имя + действия */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -543,7 +565,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         >
           {checking ? 'Проверка…' : 'Проверить'}
         </button>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             title="Действия"
@@ -556,27 +578,24 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
             ⋮
           </button>
           {menuOpen && (
-            <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setMenuOpen(false)} />
-              <div style={{
-                position: 'absolute', right: 0, top: '34px', zIndex: 11,
-                background: colors.white, border: `1px solid ${colors.border}`,
-                borderRadius: radii.md, boxShadow: shadows.card, padding: '4px 0', minWidth: '180px',
-              }}>
-                <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('creds'); }}>
-                  Изменить креды
-                </button>
-                <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('edit'); }}>
-                  Изменить проект
-                </button>
-                <button
-                  style={{ ...menuItemStyle, color: colors.statusLost }}
-                  onClick={() => { setMenuOpen(false); setModal('disconnect'); }}
-                >
-                  Отключиться
-                </button>
-              </div>
-            </>
+            <div style={{
+              position: 'absolute', right: 0, top: '34px', zIndex: 11,
+              background: colors.white, border: `1px solid ${colors.border}`,
+              borderRadius: radii.md, boxShadow: shadows.card, padding: '4px 0', minWidth: '180px',
+            }}>
+              <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('creds'); }}>
+                Изменить креды
+              </button>
+              <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('edit'); }}>
+                Изменить проект
+              </button>
+              <button
+                style={{ ...menuItemStyle, color: colors.statusLost }}
+                onClick={() => { setMenuOpen(false); setModal('disconnect'); }}
+              >
+                Отключиться
+              </button>
+            </div>
           )}
         </div>
       </div>

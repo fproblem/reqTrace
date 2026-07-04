@@ -305,8 +305,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       });
     };
 
+    // Без message: про удаление связей с тестами уже предупредила карточка
+    // подтверждения в панели — в тосте хватает заголовка.
     const toastId = showUndoToast('warning', 'Выделение удалено', {
-      message: 'Связи с тестами удалены вместе с ним',
       seconds: 7,
       actionLabel: 'Отменить',
       onExpire: commit,

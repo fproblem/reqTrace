@@ -643,18 +643,25 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const lostHighlights = highlights.filter(h => h.status === 'lost').sort(sortByPosition);
   const coveredCount = highlights.filter(h => h.tests.length > 0).length;
 
-  // Чип статуса в верхней панели ведёт к ВЕРХНЕЙ подсветке этого статуса.
-  // Порядок считаем в момент клика по фактической позиции отрисованных <mark>
-  // в DOM — иначе legacy-привязки (anchor_block_start === null) уезжали в конец
-  // якорной сортировки и чип прыгал не к той подсветке.
-  const jumpToFirstOfStatus = (status: 'active' | 'outdated' | 'lost') => {
-    const ofStatus = highlights.filter(h => h.status === status);
+  // Чип статуса в верхней панели ходит по подсветкам этого статуса по кругу:
+  // первый клик — к верхней, повторные — к следующей (в день актуализации
+  // можно обходить только «требует проверки»). Порядок считаем в момент клика
+  // по фактической позиции отрисованных <mark> в DOM — иначе legacy-привязки
+  // (anchor_block_start === null) уезжали в конец якорной сортировки и чип
+  // прыгал не к той подсветке.
+  const jumpToStatus = (status: 'active' | 'outdated' | 'lost') => {
+    const ofStatus = highlights
+      .filter(h => h.status === status)
+      .sort(compareByDomThenAnchor(highlightDomOrder()));
     if (ofStatus.length === 0) return;
-    const [first] = [...ofStatus].sort(compareByDomThenAnchor(highlightDomOrder()));
+    const currentIdx = selectedHighlight
+      ? ofStatus.findIndex(h => h.id === selectedHighlight.id)
+      : -1;
+    const target = ofStatus[(currentIdx + 1) % ofStatus.length];
     if (status === 'lost') {
-      setSelectedHighlight(first);
+      setSelectedHighlight(target);
     } else {
-      handleHighlightClick(first);
+      handleHighlightClick(target);
     }
   };
   const coveragePercent = highlights.length > 0
@@ -669,21 +676,21 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       color: colors.statusActive,
       bg: 'rgba(122,224,90,0.12)', bgHover: 'rgba(122,224,90,0.22)',
       border: 'rgba(122,224,90,0.35)',
-      title: 'Актуальные привязки: тест привязан и текст не менялся. Нажмите, чтобы перейти к первой',
+      title: 'Актуальные привязки: тест привязан и текст не менялся. Клики ведут по ним по очереди',
     },
     {
       key: 'outdated', count: outdatedHighlights.length,
       color: colors.statusOutdated,
       bg: 'rgba(245,158,11,0.12)', bgHover: 'rgba(245,158,11,0.22)',
       border: 'rgba(245,158,11,0.35)',
-      title: 'Требуют актуализации: текст изменился или привязка ещё не подтверждена. Нажмите, чтобы перейти к первой',
+      title: 'Требуют актуализации: текст изменился или привязка ещё не подтверждена. Клики ведут по ним по очереди',
     },
     {
       key: 'lost', count: lostHighlights.length,
       color: colors.statusLost,
       bg: 'rgba(239,68,68,0.12)', bgHover: 'rgba(239,68,68,0.22)',
       border: 'rgba(239,68,68,0.35)',
-      title: 'Утраченные: выделенный текст больше не найден на странице. Нажмите, чтобы перейти к первой',
+      title: 'Утраченные: выделенный текст больше не найден на странице. Клики ведут по ним по очереди',
     },
   ] as const).filter(s => s.count > 0);
 
@@ -764,14 +771,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
           {/* Stats — отдельные счётчики по статусам (слева направо):
               актуальные, требующие актуализации, утраченные. Цвет — по статусу,
-              форма как у иконок «Обновить»/«⋮». Клик ведёт к первой привязке.
-              Нулевые статусы скрыты (см. statusCounters). */}
+              форма как у иконок «Обновить»/«⋮». Клики перебирают привязки
+              статуса по кругу. Нулевые статусы скрыты (см. statusCounters). */}
           {statusCounters.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
               {statusCounters.map(s => (
                   <button
                     key={s.key}
-                    onClick={() => jumpToFirstOfStatus(s.key)}
+                    onClick={() => jumpToStatus(s.key)}
                     title={s.title}
                     style={{
                       minWidth: '34px',

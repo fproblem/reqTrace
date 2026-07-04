@@ -116,6 +116,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
 
+  // Навигация по статусу: плашка ведёт к следующему выделению с тем же
+  // статусом (по кругу, в порядке отрисовки на странице). В день актуализации
+  // можно обходить только «Требует проверки», не листая остальные стрелками.
+  const sameStatus = sorted.filter(h => h.status === highlight.status);
+  const statusIndex = sameStatus.findIndex(h => h.id === highlight.id);
+  const statusNavigable = sameStatus.length > 1;
+
+  const handleNextOfStatus = () => {
+    if (!statusNavigable) return;
+    onNavigate(sameStatus[(statusIndex + 1) % sameStatus.length]);
+  };
+
   const handleAdd = async () => {
     if (!testKey.trim()) return;
     setAdding(true);
@@ -296,22 +308,64 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       </div>
 
       <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '12px 14px',
-          borderRadius: radii.md,
-          background: `${statusInfo.color}15`,
-          border: `1px solid ${statusInfo.color}33`,
-          color: statusInfo.color,
-          fontSize: '13px',
-          fontWeight: 600,
-          marginBottom: '16px',
-        }}>
+        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю.
+            Если выделений этого статуса несколько, плашка кликабельна и ведёт
+            к следующему по кругу; справа — позиция среди одностатусных и
+            шеврон как намёк на переход. */}
+        <div
+          onClick={statusNavigable ? handleNextOfStatus : undefined}
+          title={statusNavigable ? 'Перейти к следующему выделению с этим статусом' : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '12px 14px',
+            borderRadius: radii.md,
+            background: `${statusInfo.color}15`,
+            border: `1px solid ${statusInfo.color}33`,
+            color: statusInfo.color,
+            fontSize: '13px',
+            fontWeight: 600,
+            marginBottom: '16px',
+            cursor: statusNavigable ? 'pointer' : 'default',
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = `${statusInfo.color}15`;
+          }}
+          onMouseDown={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}33`;
+          }}
+          onMouseUp={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
+          }}
+        >
           <StatusAlertIcon status={statusLabels[highlight.status] ? highlight.status : 'active'} />
           {statusInfo.label}
+          {statusNavigable && (
+            <span style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              fontWeight: 500,
+              opacity: 0.85,
+            }}>
+              {statusIndex + 1} из {sameStatus.length}
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2.2}
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ display: 'block' }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          )}
         </div>
 
         {/* Alert: привязка не отображается на странице */}

@@ -10,14 +10,19 @@ from uuid import UUID
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.crypto import decrypt_secret, encrypt_secret
 from app.database import get_db
+from app.models.baseline import Baseline
+from app.models.highlight import Highlight
+from app.models.highlight_test import HighlightTest
+from app.models.page import Page
 from app.models.project import Project, ProjectCredential
+from app.models.snapshot import PageSnapshot
 from app.models.user import User
 from app.project_access import connection_for, get_my_credential, normalize_base_url
 from app.schemas.project import (
@@ -307,6 +312,38 @@ async def check_credentials(
     cred.last_check_result = "ok"
     await db.flush()
     return CredentialCheckResult(status="ok", last_check_at=now)
+
+
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Удалить проект целиком — для всех участников: страницы со снимками,
+    baseline'ами и привязками, креды участников (каскадом). Право есть у
+    любого участника — в проекте все равны. Порядок ручного каскада — как в
+    delete_page: у этих FK нет ondelete."""
+    project = await _get_regular_project(db, project_id)
+    cred = await get_my_credential(db, project.id, current_user)
+    if cred is None:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Нет доступа к проекту «{project.name}». Подключитесь к нему в настройках",
+        )
+
+    page_ids_q = select(Page.id).where(Page.project_id == project.id)
+    highlight_ids_q = select(Highlight.id).where(Highlight.page_id.in_(page_ids_q))
+    await db.execute(
+        delete(HighlightTest).where(HighlightTest.highlight_id.in_(highlight_ids_q))
+    )
+    await db.execute(delete(Highlight).where(Highlight.page_id.in_(page_ids_q)))
+    await db.execute(delete(Baseline).where(Baseline.page_id.in_(page_ids_q)))
+    await db.execute(delete(PageSnapshot).where(PageSnapshot.page_id.in_(page_ids_q)))
+    await db.execute(delete(Page).where(Page.project_id == project.id))
+
+    await db.delete(project)  # project_credentials удаляются ondelete=CASCADE
+    await db.flush()
 
 
 @router.delete("/{project_id}/credentials", status_code=204)

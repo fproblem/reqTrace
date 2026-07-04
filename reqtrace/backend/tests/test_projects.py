@@ -346,6 +346,29 @@ class TestCredentials(ProjectTestBase):
         self.assertEqual(resp.status_code, 204)
         self.assertIn(cred, self.session.deleted)
 
+    def test_delete_project_by_member(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        # get_my_credential + 5 bulk-delete запросов (тесты, привязки,
+        # baseline'ы, снимки, страницы)
+        self.session.execute_results = [cred, None, None, None, None, None]
+
+        resp = self.client.delete(f"/api/projects/{project.id}")
+
+        self.assertEqual(resp.status_code, 204)
+        self.assertIn(project, self.session.deleted)
+
+    def test_delete_project_requires_membership(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [None]
+
+        resp = self.client.delete(f"/api/projects/{project.id}")
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(self.session.deleted, [])
+
 
 class TestPageScoping(ProjectTestBase):
     def setUp(self):

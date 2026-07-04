@@ -264,4 +264,8 @@ export const api = {
 
   disconnectProject: (projectId: string) =>
     request<void>(`/projects/${projectId}/credentials`, { method: 'DELETE' }),
+
+  /** Удалить проект целиком — для всех участников, со страницами и привязками. */
+  deleteProject: (projectId: string) =>
+    request<void>(`/projects/${projectId}`, { method: 'DELETE' }),
 };

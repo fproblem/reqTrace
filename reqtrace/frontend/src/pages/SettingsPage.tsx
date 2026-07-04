@@ -142,6 +142,16 @@ const XIcon: React.FC = () => (
   </svg>
 );
 
+// Та же корзина, что у «Удалить» в меню действий страницы.
+const TrashIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
+
 const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
@@ -573,12 +583,84 @@ const DisconnectModal: React.FC<{ project: Project; onClose: () => void; onDone:
   );
 };
 
+// --- Модал удаления проекта (подтверждение словом, как у удаления страницы) ---
+
+const DeleteProjectModal: React.FC<{ project: Project; onClose: () => void; onDone: () => void }> = ({
+  project, onClose, onDone,
+}) => {
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { showToast } = useToast();
+  const confirmed = confirmText === 'Удалить';
+
+  const handleDelete = async () => {
+    if (!confirmed || busy) return;
+    setBusy(true);
+    try {
+      await api.deleteProject(project.id);
+      showToast('success', 'Проект удалён', `Проект «${project.name}» и все его страницы удалены у всех участников`);
+      onDone();
+      onClose();
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить проект', e.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Удаление проекта" onClose={onClose}>
+      <p style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.5, marginTop: 0, marginBottom: '6px' }}>
+        Вы собираетесь удалить проект <strong style={{ color: colors.textPrimary }}>«{project.name}»</strong>{' '}
+        целиком — у всех участников. Это действие необратимо: все страницы проекта, их снимки,
+        baseline и привязки к тестам будут удалены. Если хотите убрать проект только у себя —
+        используйте «Отключиться».
+      </p>
+      <p style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '16px' }}>
+        Для подтверждения введите слово <strong style={{ color: colors.statusLost }}>Удалить</strong>
+      </p>
+      <input
+        type="text"
+        value={confirmText}
+        onChange={e => setConfirmText(e.target.value)}
+        placeholder="Введите «Удалить»"
+        autoFocus
+        style={{
+          ...inputStyle,
+          border: `1.5px solid ${confirmed ? colors.statusLost : colors.border}`,
+          transition: 'border-color 0.15s',
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && confirmed) handleDelete();
+          if (e.key === 'Escape') onClose();
+        }}
+      />
+      <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={!confirmed || busy}
+          style={{
+            ...primaryButtonStyle,
+            background: confirmed ? colors.statusLost : 'rgba(239,68,68,0.3)',
+            cursor: confirmed && !busy ? 'pointer' : 'not-allowed',
+            opacity: busy ? 0.7 : 1,
+            transition: 'all 0.15s',
+          }}
+        >
+          {busy ? 'Удаление…' : 'Удалить проект'}
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
 // --- Карточка проекта ---
 
 const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ project, onChanged }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | null>(null);
+  const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | 'delete' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
 
@@ -762,6 +844,17 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 <LogoutIcon />
                 Отключиться
               </button>
+              <button
+                role="menuitem"
+                title="Удалить проект со всеми страницами и привязками — у всех участников, необратимо"
+                style={{ ...menuItemStyle, color: colors.statusLost }}
+                onClick={() => { setMenuOpen(false); setModal('delete'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <TrashIcon />
+                Удалить проект
+              </button>
             </div>
           )}
         </div>
@@ -820,6 +913,9 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       )}
       {modal === 'disconnect' && (
         <DisconnectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
+      )}
+      {modal === 'delete' && (
+        <DeleteProjectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
       )}
     </div>
   );

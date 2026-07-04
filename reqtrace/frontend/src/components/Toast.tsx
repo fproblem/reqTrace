@@ -66,8 +66,9 @@ const typeStyles: Record<ToastType, { bg: string; border: string; titleColor: st
 // \u0414\u0443\u0433\u0430 \u0446\u0435\u043b\u0438\u0442\u0441\u044f \u0432 (secondsLeft - 1)/total \u0438 \u043f\u043e\u0442\u043e\u043c\u0443 \u0434\u043e\u0433\u043e\u0440\u0430\u0435\u0442 \u0440\u043e\u0432\u043d\u043e \u043a \u0441\u043a\u0440\u044b\u0442\u0438\u044e
 // \u0442\u043e\u0441\u0442\u0430, \u0430 \u043d\u0435 \u043a \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0446\u0438\u0444\u0440\u0435; \u043d\u0430 \u043f\u0435\u0440\u0432\u043e\u043c \u043a\u0430\u0434\u0440\u0435 \u0440\u0438\u0441\u0443\u0435\u0442\u0441\u044f \u043f\u043e\u043b\u043d\u043e\u0439 \u0438 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442
 // \u0441\u043e \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u043a\u0430\u0434\u0440\u0430 (armed), \u0438\u043d\u0430\u0447\u0435 transition \u043d\u0435 \u0441\u044b\u0433\u0440\u0430\u0435\u0442 \u043d\u0430 initial render.
-const RING_SIZE = 26;
-const RING_STROKE = 2.5;
+// 22×22 — как кружок-знак слева: два круглых элемента тоста одного размера.
+const RING_SIZE = 22;
+const RING_STROKE = 2;
 
 const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: string; style?: React.CSSProperties }> = ({
   secondsLeft, total, color, style: styleProp,
@@ -104,7 +105,7 @@ const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: strin
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '11px',
+        fontSize: '10px',
         fontWeight: 700,
         color,
         fontVariantNumeric: 'tabular-nums',

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import { Project } from '../types';
+import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
@@ -38,18 +38,6 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontSize: '14px',
   fontWeight: 600,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: '9px 18px',
-  borderRadius: radii.pill,
-  border: `1px solid ${colors.border}`,
-  background: 'transparent',
-  color: colors.textSecondary,
-  fontSize: '14px',
-  fontWeight: 500,
   cursor: 'pointer',
   fontFamily: 'inherit',
 };
@@ -136,13 +124,6 @@ const LogoutIcon: React.FC = () => (
   </svg>
 );
 
-const XIcon: React.FC = () => (
-  <svg {...featherProps} style={{ display: 'block' }}>
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
 // Та же корзина, что у «Удалить» в меню действий страницы.
 const TrashIcon: React.FC = () => (
   <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
@@ -153,27 +134,6 @@ const TrashIcon: React.FC = () => (
   </svg>
 );
 
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.35)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 100,
-};
-
-const modalStyle: React.CSSProperties = {
-  background: colors.white,
-  borderRadius: radii.lg,
-  boxShadow: shadows.card,
-  padding: '24px',
-  width: '440px',
-  maxWidth: 'calc(100vw - 48px)',
-  maxHeight: 'calc(100vh - 48px)',
-  overflowY: 'auto',
-};
-
 function formatCheckedAt(iso: string | null): string {
   if (!iso) return '';
   return new Date(iso).toLocaleString('ru-RU', {
@@ -181,49 +141,6 @@ function formatCheckedAt(iso: string | null): string {
     hour: '2-digit', minute: '2-digit',
   });
 }
-
-// --- Модал-обёртка ---
-
-// Портал в body обязателен: внутри карточки с backdrop-filter position:fixed
-// отсчитывается от карточки (containing block), а не от вьюпорта — оверлей
-// затемнял только карточку, а окно пряталось под соседними карточками.
-const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
-  title, onClose, children,
-}) => createPortal(
-  <div style={overlayStyle} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div style={modalStyle}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px',
-      }}>
-        <h2 style={{ fontSize: '17px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
-          {title}
-        </h2>
-        <button
-          onClick={onClose}
-          title="Закрыть"
-          style={{
-            width: '30px', height: '30px', borderRadius: radii.sm,
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            color: colors.textTertiary, display: 'flex',
-            alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-            e.currentTarget.style.color = colors.textPrimary;
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = colors.textTertiary;
-          }}
-        >
-          <XIcon />
-        </button>
-      </div>
-      {children}
-    </div>
-  </div>,
-  document.body,
-);
 
 // --- Модал «Подключить проект»: присоединиться / создать новый ---
 
@@ -326,7 +243,7 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
       <form onSubmit={handleSubmit}>
         {tab === 'join' ? (
           available.length === 0 ? (
-            <p style={{ fontSize: '13px', color: colors.textSecondary }}>
+            <p style={modalTextStyle}>
               Нет проектов, к которым можно присоединиться. Создайте новый на соседней вкладке.
             </p>
           ) : (
@@ -407,17 +324,14 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-          <button
+          <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+          <ModalButton
             type="submit"
+            variant="primary"
             disabled={busy || (tab === 'join' ? joinDisabled : createDisabled)}
-            style={{
-              ...primaryButtonStyle,
-              opacity: busy || (tab === 'join' ? joinDisabled : createDisabled) ? 0.5 : 1,
-            }}
           >
             {busy ? 'Проверка подключения…' : tab === 'join' ? 'Присоединиться' : 'Создать проект'}
-          </button>
+          </ModalButton>
         </div>
       </form>
     </Modal>
@@ -487,11 +401,10 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-          <button type="submit" disabled={busy || !username.trim()}
-                  style={{ ...primaryButtonStyle, opacity: busy || !username.trim() ? 0.5 : 1 }}>
+          <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+          <ModalButton type="submit" variant="primary" disabled={busy || !username.trim()}>
             {busy ? 'Проверка подключения…' : 'Сохранить'}
-          </button>
+          </ModalButton>
         </div>
       </form>
     </Modal>
@@ -546,11 +459,10 @@ const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onDone
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-          <button type="submit" disabled={busy || !name.trim()}
-                  style={{ ...primaryButtonStyle, opacity: busy || !name.trim() ? 0.5 : 1 }}>
+          <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+          <ModalButton type="submit" variant="primary" disabled={busy || !name.trim()}>
             {busy ? 'Сохранение…' : 'Сохранить'}
-          </button>
+          </ModalButton>
         </div>
       </form>
     </Modal>
@@ -580,21 +492,16 @@ const DisconnectModal: React.FC<{ project: Project; onClose: () => void; onDone:
 
   return (
     <Modal title="Отключиться от проекта?" onClose={onClose}>
-      <p style={{ fontSize: '14px', color: colors.textSecondary, marginTop: 0, marginBottom: '18px' }}>
+      <p style={{ ...modalTextStyle, marginBottom: '18px' }}>
         Ваши креды для проекта «{project.name}» будут удалены, его страницы исчезнут из вашего
         дерева. Сам проект, страницы и привязки останутся у других участников. Вернуться можно
         в любой момент — через «Подключить проект → Присоединиться».
       </p>
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-        <button
-          type="button"
-          onClick={handleDisconnect}
-          disabled={busy}
-          style={{ ...primaryButtonStyle, background: colors.statusLost, opacity: busy ? 0.5 : 1 }}
-        >
+        <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+        <ModalButton type="button" variant="danger" onClick={handleDisconnect} disabled={busy}>
           {busy ? 'Отключение…' : 'Отключиться'}
-        </button>
+        </ModalButton>
       </div>
     </Modal>
   );
@@ -626,13 +533,13 @@ const DeleteProjectModal: React.FC<{ project: Project; onClose: () => void; onDo
 
   return (
     <Modal title="Удаление проекта" onClose={onClose}>
-      <p style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.5, marginTop: 0, marginBottom: '6px' }}>
+      <p style={{ ...modalTextStyle, marginBottom: '6px' }}>
         Вы собираетесь удалить проект <strong style={{ color: colors.textPrimary }}>«{project.name}»</strong>{' '}
         целиком — у всех участников. Это действие необратимо: все страницы проекта, их снимки,
         baseline и привязки к тестам будут удалены. Если хотите убрать проект только у себя —
         используйте «Отключиться».
       </p>
-      <p style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '16px' }}>
+      <p style={{ ...modalTextStyle, marginBottom: '16px' }}>
         Для подтверждения введите слово <strong style={{ color: colors.statusLost }}>Удалить</strong>
       </p>
       <input
@@ -648,25 +555,13 @@ const DeleteProjectModal: React.FC<{ project: Project; onClose: () => void; onDo
         }}
         onKeyDown={e => {
           if (e.key === 'Enter' && confirmed) handleDelete();
-          if (e.key === 'Escape') onClose();
         }}
       />
       <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={onClose} style={secondaryButtonStyle}>Отмена</button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={!confirmed || busy}
-          style={{
-            ...primaryButtonStyle,
-            background: confirmed ? colors.statusLost : 'rgba(239,68,68,0.3)',
-            cursor: confirmed && !busy ? 'pointer' : 'not-allowed',
-            opacity: busy ? 0.7 : 1,
-            transition: 'all 0.15s',
-          }}
-        >
+        <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
+        <ModalButton type="button" variant="danger" onClick={handleDelete} disabled={!confirmed || busy}>
           {busy ? 'Удаление…' : 'Удалить проект'}
-        </button>
+        </ModalButton>
       </div>
     </Modal>
   );

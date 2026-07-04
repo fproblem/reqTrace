@@ -7,6 +7,7 @@ import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAn
 import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
+import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
@@ -1146,214 +1147,74 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
       {/* Baseline warning modal */}
       {showBaselineWarning && (
-        <div
-          onClick={() => setShowBaselineWarning(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.4)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: colors.white,
-              borderRadius: radii.lg,
-              padding: '28px 32px',
-              width: '440px',
-              maxWidth: '90vw',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-            }}
-          >
-            <div style={{
-              fontSize: '17px',
-              fontWeight: 700,
-              color: colors.textPrimary,
-              marginBottom: '8px',
-            }}>
-              Непроверенные привязки
-            </div>
-            <div style={{
-              fontSize: '13px',
-              color: colors.textSecondary,
-              lineHeight: 1.6,
-              marginBottom: '20px',
-            }}>
-              На странице {highlights.filter(h => h.status === 'outdated').length} {' '}
-              привяз{(() => {
-                const n = highlights.filter(h => h.status === 'outdated').length;
-                if (n === 1) return 'ка требует';
-                if (n >= 2 && n <= 4) return 'ки требуют';
-                return 'ок требуют';
-              })()} проверки. Рекомендуется сначала актуализировать их,
-              чтобы убедиться в корректности привязанных тестов.
-              Вы можете закрепить baseline сейчас, но непроверенные привязки
-              останутся в статусе «Требует проверки».
-            </div>
-            <div style={{
-              display: 'flex',
-              gap: '10px',
-              justifyContent: 'flex-end',
-            }}>
-              <button
-                onClick={() => setShowBaselineWarning(false)}
-                style={{
-                  padding: '9px 20px',
-                  borderRadius: radii.pill,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.white,
-                  color: colors.textPrimary,
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                Отмена
-              </button>
-              <button
-                onClick={handleSetBaseline}
-                style={{
-                  padding: '9px 20px',
-                  borderRadius: radii.pill,
-                  border: 'none',
-                  background: colors.greenAccent,
-                  color: '#fff',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                Закрепить всё равно
-              </button>
-            </div>
+        <Modal title="Непроверенные привязки" onClose={() => setShowBaselineWarning(false)}>
+          <p style={{ ...modalTextStyle, marginBottom: '20px' }}>
+            На странице {highlights.filter(h => h.status === 'outdated').length} {' '}
+            привяз{(() => {
+              const n = highlights.filter(h => h.status === 'outdated').length;
+              if (n === 1) return 'ка требует';
+              if (n >= 2 && n <= 4) return 'ки требуют';
+              return 'ок требуют';
+            })()} проверки. Рекомендуется сначала актуализировать их,
+            чтобы убедиться в корректности привязанных тестов.
+            Вы можете закрепить baseline сейчас, но непроверенные привязки
+            останутся в статусе «Требует проверки».
+          </p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <ModalButton onClick={() => setShowBaselineWarning(false)}>Отмена</ModalButton>
+            <ModalButton variant="primary" onClick={handleSetBaseline}>Закрепить всё равно</ModalButton>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Delete confirmation modal */}
       {showDeleteModal && (
-        <div
-          onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.4)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
+        <Modal
+          title="Удаление страницы"
+          onClose={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
         >
-          <div
-            onClick={e => e.stopPropagation()}
+          <p style={{ ...modalTextStyle, marginBottom: '6px' }}>
+            Вы собираетесь удалить страницу <strong style={{ color: colors.textPrimary }}>
+            «{page.title}»</strong>. Это действие необратимо — все снимки, baseline и
+            привязки к тестам будут удалены.
+          </p>
+          <p style={{ ...modalTextStyle, marginBottom: '16px' }}>
+            Для подтверждения введите слово <strong style={{ color: colors.statusLost }}>Удалить</strong>
+          </p>
+          <input
+            type="text"
+            value={deleteConfirmText}
+            onChange={e => setDeleteConfirmText(e.target.value)}
+            placeholder="Введите «Удалить»"
+            autoFocus
             style={{
-              background: colors.white,
-              borderRadius: radii.lg,
-              padding: '28px 32px',
-              width: '420px',
-              maxWidth: '90vw',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+              width: '100%',
+              padding: '10px 14px',
+              borderRadius: radii.sm,
+              border: `1.5px solid ${deleteConfirmText === 'Удалить' ? colors.statusLost : colors.border}`,
+              fontSize: '14px',
+              fontFamily: 'inherit',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
             }}
-          >
-            <div style={{
-              fontSize: '17px',
-              fontWeight: 700,
-              color: colors.textPrimary,
-              marginBottom: '8px',
-            }}>
-              Удаление страницы
-            </div>
-            <div style={{
-              fontSize: '13px',
-              color: colors.textSecondary,
-              lineHeight: 1.5,
-              marginBottom: '6px',
-            }}>
-              Вы собираетесь удалить страницу <strong style={{ color: colors.textPrimary }}>
-              «{page.title}»</strong>. Это действие необратимо — все снимки, baseline и
-              привязки к тестам будут удалены.
-            </div>
-            <div style={{
-              fontSize: '13px',
-              color: colors.textSecondary,
-              marginBottom: '16px',
-            }}>
-              Для подтверждения введите слово <strong style={{ color: colors.statusLost }}>Удалить</strong>
-            </div>
-            <input
-              type="text"
-              value={deleteConfirmText}
-              onChange={e => setDeleteConfirmText(e.target.value)}
-              placeholder="Введите «Удалить»"
-              autoFocus
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: radii.sm,
-                border: `1.5px solid ${deleteConfirmText === 'Удалить' ? colors.statusLost : colors.border}`,
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.15s',
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && deleteConfirmText === 'Удалить') handleDeletePage();
-                if (e.key === 'Escape') { setShowDeleteModal(false); setDeleteConfirmText(''); }
-              }}
-            />
-            <div style={{
-              display: 'flex',
-              gap: '10px',
-              marginTop: '20px',
-              justifyContent: 'flex-end',
-            }}>
-              <button
-                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
-                style={{
-                  padding: '9px 20px',
-                  borderRadius: radii.pill,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.white,
-                  color: colors.textPrimary,
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                Отмена
-              </button>
-              <button
-                onClick={handleDeletePage}
-                disabled={deleteConfirmText !== 'Удалить' || deleting}
-                style={{
-                  padding: '9px 20px',
-                  borderRadius: radii.pill,
-                  border: 'none',
-                  background: deleteConfirmText === 'Удалить' ? '#EF4444' : 'rgba(239,68,68,0.3)',
-                  color: '#fff',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: deleteConfirmText === 'Удалить' ? 'pointer' : 'not-allowed',
-                  fontFamily: 'inherit',
-                  transition: 'all 0.15s',
-                  opacity: deleting ? 0.7 : 1,
-                }}
-              >
-                {deleting ? 'Удаление...' : 'Удалить страницу'}
-              </button>
-            </div>
+            onKeyDown={e => {
+              if (e.key === 'Enter' && deleteConfirmText === 'Удалить') handleDeletePage();
+            }}
+          />
+          <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end' }}>
+            <ModalButton onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}>
+              Отмена
+            </ModalButton>
+            <ModalButton
+              variant="danger"
+              onClick={handleDeletePage}
+              disabled={deleteConfirmText !== 'Удалить' || deleting}
+            >
+              {deleting ? 'Удаление…' : 'Удалить страницу'}
+            </ModalButton>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

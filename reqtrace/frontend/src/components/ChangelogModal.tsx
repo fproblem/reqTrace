@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { colors, radii, shadows, fonts } from '../styles/tokens';
+import { Modal, modalTextStyle } from './Modal';
+import { colors, radii } from '../styles/tokens';
 
 interface ChangelogEntry {
   version: string;
@@ -35,72 +36,8 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
   if (!open) return null;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.35)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 3000,
-        fontFamily: fonts.body,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: colors.white,
-          borderRadius: radii.lg,
-          width: '520px',
-          maxWidth: '92vw',
-          maxHeight: '80vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          padding: '22px 28px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: `1px solid ${colors.border}`,
-          flexShrink: 0,
-        }}>
-          <span style={{
-            fontSize: '17px',
-            fontWeight: 700,
-            color: colors.textPrimary,
-          }}>
-            История изменений
-          </span>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '20px',
-              color: colors.textSecondary,
-              padding: '4px',
-              lineHeight: 1,
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Scrollable body */}
-        <div style={{
-          padding: '20px 28px 28px',
-          overflowY: 'auto',
-          flex: 1,
-        }}>
+    <Modal title="История изменений" width="520px" onClose={onClose}>
+      <div>
           {entries.length === 0 ? (
             <div style={{
               color: colors.textTertiary,
@@ -157,14 +94,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
                     gap: '6px',
                   }}>
                     {entry.changes.map((change, ci) => (
-                      <li
-                        key={ci}
-                        style={{
-                          fontSize: '13px',
-                          lineHeight: '1.5',
-                          color: colors.textSecondary,
-                        }}
-                      >
+                      <li key={ci} style={{ ...modalTextStyle, marginBottom: 0 }}>
                         {change}
                       </li>
                     ))}
@@ -173,9 +103,8 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
               ))}
             </div>
           )}
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

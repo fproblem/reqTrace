@@ -74,6 +74,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 }) => {
   const [testKey, setTestKey] = useState('');
   const [adding, setAdding] = useState(false);
+  const testInputRef = useRef<HTMLInputElement>(null);
   const [reanchoring, setReanchoring] = useState(false);
   // Компактное подтверждение удаления — поповер над кнопкой в футере.
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -99,6 +100,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // Переключились на другое выделение — вопрос больше не актуален.
   useEffect(() => { setConfirmOpen(false); }, [highlight?.id]);
 
+  // Автофокус в поле теста: главный сценарий — «выделил текст → привязал
+  // тест», обязательный клик в поле между ними лишний. Срабатывает при
+  // открытии панели и при переходе на другое выделение.
+  useEffect(() => {
+    if (highlight) testInputRef.current?.focus();
+  }, [highlight?.id]);
+
   if (!highlight) return null;
 
   const sorted = sortedByPosition(allHighlights);
@@ -116,6 +124,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       setTestKey('');
     } finally {
       setAdding(false);
+      // Фокус не теряется после добавления (клик по «Добавить» уводит его на
+      // кнопку) — серию тестов можно вбить подряд, не трогая мышь.
+      testInputRef.current?.focus();
     }
   };
 
@@ -480,6 +491,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           display: 'flex', gap: '8px', marginBottom: '20px',
         }}>
           <input
+            ref={testInputRef}
             type="text"
             value={testKey}
             onChange={e => setTestKey(e.target.value)}

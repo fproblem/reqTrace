@@ -60,6 +60,66 @@ const typeStyles: Record<ToastType, { bg: string; border: string; titleColor: st
   },
 };
 
+// \u041a\u043e\u043b\u044c\u0446\u043e \u043e\u0431\u0440\u0430\u0442\u043d\u043e\u0433\u043e \u043e\u0442\u0441\u0447\u0451\u0442\u0430 undo-\u0442\u043e\u0441\u0442\u0430: \u0446\u0438\u0444\u0440\u0430 \u0441\u0435\u043a\u0443\u043d\u0434 \u0432 \u0446\u0435\u043d\u0442\u0440\u0435, \u0432\u043e\u043a\u0440\u0443\u0433 \u2014
+// \u0434\u0443\u0433\u0430, \u043f\u043b\u0430\u0432\u043d\u043e \u0442\u0430\u044e\u0449\u0430\u044f \u043f\u043e \u0447\u0430\u0441\u043e\u0432\u043e\u0439 (stroke-dashoffset + transition 1s linear,
+// \u0442\u043e\u0442 \u0436\u0435 \u043f\u0440\u0438\u0451\u043c \u043d\u0435\u043f\u0440\u0435\u0440\u044b\u0432\u043d\u043e\u0441\u0442\u0438, \u0447\u0442\u043e \u0431\u044b\u043b \u0443 \u043f\u043b\u043e\u0441\u043a\u043e\u0433\u043e \u0431\u0430\u0440\u0430). \u0414\u0443\u0433\u0430 \u0446\u0435\u043b\u0438\u0442\u0441\u044f \u0432
+// (secondsLeft - 1)/total \u0438 \u043f\u043e\u0442\u043e\u043c\u0443 \u0434\u043e\u0433\u043e\u0440\u0430\u0435\u0442 \u0440\u043e\u0432\u043d\u043e \u043a \u0441\u043a\u0440\u044b\u0442\u0438\u044e \u0442\u043e\u0441\u0442\u0430, \u0430 \u043d\u0435 \u043a
+// \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0446\u0438\u0444\u0440\u0435; \u043d\u0430 \u043f\u0435\u0440\u0432\u043e\u043c \u043a\u0430\u0434\u0440\u0435 \u0440\u0438\u0441\u0443\u0435\u0442\u0441\u044f \u043f\u043e\u043b\u043d\u043e\u0439 \u0438 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u0441\u043e \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e
+// \u043a\u0430\u0434\u0440\u0430 (armed), \u0438\u043d\u0430\u0447\u0435 transition \u043d\u0435 \u0441\u044b\u0433\u0440\u0430\u0435\u0442 \u043d\u0430 initial render.
+const RING_SIZE = 48;
+const RING_STROKE = 4;
+
+const CountdownRing: React.FC<{ secondsLeft: number; total: number; color: string }> = ({
+  secondsLeft, total, color,
+}) => {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setArmed(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const r = (RING_SIZE - RING_STROKE) / 2;
+  const c = 2 * Math.PI * r;
+  const fraction = Math.max(0, (armed ? secondsLeft - 1 : secondsLeft) / total);
+
+  return (
+    <div style={{ position: 'relative', width: RING_SIZE, height: RING_SIZE, flexShrink: 0 }}>
+      <svg width={RING_SIZE} height={RING_SIZE} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+        <circle
+          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={r}
+          fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth={RING_STROKE}
+        />
+        <circle
+          cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={r}
+          fill="none" stroke={color} strokeWidth={RING_STROKE}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - fraction)}
+          style={{ transition: 'stroke-dashoffset 1s linear' }}
+        />
+      </svg>
+      <span style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '16px',
+        fontWeight: 700,
+        color,
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        <span
+          key={secondsLeft}
+          style={{ display: 'inline-block', animation: 'toast-digit-in 0.25s ease-out' }}
+        >
+          {secondsLeft}
+        </span>
+      </span>
+    </div>
+  );
+};
+
 // SVG-\u0437\u043d\u0430\u043a \u0432 \u043a\u0440\u0443\u0436\u043a\u0435 \u0442\u043e\u0441\u0442\u0430: \u00ab!\u00bb \u0443 error/warning, \u0433\u0430\u043b\u043e\u0447\u043a\u0430 \u0443 success. \u0422\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0435
 // \u0433\u043b\u0438\u0444\u044b (!, \u2713) \u0440\u0438\u0441\u043e\u0432\u0430\u043b\u0438\u0441\u044c \u0444\u043e\u043b\u0431\u044d\u043a-\u0448\u0440\u0438\u0444\u0442\u0430\u043c\u0438 \u0438 \u043f\u043b\u044b\u043b\u0438 \u043f\u043e \u0431\u0430\u0437\u043e\u0432\u043e\u0439 \u043b\u0438\u043d\u0438\u0438.
 // \u0422\u043e\u0447\u043a\u0430 \u00ab!\u00bb \u2014 \u043b\u0438\u043d\u0438\u044f \u043d\u0443\u043b\u0435\u0432\u043e\u0439 \u0434\u043b\u0438\u043d\u044b \u0441 \u043a\u0440\u0443\u0433\u043b\u044b\u043c \u043a\u043e\u043d\u0447\u0438\u043a\u043e\u043c.
@@ -139,7 +199,9 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         boxShadow: shadows.panel,
         display: 'flex',
         gap: '12px',
-        alignItems: 'flex-start',
+        // Кольцо undo-тоста центрируется по всему контенту (заголовок +
+        // текст + кнопка), у обычного тоста иконка сидит на первой строке.
+        alignItems: undo ? 'center' : 'flex-start',
         maxWidth: '420px',
         width: '100%',
         opacity: exiting ? 0 : 1,
@@ -148,21 +210,27 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         animation: 'toast-in 0.3s ease-out',
       }}
     >
-      {/* Icon — кружок 22px, заголовок выровнен на его высоту (line-height 22) */}
-      <div style={{
-        width: '22px',
-        height: '22px',
-        borderRadius: '50%',
-        background: style.bg,
-        border: `1.5px solid ${style.border}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: style.titleColor,
-        flexShrink: 0,
-      }}>
-        <TypeIcon type={toast.type} />
-      </div>
+      {/* Слева: у undo-тоста — кольцо отсчёта с цифрой (оно же — знак типа:
+          цвет дуги), у обычного — кружок 22px со знаком, заголовок выровнен
+          на его высоту (line-height 22) */}
+      {undo ? (
+        <CountdownRing secondsLeft={secondsLeft} total={undo.seconds} color={style.titleColor} />
+      ) : (
+        <div style={{
+          width: '22px',
+          height: '22px',
+          borderRadius: '50%',
+          background: style.bg,
+          border: `1.5px solid ${style.border}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: style.titleColor,
+          flexShrink: 0,
+        }}>
+          <TypeIcon type={toast.type} />
+        </div>
+      )}
 
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -186,50 +254,19 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
           </div>
         )}
 
-        {/* Обратный отсчёт: прогресс-бар тает к следующей цифре, цифра
-            сменяется с лёгким въездом сверху, справа — кнопка отмены */}
+        {/* Кнопка отмены — внизу справа под текстом (отсчёт показывает
+            кольцо слева) */}
         {undo && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-            <div style={{
-              flex: 1,
-              height: '4px',
-              borderRadius: '2px',
-              background: 'rgba(0,0,0,0.08)',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%',
-                borderRadius: '2px',
-                background: style.titleColor,
-                width: `${(secondsLeft / undo.seconds) * 100}%`,
-                transition: 'width 1s linear',
-              }} />
-            </div>
-            <span style={{
-              width: '14px',
-              textAlign: 'center',
-              fontSize: '12px',
-              fontWeight: 700,
-              color: style.titleColor,
-              fontVariantNumeric: 'tabular-nums',
-              flexShrink: 0,
-            }}>
-              <span
-                key={secondsLeft}
-                style={{ display: 'inline-block', animation: 'toast-digit-in 0.25s ease-out' }}
-              >
-                {secondsLeft}
-              </span>
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
             <button
               onClick={handleUndo}
               style={{
-                padding: '4px 12px',
+                padding: '6px 16px',
                 borderRadius: radii.pill,
                 border: `1px solid ${colors.border}`,
                 background: 'transparent',
                 color: colors.textSecondary,
-                fontSize: '12px',
+                fontSize: '12.5px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 fontFamily: 'inherit',

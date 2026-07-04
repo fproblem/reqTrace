@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
+import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -251,17 +252,14 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
             <>
               <div style={fieldStyle}>
                 <label style={labelStyle}>Проект</label>
-                <select
+                <Select
                   value={joinProjectId}
-                  onChange={e => setJoinProjectId(e.target.value)}
-                  style={{ ...inputStyle, appearance: 'auto' }}
-                >
-                  {available.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — {p.confluence_base_url}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setJoinProjectId}
+                  options={available.map(p => ({
+                    value: p.id,
+                    label: `${p.name} — ${p.confluence_base_url}`,
+                  }))}
+                />
               </div>
               <div style={fieldStyle}>
                 <label style={labelStyle}>Логин Confluence</label>

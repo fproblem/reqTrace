@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
+import { Select } from '../Select';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
@@ -334,27 +335,17 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           />
           {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
           {candidateProjects.length > 1 && (
-            <select
+            <Select
               value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
+              onChange={setSelectedProjectId}
+              size="sm"
               title="Проект, в который добавить страницу"
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                borderRadius: radii.sm,
-                border: `1px solid ${colors.border}`,
-                fontSize: '12px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                marginBottom: '6px',
-                background: colors.white,
-              }}
-            >
-              {candidateProjects.map(p => (
-                <option key={p.id} value={p.id}>В проект: {p.name}</option>
-              ))}
-            </select>
+              style={{ marginBottom: '6px' }}
+              options={candidateProjects.map(p => ({
+                value: p.id,
+                label: `В проект: ${p.name}`,
+              }))}
+            />
           )}
           <div style={{ display: 'flex', gap: '4px' }}>
             <button

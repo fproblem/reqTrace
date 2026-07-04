@@ -63,34 +63,22 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
                       : colors.white,
                   }}
                 >
-                  {/* Version header: номер + заголовок релиза слева, дата справа */}
+                  {/* Version header: номер слева, дата справа; заголовок релиза — строкой ниже */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'baseline',
                     gap: '12px',
-                    marginBottom: '12px',
+                    marginBottom: entry.title ? '2px' : '12px',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
-                      <span style={{
-                        fontSize: '15px',
-                        fontWeight: 700,
-                        color: colors.textPrimary,
-                        fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        flexShrink: 0,
-                      }}>
-                        v{entry.version}
-                      </span>
-                      {entry.title && (
-                        <span style={{
-                          fontSize: '13.5px',
-                          fontWeight: 600,
-                          color: colors.textPrimary,
-                        }}>
-                          {entry.title}
-                        </span>
-                      )}
-                    </div>
+                    <span style={{
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      color: colors.textPrimary,
+                      fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                    }}>
+                      v{entry.version}
+                    </span>
                     <span style={{
                       fontSize: '13px',
                       color: colors.textTertiary,
@@ -100,6 +88,16 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
                       {formatDate(entry.date)}
                     </span>
                   </div>
+                  {entry.title && (
+                    <div style={{
+                      fontSize: '13.5px',
+                      fontWeight: 600,
+                      color: colors.textSecondary,
+                      marginBottom: '12px',
+                    }}>
+                      {entry.title}
+                    </div>
+                  )}
 
                   {/* Changes list */}
                   <ul style={{

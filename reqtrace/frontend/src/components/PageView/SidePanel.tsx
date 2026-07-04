@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
+import { XIcon } from '../Modal';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 
 interface SidePanelProps {
@@ -81,9 +82,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Header with navigation */}
+      {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
+          (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
+          ровно под «⋮», стрелка «вниз» — под «Обновить». */}
       <div style={{
-        padding: '17px 20px',
+        padding: '12px 24px 12px 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',
@@ -101,7 +104,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {sorted.length > 1 && (
             <>
               <button
@@ -109,16 +112,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 disabled={!hasPrev}
                 title="Предыдущее выделение"
                 style={{
+                  width: '34px',
+                  height: '34px',
                   background: colors.white,
                   border: `1px solid ${colors.border}`,
                   cursor: hasPrev ? 'pointer' : 'default',
-                  padding: '3px 8px',
-                  borderRadius: radii.sm,
+                  borderRadius: radii.md,
                   color: hasPrev ? colors.textSecondary : colors.textTertiary,
                   opacity: hasPrev ? 1 : 0.4,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                   transition: 'all 0.15s',
                 }}
                 onMouseEnter={e => {
@@ -134,7 +139,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 }}
               >
                 <svg
-                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth={2}
                   strokeLinecap="round" strokeLinejoin="round"
                   style={{ display: 'block' }}
@@ -148,16 +153,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 disabled={!hasNext}
                 title="Следующее выделение"
                 style={{
+                  width: '34px',
+                  height: '34px',
                   background: colors.white,
                   border: `1px solid ${colors.border}`,
                   cursor: hasNext ? 'pointer' : 'default',
-                  padding: '3px 8px',
-                  borderRadius: radii.sm,
+                  borderRadius: radii.md,
                   color: hasNext ? colors.textSecondary : colors.textTertiary,
                   opacity: hasNext ? 1 : 0.4,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                   transition: 'all 0.15s',
                 }}
                 onMouseEnter={e => {
@@ -173,7 +180,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 }}
               >
                 <svg
-                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth={2}
                   strokeLinecap="round" strokeLinejoin="round"
                   style={{ display: 'block' }}
@@ -184,14 +191,29 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               </button>
             </>
           )}
+          {/* Крестик — как в модалках (XIcon, прозрачный фон, тот же ховер);
+              34×34 вместо модальных 30×30 — ради колонки с «⋮» верхнего бара. */}
           <button
             onClick={onClose}
+            title="Закрыть"
             style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: '18px', color: colors.textSecondary, padding: '4px',
+              width: '34px', height: '34px', borderRadius: radii.sm,
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: colors.textTertiary, display: 'flex', flexShrink: 0,
+              alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
             }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = colors.textTertiary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
           >
-            ✕
+            <XIcon />
           </button>
         </div>
       </div>

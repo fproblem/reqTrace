@@ -54,7 +54,7 @@ export const modalTextStyle: React.CSSProperties = {
   marginBottom: '14px',
 };
 
-const XIcon: React.FC = () => (
+export const XIcon: React.FC = () => (
   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor"
        strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
     <line x1="18" y1="6" x2="6" y2="18" />

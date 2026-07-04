@@ -34,12 +34,14 @@ const windowStyle: React.CSSProperties = {
   overflowY: 'auto',
 };
 
-/** Сплошной текст в модалках: единый размер, интервал, выравнивание по ширине. */
+/** Сплошной текст в модалках: единый размер и межстрочный интервал.
+ *  Выравнивание — по левому краю: justify на узкой колонке без переносов
+ *  растягивает пробелы неравномерно от строки к строке. */
 export const modalTextStyle: React.CSSProperties = {
   fontSize: '13px',
   lineHeight: 1.6,
   color: colors.textSecondary,
-  textAlign: 'justify',
+  textAlign: 'left',
   marginTop: 0,
   marginBottom: '14px',
 };

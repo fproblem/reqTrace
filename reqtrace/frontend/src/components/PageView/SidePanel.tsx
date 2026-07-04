@@ -49,6 +49,19 @@ const StatusAlertIcon: React.FC<{ status: string }> = ({ status }) => (
   </svg>
 );
 
+// Корзина для карточки подтверждения удаления (feather trash-2).
+const TrashIcon: React.FC = () => (
+  <svg
+    width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}
+  >
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
+
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
   // (позиция <mark> в DOM). Подробности — в compareByDomThenAnchor.
@@ -327,7 +340,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             }}
             disabled={reanchoring}
             style={{
-              display: 'flex',
+              display: 'block',
               alignItems: 'center',
               gap: '6px',
               width: '100%',
@@ -567,28 +580,54 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             zIndex: 11,
             background: colors.cardBgSolid,
             border: `1px solid ${colors.border}`,
-            borderRadius: radii.md,
+            borderRadius: radii.lg,
             boxShadow: shadows.panel,
-            padding: '12px 14px',
+            padding: '20px 16px 16px',
+            textAlign: 'center',
           }}>
+            {/* Симметричная карточка: корзина в тонированном круге, заголовок
+                и текст по центру, кнопки 50/50 без дивайдера. Текст честный:
+                удаление можно отменить в течение таймера undo-тоста. */}
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              background: 'rgba(239,68,68,0.1)',
+              color: colors.statusLost,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 12px',
+            }}>
+              <TrashIcon />
+            </div>
+            <div style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              color: colors.textPrimary,
+              marginBottom: '6px',
+            }}>
+              Удалить выделение?
+            </div>
             <div style={{
               fontSize: '12.5px',
               color: colors.textSecondary,
               lineHeight: 1.45,
-              marginBottom: '10px',
+              marginBottom: '16px',
             }}>
-              Удалить выделение и его связи с тестами?
+              Связи с тестами удалятся вместе с ним. После удаления будет 7 секунд, чтобы передумать
             </div>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setConfirmOpen(false)}
                 style={{
-                  padding: '5px 14px',
+                  flex: 1,
+                  padding: '8px 0',
                   borderRadius: radii.pill,
                   border: `1px solid ${colors.border}`,
                   background: 'transparent',
                   color: colors.textSecondary,
-                  fontSize: '12px',
+                  fontSize: '13px',
                   fontWeight: 500,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
@@ -612,12 +651,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               <button
                 onClick={() => { setConfirmOpen(false); onDeleteHighlight(highlight.id); }}
                 style={{
-                  padding: '5px 16px',
+                  flex: 1,
+                  padding: '8px 0',
                   borderRadius: radii.pill,
                   border: 'none',
                   background: colors.statusLost,
                   color: '#fff',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   fontWeight: 600,
                   cursor: 'pointer',
                   fontFamily: 'inherit',

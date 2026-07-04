@@ -8,6 +8,7 @@ import type { HighlightRenderReport } from '../components/PageView/HighlightLaye
 import { SidePanel } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
+import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
 
@@ -672,12 +673,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   return (
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
-      <style>{`
-        @keyframes reqtrace-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
 
       {/* Top bar */}
       <div style={{
@@ -846,23 +841,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               e.currentTarget.style.color = colors.textSecondary;
             }}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{
-                display: 'block',
-                animation: refreshing ? 'reqtrace-spin 0.8s linear infinite' : undefined,
-              }}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <RefreshIcon size={16} spinning={refreshing} />
           </button>
 
           {/* Меню действий: «Закрепить версию» (baseline) и «Удалить» */}

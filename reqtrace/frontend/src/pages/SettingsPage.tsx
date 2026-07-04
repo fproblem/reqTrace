@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
+import { RefreshIcon } from '../components/RefreshIcon';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
@@ -85,17 +86,6 @@ const featherProps = {
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
 } as const;
-
-// Та же иконка, что у «Обновить» страницы и синхронизации дерева.
-const RefreshIcon: React.FC<{ spinning?: boolean }> = ({ spinning }) => (
-  <svg {...featherProps} style={{
-    display: 'block', flexShrink: 0,
-    animation: spinning ? 'reqtrace-spin 0.8s linear infinite' : undefined,
-  }}>
-    <polyline points="23 4 23 10 17 10" />
-    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-  </svg>
-);
 
 // Та же иконка, что у меню «⋮» страницы.
 const DotsIcon: React.FC = () => (
@@ -876,12 +866,6 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
-      <style>{`
-        @keyframes reqtrace-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
         Настройки
       </h1>

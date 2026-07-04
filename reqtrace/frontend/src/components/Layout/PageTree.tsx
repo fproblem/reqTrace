@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
+import { RefreshIcon } from '../RefreshIcon';
 import { Select } from '../Select';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
@@ -228,12 +229,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <style>{`
-        @keyframes reqtrace-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
       {/* Header */}
       <div style={{
         display: 'flex',
@@ -270,23 +265,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               transition: 'all 0.15s',
             }}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{
-                display: 'block',
-                animation: syncing ? 'reqtrace-spin 0.8s linear infinite' : undefined,
-              }}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <RefreshIcon size={12} spinning={syncing} />
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}

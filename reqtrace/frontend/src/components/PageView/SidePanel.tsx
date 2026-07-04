@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
+import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 
 interface SidePanelProps {
@@ -72,6 +73,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   highlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
   onAddTest, onRemoveTest, onDeleteHighlight, onReanchor, onNavigate,
 }) => {
+  const { showToast } = useToast();
   const [testKey, setTestKey] = useState('');
   const [adding, setAdding] = useState(false);
   const testInputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +109,27 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     if (highlight) testInputRef.current?.focus();
   }, [highlight?.id]);
 
+  // Escape закрывает панель — с автофокусом поля весь цикл «выделил →
+  // привязал тесты → закрыл» проходит без мыши. Слои: открытый поповер
+  // подтверждения удаления обрабатывает Escape сам (confirmOpen), модалки и
+  // меню — тоже сами (их stopPropagation на document-слушателе соседей не
+  // останавливает, поэтому проверяем их наличие в DOM); непустое поле теста
+  // первая Escape только очищает.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (confirmOpen) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (e.target === testInputRef.current && testKey) {
+        setTestKey('');
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [confirmOpen, testKey, onClose]);
+
   if (!highlight) return null;
 
   const sorted = sortedByPosition(allHighlights);
@@ -129,10 +152,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   };
 
   const handleAdd = async () => {
-    if (!testKey.trim()) return;
+    const key = testKey.trim().toUpperCase();
+    if (!key) return;
+    // Дубль не отправляем: ключ уже привязан к этому выделению. Набранное
+    // оставляем выделенным — следующий набор сразу заменит его.
+    if (highlight.tests.some(t => t.test_key === key)) {
+      showToast('warning', 'Тест уже привязан', `${key} уже есть у этого выделения`);
+      testInputRef.current?.select();
+      return;
+    }
     setAdding(true);
     try {
-      await onAddTest(highlight.id, testKey.trim().toUpperCase());
+      await onAddTest(highlight.id, key);
       setTestKey('');
     } finally {
       setAdding(false);
@@ -519,20 +550,37 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     background: colors.white,
                   }}
                 >
-                  <a
-                    href={`${jiraBaseUrl}/browse/${test.test_key}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      color: '#2563EB',
-                      textDecoration: 'none',
-                      fontWeight: 500,
-                      fontSize: '13px',
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {test.test_key}
-                  </a>
+                  {/* Без адреса Jira ссылка собиралась бы в «/browse/КЛЮЧ» —
+                      битый роут самого приложения в новой вкладке. Показываем
+                      ключ текстом с подсказкой, где включить ссылки. */}
+                  {jiraBaseUrl ? (
+                    <a
+                      href={`${jiraBaseUrl}/browse/${test.test_key}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#2563EB',
+                        textDecoration: 'none',
+                        fontWeight: 500,
+                        fontSize: '13px',
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {test.test_key}
+                    </a>
+                  ) : (
+                    <span
+                      title="Укажите адрес Jira в настройках проекта, чтобы ключи тестов стали ссылками"
+                      style={{
+                        color: colors.textPrimary,
+                        fontWeight: 500,
+                        fontSize: '13px',
+                        cursor: 'help',
+                      }}
+                    >
+                      {test.test_key}
+                    </span>
+                  )}
                   {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
                   <button
                     onClick={() => onRemoveTest(test.id)}

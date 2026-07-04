@@ -336,15 +336,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
               Привязанные тесты
             </span>
-            {/* Число — пилюлей в цвете покрытия, а не «(2)» в скобках */}
+            {/* Число — нейтральной пилюлей, а не «(2)» в скобках; без цветового
+                акцента — в панели их и так достаточно */}
             {highlight.tests.length > 0 && (
               <span style={{
                 padding: '2px 8px',
                 borderRadius: radii.pill,
-                background: colors.greenLight,
-                color: colors.greenDark,
+                background: 'rgba(0,0,0,0.05)',
+                color: colors.textSecondary,
                 fontSize: '11px',
-                fontWeight: 700,
+                fontWeight: 600,
                 lineHeight: 1.4,
               }}>
                 {highlight.tests.length}
@@ -366,7 +367,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 12px',
-                    borderRadius: radii.sm,
+                    borderRadius: radii.md,
                     border: `1px solid ${colors.border}`,
                     background: colors.white,
                   }}
@@ -385,26 +386,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   >
                     {test.test_key}
                   </a>
+                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
                   <button
                     onClick={() => onRemoveTest(test.id)}
                     style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: colors.textTertiary, fontSize: '14px', padding: '2px 6px',
-                      borderRadius: radii.sm, transition: 'all 0.15s',
+                      width: '26px', height: '26px', borderRadius: radii.sm,
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      color: colors.textTertiary, display: 'flex', flexShrink: 0,
+                      alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
                     }}
                     title="Отвязать тест"
                     onMouseEnter={e => {
-                      e.currentTarget.style.background = colors.redHighlight;
-                      e.currentTarget.style.color = colors.statusLost;
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                      e.currentTarget.style.color = colors.textPrimary;
                     }}
                     onMouseLeave={e => {
                       e.currentTarget.style.background = 'transparent';
                       e.currentTarget.style.color = colors.textTertiary;
                     }}
-                    onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; }}
-                    onMouseUp={e => { e.currentTarget.style.background = colors.redHighlight; }}
+                    onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                    onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
                   >
-                    ✕
+                    <XIcon />
                   </button>
                 </div>
               ))}

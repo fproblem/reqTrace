@@ -62,12 +62,10 @@ const typeStyles: Record<ToastType, { bg: string; border: string; titleColor: st
 
 // \u041a\u043e\u043b\u044c\u0446\u043e \u043e\u0431\u0440\u0430\u0442\u043d\u043e\u0433\u043e \u043e\u0442\u0441\u0447\u0451\u0442\u0430 undo-\u0442\u043e\u0441\u0442\u0430: \u0446\u0438\u0444\u0440\u0430 \u0441\u0435\u043a\u0443\u043d\u0434 \u0432 \u0446\u0435\u043d\u0442\u0440\u0435, \u0432\u043e\u043a\u0440\u0443\u0433 \u2014
 // \u0434\u0443\u0433\u0430, \u043f\u043b\u0430\u0432\u043d\u043e \u0442\u0430\u044e\u0449\u0430\u044f \u043f\u043e \u0447\u0430\u0441\u043e\u0432\u043e\u0439 (stroke-dashoffset + transition 1s linear).
-// \u041a\u043e\u043c\u043f\u0430\u043a\u0442\u043d\u043e\u0435 (26px) \u2014 \u0437\u0430\u043d\u0438\u043c\u0430\u0435\u0442 \u0441\u043b\u043e\u0442 \u043a\u0440\u0435\u0441\u0442\u0438\u043a\u0430 \u0437\u0430\u043a\u0440\u044b\u0442\u0438\u044f \u043e\u0431\u044b\u0447\u043d\u043e\u0433\u043e \u0442\u043e\u0441\u0442\u0430, \u0442\u0430\u043a
-// \u0447\u0442\u043e \u0430\u043d\u0430\u0442\u043e\u043c\u0438\u044f \u0432\u0441\u0435\u0445 \u0442\u043e\u0441\u0442\u043e\u0432 \u0435\u0434\u0438\u043d\u0430; \u0437\u0430\u043e\u0434\u043d\u043e \u0447\u0435\u0441\u0442\u043d\u043e \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u0442, \u043a\u043e\u0433\u0434\u0430 \u0442\u043e\u0441\u0442
-// \u0437\u0430\u043a\u0440\u043e\u0435\u0442\u0441\u044f. \u0414\u0443\u0433\u0430 \u0446\u0435\u043b\u0438\u0442\u0441\u044f \u0432 (secondsLeft - 1)/total \u0438 \u043f\u043e\u0442\u043e\u043c\u0443 \u0434\u043e\u0433\u043e\u0440\u0430\u0435\u0442 \u0440\u043e\u0432\u043d\u043e
-// \u043a \u0441\u043a\u0440\u044b\u0442\u0438\u044e \u0442\u043e\u0441\u0442\u0430, \u0430 \u043d\u0435 \u043a \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0446\u0438\u0444\u0440\u0435; \u043d\u0430 \u043f\u0435\u0440\u0432\u043e\u043c \u043a\u0430\u0434\u0440\u0435 \u0440\u0438\u0441\u0443\u0435\u0442\u0441\u044f \u043f\u043e\u043b\u043d\u043e\u0439
-// \u0438 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u0441\u043e \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u043a\u0430\u0434\u0440\u0430 (armed), \u0438\u043d\u0430\u0447\u0435 transition \u043d\u0435 \u0441\u044b\u0433\u0440\u0430\u0435\u0442 \u043d\u0430
-// initial render.
+// \u041a\u043e\u043c\u043f\u0430\u043a\u0442\u043d\u043e\u0435 (26px), \u0441\u0442\u043e\u0438\u0442 \u0432 \u043f\u0440\u0430\u0432\u043e\u043c \u043a\u043b\u0430\u0441\u0442\u0435\u0440\u0435 \u0440\u044f\u0434\u043e\u043c \u0441 \u043a\u043d\u043e\u043f\u043a\u043e\u0439 \u043e\u0442\u043c\u0435\u043d\u044b.
+// \u0414\u0443\u0433\u0430 \u0446\u0435\u043b\u0438\u0442\u0441\u044f \u0432 (secondsLeft - 1)/total \u0438 \u043f\u043e\u0442\u043e\u043c\u0443 \u0434\u043e\u0433\u043e\u0440\u0430\u0435\u0442 \u0440\u043e\u0432\u043d\u043e \u043a \u0441\u043a\u0440\u044b\u0442\u0438\u044e
+// \u0442\u043e\u0441\u0442\u0430, \u0430 \u043d\u0435 \u043a \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0439 \u0446\u0438\u0444\u0440\u0435; \u043d\u0430 \u043f\u0435\u0440\u0432\u043e\u043c \u043a\u0430\u0434\u0440\u0435 \u0440\u0438\u0441\u0443\u0435\u0442\u0441\u044f \u043f\u043e\u043b\u043d\u043e\u0439 \u0438 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442
+// \u0441\u043e \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u043a\u0430\u0434\u0440\u0430 (armed), \u0438\u043d\u0430\u0447\u0435 transition \u043d\u0435 \u0441\u044b\u0433\u0440\u0430\u0435\u0442 \u043d\u0430 initial render.
 const RING_SIZE = 26;
 const RING_STROKE = 2.5;
 
@@ -201,7 +199,9 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         boxShadow: shadows.panel,
         display: 'flex',
         gap: '12px',
-        alignItems: 'flex-start',
+        // Undo-тост — одна строка (текст | кольцо | дивайдер | кнопка), всё
+        // по центру; у обычного тоста иконка и крестик сидят на первой строке.
+        alignItems: undo ? 'center' : 'flex-start',
         maxWidth: '420px',
         width: '100%',
         opacity: exiting ? 0 : 1,
@@ -248,56 +248,55 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
           </div>
         )}
 
-        {/* Кнопка отмены — внизу справа под текстом (отсчёт показывает
-            кольцо слева) */}
-        {undo && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-            <button
-              onClick={handleUndo}
-              style={{
-                padding: '6px 16px',
-                borderRadius: radii.pill,
-                border: `1px solid ${colors.border}`,
-                background: 'transparent',
-                color: colors.textSecondary,
-                fontSize: '12.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                flexShrink: 0,
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                e.currentTarget.style.borderColor = colors.borderHover;
-                e.currentTarget.style.color = colors.textPrimary;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = colors.border;
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
-              onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
-              onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-            >
-              {undo.actionLabel}
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Правый верхний слот: у обычного тоста — крестик закрытия, у
-          undo-тоста вместо него кольцо отсчёта (закрытие крестиком было бы
-          неоднозначным, а кольцо как раз показывает, когда тост закроется).
-          Отрицательные отступы — чтобы 26px-элемент центрировался на
-          22px-строке заголовка и не раздувал правый паддинг тоста. */}
+      {/* Правый кластер undo-тоста: кольцо отсчёта | дивайдер | «Отменить» —
+          одна группа «отмена по таймеру», выровнена по центру строки.
+          Крестика у undo-тоста нет: закрытие было бы неоднозначным. */}
       {undo && (
-        <CountdownRing
-          secondsLeft={secondsLeft}
-          total={undo.seconds}
-          color={style.titleColor}
-          style={{ marginTop: '-2px', marginRight: '-4px' }}
-        />
+        <>
+          <CountdownRing
+            secondsLeft={secondsLeft}
+            total={undo.seconds}
+            color={style.titleColor}
+          />
+          <div style={{
+            width: '1px',
+            height: '28px',
+            background: colors.border,
+            flexShrink: 0,
+          }} />
+          <button
+            onClick={handleUndo}
+            style={{
+              padding: '6px 16px',
+              borderRadius: radii.pill,
+              border: `1px solid ${colors.border}`,
+              background: 'transparent',
+              color: colors.textSecondary,
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+          >
+            {undo.actionLabel}
+          </button>
+        </>
       )}
       {!undo && (
         <button

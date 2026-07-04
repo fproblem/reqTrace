@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
+import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 
 interface SidePanelProps {
@@ -49,6 +50,19 @@ const StatusAlertIcon: React.FC<{ status: string }> = ({ status }) => (
   </svg>
 );
 
+// Корзина для карточки подтверждения удаления (feather trash-2).
+const TrashIcon: React.FC = () => (
+  <svg
+    width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}
+  >
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
+
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
   // (позиция <mark> в DOM). Подробности — в compareByDomThenAnchor.
@@ -59,9 +73,62 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   highlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
   onAddTest, onRemoveTest, onDeleteHighlight, onReanchor, onNavigate,
 }) => {
+  const { showToast } = useToast();
   const [testKey, setTestKey] = useState('');
   const [adding, setAdding] = useState(false);
+  const testInputRef = useRef<HTMLInputElement>(null);
   const [reanchoring, setReanchoring] = useState(false);
+  // Компактное подтверждение удаления — поповер над кнопкой в футере.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const confirmRef = useRef<HTMLDivElement>(null);
+
+  // Закрытие поповера: клик вне футера или Escape (как у меню «⋮»).
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!confirmRef.current?.contains(e.target as Node)) setConfirmOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [confirmOpen]);
+
+  // Переключились на другое выделение — вопрос больше не актуален.
+  useEffect(() => { setConfirmOpen(false); }, [highlight?.id]);
+
+  // Автофокус в поле теста: главный сценарий — «выделил текст → привязал
+  // тест», обязательный клик в поле между ними лишний. Срабатывает при
+  // открытии панели и при переходе на другое выделение.
+  useEffect(() => {
+    if (highlight) testInputRef.current?.focus();
+  }, [highlight?.id]);
+
+  // Escape закрывает панель — с автофокусом поля весь цикл «выделил →
+  // привязал тесты → закрыл» проходит без мыши. Слои: открытый поповер
+  // подтверждения удаления обрабатывает Escape сам (confirmOpen), модалки и
+  // меню — тоже сами (их stopPropagation на document-слушателе соседей не
+  // останавливает, поэтому проверяем их наличие в DOM); непустое поле теста
+  // первая Escape только очищает.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (confirmOpen) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (e.target === testInputRef.current && testKey) {
+        setTestKey('');
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [confirmOpen, testKey, onClose]);
 
   if (!highlight) return null;
 
@@ -72,14 +139,37 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
 
+  // Навигация по статусу: плашка ведёт к следующему выделению с тем же
+  // статусом (по кругу, в порядке отрисовки на странице). В день актуализации
+  // можно обходить только «Требует проверки», не листая остальные стрелками.
+  const sameStatus = sorted.filter(h => h.status === highlight.status);
+  const statusIndex = sameStatus.findIndex(h => h.id === highlight.id);
+  const statusNavigable = sameStatus.length > 1;
+
+  const handleNextOfStatus = () => {
+    if (!statusNavigable) return;
+    onNavigate(sameStatus[(statusIndex + 1) % sameStatus.length]);
+  };
+
   const handleAdd = async () => {
-    if (!testKey.trim()) return;
+    const key = testKey.trim().toUpperCase();
+    if (!key) return;
+    // Дубль не отправляем: ключ уже привязан к этому выделению. Набранное
+    // оставляем выделенным — следующий набор сразу заменит его.
+    if (highlight.tests.some(t => t.test_key === key)) {
+      showToast('warning', 'Тест уже привязан', `${key} уже есть у этого выделения`);
+      testInputRef.current?.select();
+      return;
+    }
     setAdding(true);
     try {
-      await onAddTest(highlight.id, testKey.trim().toUpperCase());
+      await onAddTest(highlight.id, key);
       setTestKey('');
     } finally {
       setAdding(false);
+      // Фокус не теряется после добавления (клик по «Добавить» уводит его на
+      // кнопку) — серию тестов можно вбить подряд, не трогая мышь.
+      testInputRef.current?.focus();
     }
   };
 
@@ -249,22 +339,64 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       </div>
 
       <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '12px 14px',
-          borderRadius: radii.md,
-          background: `${statusInfo.color}15`,
-          border: `1px solid ${statusInfo.color}33`,
-          color: statusInfo.color,
-          fontSize: '13px',
-          fontWeight: 600,
-          marginBottom: '16px',
-        }}>
+        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю.
+            Если выделений этого статуса несколько, плашка кликабельна и ведёт
+            к следующему по кругу; справа — позиция среди одностатусных и
+            шеврон как намёк на переход. */}
+        <div
+          onClick={statusNavigable ? handleNextOfStatus : undefined}
+          title={statusNavigable ? 'Перейти к следующему выделению с этим статусом' : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '12px 14px',
+            borderRadius: radii.md,
+            background: `${statusInfo.color}15`,
+            border: `1px solid ${statusInfo.color}33`,
+            color: statusInfo.color,
+            fontSize: '13px',
+            fontWeight: 600,
+            marginBottom: '16px',
+            cursor: statusNavigable ? 'pointer' : 'default',
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = `${statusInfo.color}15`;
+          }}
+          onMouseDown={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}33`;
+          }}
+          onMouseUp={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
+          }}
+        >
           <StatusAlertIcon status={statusLabels[highlight.status] ? highlight.status : 'active'} />
           {statusInfo.label}
+          {statusNavigable && (
+            <span style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              fontWeight: 500,
+              opacity: 0.85,
+            }}>
+              {statusIndex + 1} из {sameStatus.length}
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2.2}
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ display: 'block' }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          )}
         </div>
 
         {/* Alert: привязка не отображается на странице */}
@@ -304,7 +436,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             }}
             disabled={reanchoring}
             style={{
-              display: 'flex',
+              display: 'block',
               alignItems: 'center',
               gap: '6px',
               width: '100%',
@@ -338,19 +470,41 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
         )}
 
-        {/* Text excerpt */}
-        <div style={{
-          background: 'rgba(0,0,0,0.02)',
-          borderRadius: radii.md,
-          padding: '12px 16px',
-          fontSize: '13px',
-          lineHeight: '1.5',
-          color: colors.textPrimary,
-          marginBottom: '20px',
-          maxHeight: '150px',
-          overflow: 'auto',
-          border: `1px solid ${colors.border}`,
-        }}>
+        {/* Text excerpt — клик возвращает страницу к самому выделению
+            (полистал контент → потерял место). Для не отображающихся на
+            странице привязок скроллить некуда — цитата остаётся текстом. */}
+        <div
+          onClick={notOnPage ? undefined : () => {
+            // Выделение текста цитаты (для копирования) кликом не считаем.
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed) return;
+            onNavigate(highlight);
+          }}
+          title={notOnPage ? undefined : 'Показать выделение на странице'}
+          style={{
+            background: 'rgba(0,0,0,0.02)',
+            borderRadius: radii.md,
+            padding: '12px 16px',
+            fontSize: '13px',
+            lineHeight: '1.5',
+            color: colors.textPrimary,
+            marginBottom: '20px',
+            maxHeight: '150px',
+            overflow: 'auto',
+            border: `1px solid ${colors.border}`,
+            cursor: notOnPage ? 'default' : 'pointer',
+            transition: 'background 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={e => {
+            if (notOnPage) return;
+            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+            e.currentTarget.style.borderColor = colors.borderHover;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = colors.border;
+          }}
+        >
           {highlight.text_content}
         </div>
 
@@ -396,20 +550,37 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     background: colors.white,
                   }}
                 >
-                  <a
-                    href={`${jiraBaseUrl}/browse/${test.test_key}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      color: '#2563EB',
-                      textDecoration: 'none',
-                      fontWeight: 500,
-                      fontSize: '13px',
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {test.test_key}
-                  </a>
+                  {/* Без адреса Jira ссылка собиралась бы в «/browse/КЛЮЧ» —
+                      битый роут самого приложения в новой вкладке. Показываем
+                      ключ текстом с подсказкой, где включить ссылки. */}
+                  {jiraBaseUrl ? (
+                    <a
+                      href={`${jiraBaseUrl}/browse/${test.test_key}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#2563EB',
+                        textDecoration: 'none',
+                        fontWeight: 500,
+                        fontSize: '13px',
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {test.test_key}
+                    </a>
+                  ) : (
+                    <span
+                      title="Укажите адрес Jira в настройках проекта, чтобы ключи тестов стали ссылками"
+                      style={{
+                        color: colors.textPrimary,
+                        fontWeight: 500,
+                        fontSize: '13px',
+                        cursor: 'help',
+                      }}
+                    >
+                      {test.test_key}
+                    </span>
+                  )}
                   {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
                   <button
                     onClick={() => onRemoveTest(test.id)}
@@ -444,6 +615,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           display: 'flex', gap: '8px', marginBottom: '20px',
         }}>
           <input
+            ref={testInputRef}
             type="text"
             value={testKey}
             onChange={e => setTestKey(e.target.value)}
@@ -524,14 +696,121 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
       {/* Футер с удалением — прижат к низу панели и отделён от контента
           линией, как шапка: деструктивное действие не смешивается с работой
-          над привязкой. */}
-      <div style={{
-        padding: '14px 20px',
-        borderTop: `1px solid ${colors.border}`,
-        flexShrink: 0,
-      }}>
+          над привязкой. Клик открывает компактный поповер-подтверждение
+          (стиль меню «⋮»), само удаление отложенное — с тостом «Отменить». */}
+      <div
+        ref={confirmRef}
+        style={{
+          padding: '14px 20px',
+          borderTop: `1px solid ${colors.border}`,
+          flexShrink: 0,
+          position: 'relative',
+        }}
+      >
+        {confirmOpen && (
+          <div style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            left: '20px',
+            right: '20px',
+            zIndex: 11,
+            background: colors.cardBgSolid,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.lg,
+            boxShadow: shadows.panel,
+            padding: '20px 16px 16px',
+            textAlign: 'center',
+          }}>
+            {/* Симметричная карточка: корзина в тонированном круге, заголовок
+                и текст по центру, кнопки 50/50 без дивайдера. Текст честный:
+                удаление можно отменить в течение таймера undo-тоста. */}
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              background: 'rgba(239,68,68,0.1)',
+              color: colors.statusLost,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 12px',
+            }}>
+              <TrashIcon />
+            </div>
+            <div style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              color: colors.textPrimary,
+              marginBottom: '6px',
+            }}>
+              Удалить выделение?
+            </div>
+            <div style={{
+              fontSize: '12.5px',
+              color: colors.textSecondary,
+              lineHeight: 1.45,
+              marginBottom: '16px',
+            }}>
+              Связи с тестами удалятся вместе с ним. После удаления будет 7 секунд, чтобы передумать
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setConfirmOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  borderRadius: radii.pill,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.borderColor = colors.borderHover;
+                  e.currentTarget.style.color = colors.textPrimary;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = colors.textSecondary;
+                }}
+                onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => { setConfirmOpen(false); onDeleteHighlight(highlight.id); }}
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  borderRadius: radii.pill,
+                  border: 'none',
+                  background: colors.statusLost,
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#DC2626'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = colors.statusLost; }}
+                onMouseDown={e => { e.currentTarget.style.background = '#B91C1C'; }}
+                onMouseUp={e => { e.currentTarget.style.background = '#DC2626'; }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        )}
         <button
-          onClick={() => onDeleteHighlight(highlight.id)}
+          onClick={() => setConfirmOpen(o => !o)}
           style={{
             width: '100%',
             padding: '8px',

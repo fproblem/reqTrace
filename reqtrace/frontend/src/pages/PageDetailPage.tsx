@@ -48,7 +48,7 @@ function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderRep
 export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
+  const { showToast, showUndoToast, dismissToast } = useToast();
 
   const [page, setPage] = useState<PageDetail | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -264,20 +264,63 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         const refreshed = await api.listHighlights(pageId);
         setHighlights(refreshed);
         setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+        // Автоперехода к следующему «Требует проверки» здесь сознательно НЕТ:
+        // пробовали (c21b3dfc) — на тесте прыжок панели дезориентировал.
+        // Обход по статусу остаётся ручным (плашка статуса/чипы), а завершение
+        // обхода отмечаем тостом.
+        if (!refreshed.some(h => h.status === 'outdated')) {
+          showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
+        }
       }
     } catch (e: any) {
       showToast('error', 'Не удалось актуализировать привязку', e.message);
     }
   };
 
+  // Отложенное удаление выделения: с экрана оно исчезает сразу, но DELETE
+  // уходит на сервер только когда undo-тост дотикал до конца. «Отменить»
+  // просто перечитывает привязки — сервер ещё ничего не удалял. Одновременно
+  // живёт одно отложенное удаление: новое немедленно коммитит предыдущее.
+  const pendingDeleteRef = useRef<{ toastId: number; commit: () => void } | null>(null);
+
   const handleDeleteHighlight = async (highlightId: string) => {
-    try {
-      await api.deleteHighlight(highlightId);
-      setSelectedHighlight(null);
-      await loadPage();
-    } catch (e: any) {
-      showToast('error', 'Не удалось удалить привязку', e.message);
+    if (pendingDeleteRef.current) {
+      const prev = pendingDeleteRef.current;
+      pendingDeleteRef.current = null;
+      dismissToast(prev.toastId);
+      prev.commit();
     }
+
+    setSelectedHighlight(null);
+    setHighlights(prev => prev.filter(h => h.id !== highlightId));
+
+    const restore = async () => {
+      pendingDeleteRef.current = null;
+      try {
+        const refreshed = await api.listHighlights(pageId!);
+        setHighlights(refreshed);
+      } catch (e: any) {
+        showToast('error', 'Не удалось восстановить привязку', e.message);
+      }
+    };
+
+    const commit = () => {
+      pendingDeleteRef.current = null;
+      api.deleteHighlight(highlightId).catch((e: any) => {
+        showToast('error', 'Не удалось удалить привязку', e.message);
+        void restore();
+      });
+    };
+
+    // Без message: про удаление связей с тестами уже предупредила карточка
+    // подтверждения в панели — в тосте хватает заголовка.
+    const toastId = showUndoToast('warning', 'Выделение удалено', {
+      seconds: 7,
+      actionLabel: 'Отменить',
+      onExpire: commit,
+      onAction: restore,
+    });
+    pendingDeleteRef.current = { toastId, commit };
   };
 
   const handleDeletePage = async () => {
@@ -607,18 +650,25 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const lostHighlights = highlights.filter(h => h.status === 'lost').sort(sortByPosition);
   const coveredCount = highlights.filter(h => h.tests.length > 0).length;
 
-  // Чип статуса в верхней панели ведёт к ВЕРХНЕЙ подсветке этого статуса.
-  // Порядок считаем в момент клика по фактической позиции отрисованных <mark>
-  // в DOM — иначе legacy-привязки (anchor_block_start === null) уезжали в конец
-  // якорной сортировки и чип прыгал не к той подсветке.
-  const jumpToFirstOfStatus = (status: 'active' | 'outdated' | 'lost') => {
-    const ofStatus = highlights.filter(h => h.status === status);
+  // Чип статуса в верхней панели ходит по подсветкам этого статуса по кругу:
+  // первый клик — к верхней, повторные — к следующей (в день актуализации
+  // можно обходить только «требует проверки»). Порядок считаем в момент клика
+  // по фактической позиции отрисованных <mark> в DOM — иначе legacy-привязки
+  // (anchor_block_start === null) уезжали в конец якорной сортировки и чип
+  // прыгал не к той подсветке.
+  const jumpToStatus = (status: 'active' | 'outdated' | 'lost') => {
+    const ofStatus = highlights
+      .filter(h => h.status === status)
+      .sort(compareByDomThenAnchor(highlightDomOrder()));
     if (ofStatus.length === 0) return;
-    const [first] = [...ofStatus].sort(compareByDomThenAnchor(highlightDomOrder()));
+    const currentIdx = selectedHighlight
+      ? ofStatus.findIndex(h => h.id === selectedHighlight.id)
+      : -1;
+    const target = ofStatus[(currentIdx + 1) % ofStatus.length];
     if (status === 'lost') {
-      setSelectedHighlight(first);
+      setSelectedHighlight(target);
     } else {
-      handleHighlightClick(first);
+      handleHighlightClick(target);
     }
   };
   const coveragePercent = highlights.length > 0
@@ -633,21 +683,21 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       color: colors.statusActive,
       bg: 'rgba(122,224,90,0.12)', bgHover: 'rgba(122,224,90,0.22)',
       border: 'rgba(122,224,90,0.35)',
-      title: 'Актуальные привязки: тест привязан и текст не менялся. Нажмите, чтобы перейти к первой',
+      title: 'Актуальные привязки: тест привязан и текст не менялся. Клики ведут по ним по очереди',
     },
     {
       key: 'outdated', count: outdatedHighlights.length,
       color: colors.statusOutdated,
       bg: 'rgba(245,158,11,0.12)', bgHover: 'rgba(245,158,11,0.22)',
       border: 'rgba(245,158,11,0.35)',
-      title: 'Требуют актуализации: текст изменился или привязка ещё не подтверждена. Нажмите, чтобы перейти к первой',
+      title: 'Требуют актуализации: текст изменился или привязка ещё не подтверждена. Клики ведут по ним по очереди',
     },
     {
       key: 'lost', count: lostHighlights.length,
       color: colors.statusLost,
       bg: 'rgba(239,68,68,0.12)', bgHover: 'rgba(239,68,68,0.22)',
       border: 'rgba(239,68,68,0.35)',
-      title: 'Утраченные: выделенный текст больше не найден на странице. Нажмите, чтобы перейти к первой',
+      title: 'Утраченные: выделенный текст больше не найден на странице. Клики ведут по ним по очереди',
     },
   ] as const).filter(s => s.count > 0);
 
@@ -728,14 +778,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
           {/* Stats — отдельные счётчики по статусам (слева направо):
               актуальные, требующие актуализации, утраченные. Цвет — по статусу,
-              форма как у иконок «Обновить»/«⋮». Клик ведёт к первой привязке.
-              Нулевые статусы скрыты (см. statusCounters). */}
+              форма как у иконок «Обновить»/«⋮». Клики перебирают привязки
+              статуса по кругу. Нулевые статусы скрыты (см. statusCounters). */}
           {statusCounters.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
               {statusCounters.map(s => (
                   <button
                     key={s.key}
-                    onClick={() => jumpToFirstOfStatus(s.key)}
+                    onClick={() => jumpToStatus(s.key)}
                     title={s.title}
                     style={{
                       minWidth: '34px',

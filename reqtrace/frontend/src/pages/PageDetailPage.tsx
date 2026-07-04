@@ -263,24 +263,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       if (pageId) {
         const refreshed = await api.listHighlights(pageId);
         setHighlights(refreshed);
-        // Конвейер актуализации: после успешной актуализации панель сама
-        // переходит к следующему «Требует проверки» (циклично, в порядке
-        // отрисовки на странице) — не нужно каждый раз тянуться к чипу или
-        // плашке статуса. Когда проверять больше нечего — остаёмся на текущем.
-        const ordered = [...refreshed].sort(compareByDomThenAnchor(highlightDomOrder()));
-        const currentIdx = ordered.findIndex(h => h.id === highlightId);
-        let next: Highlight | undefined;
-        for (let step = 1; currentIdx !== -1 && step < ordered.length && !next; step++) {
-          const candidate = ordered[(currentIdx + step) % ordered.length];
-          if (candidate.status === 'outdated') next = candidate;
-        }
-        if (next) {
-          handleHighlightClick(next);
-        } else {
-          setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
-          if (!refreshed.some(h => h.status === 'outdated')) {
-            showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
-          }
+        setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+        // Автоперехода к следующему «Требует проверки» здесь сознательно НЕТ:
+        // пробовали (c21b3dfc) — на тесте прыжок панели дезориентировал.
+        // Обход по статусу остаётся ручным (плашка статуса/чипы), а завершение
+        // обхода отмечаем тостом.
+        if (!refreshed.some(h => h.status === 'outdated')) {
+          showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
         }
       }
     } catch (e: any) {

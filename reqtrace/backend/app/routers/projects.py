@@ -75,9 +75,11 @@ async def _check_live(conn: ConfluenceConnection) -> None:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.warning("Confluence check failed for %s: %s", conn.base_url, e)
+        # Чаще всего сервер за корпоративной сетью: «проверьте адрес» без
+        # упоминания VPN сбивал с толку при выключенном VPN и верном адресе.
         raise HTTPException(
             status_code=502,
-            detail=f"Не удалось подключиться к Confluence ({conn.base_url}). Проверьте адрес сервера",
+            detail=f"Не удалось подключиться к Confluence ({conn.base_url}). Проверьте VPN, сеть или адрес сервера",
         )
 
 

@@ -626,8 +626,8 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           unreachable ? (
             <span style={{ color: colors.statusOutdated }}>
               ⚠ Confluence был недоступен при проверке
-              {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — дело не
-              в кредах: проверьте VPN или сеть
+              {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — проверьте
+              VPN или сеть
             </span>
           ) : (
             <span style={{ color: colors.statusActive }}>

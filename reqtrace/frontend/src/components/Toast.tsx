@@ -230,7 +230,7 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: '13px',
+          fontSize: '14px',
           fontWeight: 600,
           lineHeight: '24px',
           color: style.titleColor,

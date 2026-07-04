@@ -23,6 +23,32 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   lost: { label: 'Утрачено', color: colors.statusLost },
 };
 
+// Иконка алерта статуса: залитый круг цвета статуса с белым знаком —
+// галочка (актуально), «!» (требует проверки), крестик (утрачено).
+const StatusAlertIcon: React.FC<{ status: string }> = ({ status }) => (
+  <svg width={16} height={16} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10" fill="currentColor" />
+    {status === 'active' && (
+      <polyline
+        points="8 12.5 11 15.5 16.5 9.5" fill="none" stroke="#fff"
+        strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+      />
+    )}
+    {status === 'outdated' && (
+      <>
+        <line x1="12" y1="7" x2="12" y2="13" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <circle cx="12" cy="16.6" r="1.3" fill="#fff" />
+      </>
+    )}
+    {status === 'lost' && (
+      <>
+        <line x1="9" y1="9" x2="15" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <line x1="15" y1="9" x2="9" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+      </>
+    )}
+  </svg>
+);
+
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
   // (позиция <mark> в DOM). Подробности — в compareByDomThenAnchor.
@@ -223,23 +249,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       </div>
 
       <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {/* Status */}
+        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю */}
         <div style={{
-          display: 'inline-flex',
+          display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '4px 12px',
-          borderRadius: radii.pill,
+          gap: '10px',
+          padding: '12px 14px',
+          borderRadius: radii.md,
           background: `${statusInfo.color}15`,
+          border: `1px solid ${statusInfo.color}33`,
           color: statusInfo.color,
-          fontSize: '12px',
+          fontSize: '13px',
           fontWeight: 600,
           marginBottom: '16px',
         }}>
-          <span style={{
-            width: '6px', height: '6px', borderRadius: '50%',
-            background: statusInfo.color,
-          }} />
+          <StatusAlertIcon status={statusLabels[highlight.status] ? highlight.status : 'active'} />
           {statusInfo.label}
         </div>
 

@@ -53,6 +53,95 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontFamily: 'inherit',
 };
 
+// Кнопки-иконки — один в один с кнопками верхнего бара страницы (PageDetailPage):
+// 34×34, рамка, hover перекрашивает фон/рамку/иконку, «нажатое» = открытое меню.
+const iconButtonStyle: React.CSSProperties = {
+  width: '34px',
+  height: '34px',
+  borderRadius: radii.md,
+  border: `1px solid ${colors.border}`,
+  background: colors.white,
+  color: colors.textSecondary,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  transition: 'all 0.15s',
+};
+
+const iconButtonHoverOn = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+  e.currentTarget.style.borderColor = colors.borderHover;
+  e.currentTarget.style.color = colors.textPrimary;
+};
+
+const iconButtonHoverOff = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = colors.white;
+  e.currentTarget.style.borderColor = colors.border;
+  e.currentTarget.style.color = colors.textSecondary;
+};
+
+// --- Иконки (feather-стиль, повторяют иконки верхнего бара страницы) ---
+
+const featherProps = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
+
+// Та же иконка, что у «Обновить» страницы и синхронизации дерева.
+const RefreshIcon: React.FC<{ spinning?: boolean }> = ({ spinning }) => (
+  <svg {...featherProps} style={{
+    display: 'block', flexShrink: 0,
+    animation: spinning ? 'reqtrace-spin 0.8s linear infinite' : undefined,
+  }}>
+    <polyline points="23 4 23 10 17 10" />
+    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+  </svg>
+);
+
+// Та же иконка, что у меню «⋮» страницы.
+const DotsIcon: React.FC = () => (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }}>
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
+
+const KeyIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
+    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+  </svg>
+);
+
+const PencilIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
+    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+  </svg>
+);
+
+const LogoutIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const XIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block' }}>
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
 const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
@@ -100,12 +189,23 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
         </h2>
         <button
           onClick={onClose}
+          title="Закрыть"
           style={{
+            width: '30px', height: '30px', borderRadius: radii.sm,
             border: 'none', background: 'transparent', cursor: 'pointer',
-            fontSize: '16px', color: colors.textTertiary, padding: '2px 6px',
+            color: colors.textTertiary, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+            e.currentTarget.style.color = colors.textPrimary;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = colors.textTertiary;
           }}
         >
-          ✕
+          <XIcon />
         </button>
       </div>
       {children}
@@ -528,34 +628,50 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
     }
   };
 
+  // Пункты меню — как в меню действий страницы (иконка + текст, скругление, ховер).
   const menuItemStyle: React.CSSProperties = {
-    display: 'block',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
     width: '100%',
-    padding: '8px 14px',
+    padding: '9px 10px',
     border: 'none',
     background: 'transparent',
-    textAlign: 'left',
-    fontSize: '13px',
     color: colors.textPrimary,
-    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 500,
     fontFamily: 'inherit',
+    textAlign: 'left',
+    borderRadius: radii.sm,
+    cursor: 'pointer',
+    transition: 'background 0.15s',
     whiteSpace: 'nowrap',
   };
 
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.85)',
-      backdropFilter: 'blur(20px)',
-      border: `1px solid ${colors.border}`,
-      borderRadius: radii.lg,
-      padding: '18px 22px',
-      marginBottom: '14px',
-      boxShadow: shadows.card,
-      // Каждая карточка — stacking context (backdrop-filter): без подъёма
-      // открытое меню пряталось бы под следующей по DOM карточкой.
-      position: 'relative',
-      zIndex: menuOpen ? 20 : 'auto',
-    }}>
+    <div
+      style={{
+        background: 'rgba(255,255,255,0.85)',
+        backdropFilter: 'blur(20px)',
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.lg,
+        padding: '18px 22px',
+        boxShadow: shadows.card,
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        // Каждая карточка — stacking context (backdrop-filter): без подъёма
+        // открытое меню пряталось бы под следующей по DOM карточкой.
+        position: 'relative',
+        zIndex: menuOpen ? 20 : 'auto',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = colors.borderHover;
+        e.currentTarget.style.boxShadow = shadows.cardHover;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = colors.border;
+        e.currentTarget.style.boxShadow = shadows.card;
+      }}
+    >
       {/* Заголовок карточки: индикатор + имя + действия */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span style={{
@@ -571,38 +687,79 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         <button
           onClick={handleCheck}
           disabled={checking}
-          style={{ ...secondaryButtonStyle, padding: '6px 14px', fontSize: '13px', opacity: checking ? 0.6 : 1 }}
+          title="Проверить подключение к Confluence"
+          style={{
+            ...iconButtonStyle,
+            width: 'auto',
+            padding: '0 12px',
+            gap: '8px',
+            fontSize: '13px',
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            cursor: checking ? 'default' : 'pointer',
+          }}
+          onMouseEnter={e => { if (!checking) iconButtonHoverOn(e); }}
+          onMouseLeave={iconButtonHoverOff}
         >
+          <RefreshIcon spinning={checking} />
           {checking ? 'Проверка…' : 'Проверить'}
         </button>
         <div style={{ position: 'relative' }} ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             title="Действия"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             style={{
-              width: '30px', height: '30px', borderRadius: radii.sm,
-              border: `1px solid ${colors.border}`, background: 'transparent',
-              color: colors.textSecondary, fontSize: '16px', cursor: 'pointer',
+              ...iconButtonStyle,
+              border: `1px solid ${menuOpen ? colors.borderHover : colors.border}`,
+              background: menuOpen ? 'rgba(0,0,0,0.03)' : colors.white,
+              color: menuOpen ? colors.textPrimary : colors.textSecondary,
             }}
+            onMouseEnter={e => { if (!menuOpen) iconButtonHoverOn(e); }}
+            onMouseLeave={e => { if (!menuOpen) iconButtonHoverOff(e); }}
           >
-            ⋮
+            <DotsIcon />
           </button>
           {menuOpen && (
-            <div style={{
-              position: 'absolute', right: 0, top: '34px', zIndex: 11,
-              background: colors.white, border: `1px solid ${colors.border}`,
-              borderRadius: radii.md, boxShadow: shadows.card, padding: '4px 0', minWidth: '180px',
-            }}>
-              <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('creds'); }}>
+            <div
+              role="menu"
+              style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 11,
+                minWidth: '212px', padding: '6px',
+                background: colors.cardBgSolid, border: `1px solid ${colors.border}`,
+                borderRadius: radii.md, boxShadow: shadows.panel,
+                display: 'flex', flexDirection: 'column', gap: '2px',
+              }}
+            >
+              <button
+                role="menuitem"
+                style={menuItemStyle}
+                onClick={() => { setMenuOpen(false); setModal('creds'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <KeyIcon />
                 Изменить креды
               </button>
-              <button style={menuItemStyle} onClick={() => { setMenuOpen(false); setModal('edit'); }}>
+              <button
+                role="menuitem"
+                style={menuItemStyle}
+                onClick={() => { setMenuOpen(false); setModal('edit'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <PencilIcon />
                 Изменить проект
               </button>
               <button
+                role="menuitem"
                 style={{ ...menuItemStyle, color: colors.statusLost }}
                 onClick={() => { setMenuOpen(false); setModal('disconnect'); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               >
+                <LogoutIcon />
                 Отключиться
               </button>
             </div>
@@ -702,7 +859,13 @@ export const SettingsPage: React.FC = () => {
   const available = projects.filter(p => !p.joined);
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '700px' }}>
+    <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
+      <style>{`
+        @keyframes reqtrace-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
         Настройки
       </h1>
@@ -738,9 +901,11 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       ) : (
-        joined.map(project => (
-          <ProjectCard key={project.id} project={project} onChanged={load} />
-        ))
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          {joined.map(project => (
+            <ProjectCard key={project.id} project={project} onChanged={load} />
+          ))}
+        </div>
       )}
 
       {showConnect && (

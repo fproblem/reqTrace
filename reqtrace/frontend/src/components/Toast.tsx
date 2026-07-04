@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { colors, radii, shadows } from '../styles/tokens';
+import { XIcon } from './Modal';
 
 type ToastType = 'error' | 'success' | 'warning';
 
@@ -41,26 +42,42 @@ export const useToast = (): ToastContextValue => {
 
 const TOAST_DURATION = 6000;
 
-const typeStyles: Record<ToastType, { bg: string; border: string; icon: string; titleColor: string }> = {
+const typeStyles: Record<ToastType, { bg: string; border: string; titleColor: string }> = {
   error: {
     bg: 'rgba(239, 68, 68, 0.06)',
     border: 'rgba(239, 68, 68, 0.25)',
-    icon: '!',
     titleColor: colors.statusLost,
   },
   warning: {
     bg: 'rgba(245, 158, 11, 0.06)',
     border: 'rgba(245, 158, 11, 0.25)',
-    icon: '!',
     titleColor: colors.statusOutdated,
   },
   success: {
     bg: 'rgba(77, 184, 48, 0.06)',
     border: 'rgba(77, 184, 48, 0.25)',
-    icon: '\u2713',
     titleColor: colors.statusActive,
   },
 };
+
+// SVG-\u0437\u043d\u0430\u043a \u0432 \u043a\u0440\u0443\u0436\u043a\u0435 \u0442\u043e\u0441\u0442\u0430: \u00ab!\u00bb \u0443 error/warning, \u0433\u0430\u043b\u043e\u0447\u043a\u0430 \u0443 success. \u0422\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0435
+// \u0433\u043b\u0438\u0444\u044b (!, \u2713) \u0440\u0438\u0441\u043e\u0432\u0430\u043b\u0438\u0441\u044c \u0444\u043e\u043b\u0431\u044d\u043a-\u0448\u0440\u0438\u0444\u0442\u0430\u043c\u0438 \u0438 \u043f\u043b\u044b\u043b\u0438 \u043f\u043e \u0431\u0430\u0437\u043e\u0432\u043e\u0439 \u043b\u0438\u043d\u0438\u0438.
+// \u0422\u043e\u0447\u043a\u0430 \u00ab!\u00bb \u2014 \u043b\u0438\u043d\u0438\u044f \u043d\u0443\u043b\u0435\u0432\u043e\u0439 \u0434\u043b\u0438\u043d\u044b \u0441 \u043a\u0440\u0443\u0433\u043b\u044b\u043c \u043a\u043e\u043d\u0447\u0438\u043a\u043e\u043c.
+const TypeIcon: React.FC<{ type: ToastType }> = ({ type }) => (
+  <svg
+    width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}
+  >
+    {type === 'success' ? (
+      <polyline points="20 7 9 18 4 13" />
+    ) : (
+      <>
+        <line x1="12" y1="4" x2="12" y2="14" />
+        <line x1="12" y1="20" x2="12" y2="20.01" />
+      </>
+    )}
+  </svg>
+);
 
 const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = ({ toast, onDismiss }) => {
   const style = typeStyles[toast.type];
@@ -131,7 +148,7 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         animation: 'toast-in 0.3s ease-out',
       }}
     >
-      {/* Icon */}
+      {/* Icon — кружок 22px, заголовок выровнен на его высоту (line-height 22) */}
       <div style={{
         width: '22px',
         height: '22px',
@@ -141,12 +158,10 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '12px',
-        fontWeight: 700,
         color: style.titleColor,
         flexShrink: 0,
       }}>
-        {style.icon}
+        <TypeIcon type={toast.type} />
       </div>
 
       {/* Content */}
@@ -154,8 +169,9 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         <div style={{
           fontSize: '13px',
           fontWeight: 600,
+          lineHeight: '22px',
           color: style.titleColor,
-          marginBottom: toast.message ? '4px' : 0,
+          marginBottom: toast.message ? '2px' : 0,
         }}>
           {toast.title}
         </div>
@@ -239,25 +255,42 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         )}
       </div>
 
-      {/* Close — у undo-тоста крестика нет: закрытие было бы неоднозначным */}
+      {/* Close — как в модалках (XIcon, ховер/пресс); у undo-тоста крестика
+          нет: закрытие было бы неоднозначным. Отрицательные отступы — чтобы
+          26px-кнопка центрировалась на 22px-строке заголовка и не раздувала
+          правый паддинг тоста. */}
       {!undo && (
         <button
           onClick={handleDismiss}
+          title="Закрыть"
           style={{
-            background: 'none',
+            width: '26px',
+            height: '26px',
+            marginTop: '-2px',
+            marginRight: '-4px',
+            borderRadius: radii.sm,
             border: 'none',
+            background: 'transparent',
             cursor: 'pointer',
             color: colors.textTertiary,
-            fontSize: '16px',
-            padding: 0,
-            flexShrink: 0,
-            lineHeight: '22px',
-            height: '22px',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'all 0.15s',
           }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+            e.currentTarget.style.color = colors.textPrimary;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = colors.textTertiary;
+          }}
+          onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+          onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
         >
-          ✕
+          <XIcon />
         </button>
       )}
     </div>

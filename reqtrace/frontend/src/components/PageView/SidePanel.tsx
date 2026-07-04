@@ -137,6 +137,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   e.currentTarget.style.borderColor = colors.border;
                   e.currentTarget.style.color = hasPrev ? colors.textSecondary : colors.textTertiary;
                 }}
+                onMouseDown={e => { if (hasPrev) e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                onMouseUp={e => { if (hasPrev) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
               >
                 <svg
                   width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -178,6 +180,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   e.currentTarget.style.borderColor = colors.border;
                   e.currentTarget.style.color = hasNext ? colors.textSecondary : colors.textTertiary;
                 }}
+                onMouseDown={e => { if (hasNext) e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                onMouseUp={e => { if (hasNext) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
               >
                 <svg
                   width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -282,7 +286,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               width: '100%',
               padding: '10px 14px',
               marginBottom: '16px',
-              borderRadius: radii.sm,
+              borderRadius: radii.md,
               border: `1px solid rgba(245,158,11,0.3)`,
               background: 'rgba(245,158,11,0.06)',
               color: colors.statusOutdated,
@@ -298,6 +302,12 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
+            }}
+            onMouseDown={e => {
+              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
+            }}
+            onMouseUp={e => {
+              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
             }}
           >
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}
@@ -322,11 +332,24 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
         {/* Tests */}
         <div style={{ marginBottom: '20px' }}>
-          <div style={{
-            fontSize: '13px', fontWeight: 600,
-            color: colors.textSecondary, marginBottom: '10px',
-          }}>
-            Привязанные тесты ({highlight.tests.length})
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
+              Привязанные тесты
+            </span>
+            {/* Число — пилюлей в цвете покрытия, а не «(2)» в скобках */}
+            {highlight.tests.length > 0 && (
+              <span style={{
+                padding: '2px 8px',
+                borderRadius: radii.pill,
+                background: colors.greenLight,
+                color: colors.greenDark,
+                fontSize: '11px',
+                fontWeight: 700,
+                lineHeight: 1.4,
+              }}>
+                {highlight.tests.length}
+              </span>
+            )}
           </div>
 
           {highlight.tests.length === 0 ? (
@@ -366,9 +389,20 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     onClick={() => onRemoveTest(test.id)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      color: colors.textTertiary, fontSize: '14px', padding: '2px 4px',
+                      color: colors.textTertiary, fontSize: '14px', padding: '2px 6px',
+                      borderRadius: radii.sm, transition: 'all 0.15s',
                     }}
                     title="Отвязать тест"
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = colors.redHighlight;
+                      e.currentTarget.style.color = colors.statusLost;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = colors.textTertiary;
+                    }}
+                    onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; }}
+                    onMouseUp={e => { e.currentTarget.style.background = colors.redHighlight; }}
                   >
                     ✕
                   </button>
@@ -391,7 +425,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             style={{
               flex: 1,
               padding: '8px 12px',
-              borderRadius: radii.sm,
+              borderRadius: radii.md,
               border: `1px solid ${colors.border}`,
               fontSize: '13px',
               fontFamily: 'inherit',
@@ -404,15 +438,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             disabled={!testKey.trim() || adding}
             style={{
               padding: '8px 14px',
-              borderRadius: radii.sm,
+              borderRadius: radii.md,
               border: 'none',
               background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
               color: '#fff',
               fontWeight: 600,
               fontSize: '13px',
-              cursor: testKey.trim() ? 'pointer' : 'default',
+              cursor: testKey.trim() && !adding ? 'pointer' : 'default',
               fontFamily: 'inherit',
               whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = testKey.trim() ? colors.greenAccent : '#E5E7EB';
+            }}
+            onMouseDown={e => {
+              if (testKey.trim() && !adding) e.currentTarget.style.background = '#3F9E27';
+            }}
+            onMouseUp={e => {
+              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
             }}
           >
             {adding ? '...' : 'Добавить'}
@@ -453,14 +500,25 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             marginTop: '20px',
             width: '100%',
             padding: '8px',
-            borderRadius: radii.sm,
+            borderRadius: radii.md,
             border: `1px solid rgba(239,68,68,0.2)`,
             background: 'rgba(239,68,68,0.05)',
             color: colors.statusLost,
             fontSize: '13px',
             cursor: 'pointer',
             fontFamily: 'inherit',
+            transition: 'all 0.15s',
           }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
+            e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(239,68,68,0.05)';
+            e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)';
+          }}
+          onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
+          onMouseUp={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
         >
           Удалить выделение
         </button>

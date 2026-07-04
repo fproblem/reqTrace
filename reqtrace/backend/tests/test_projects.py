@@ -316,6 +316,24 @@ class TestCredentials(ProjectTestBase):
 
         self.assertEqual(resp.json()["status"], "ok")
         self.assertEqual(cred.status, "ok")
+        self.assertEqual(cred.last_check_result, "ok")
+
+    def test_check_unreachable_records_attempt_without_touching_status(self):
+        """Confluence недоступен (VPN, сеть): 502, статус ok не сбит, но след
+        попытки (unreachable + время) сохранён и закоммичен до отката."""
+        project = make_project()
+        cred = make_cred(project, self.user, status="ok")
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [cred]
+
+        with patch(CHECK_CONNECTION, new=AsyncMock(side_effect=RuntimeError("connect timeout"))):
+            resp = self.client.post(f"/api/projects/{project.id}/credentials/check")
+
+        self.assertEqual(resp.status_code, 502)
+        self.assertEqual(cred.status, "ok")
+        self.assertEqual(cred.last_check_result, "unreachable")
+        self.assertIsNotNone(cred.last_check_at)
+        self.assertTrue(self.session.committed)
 
     def test_disconnect_deletes_my_credential(self):
         project = make_project()

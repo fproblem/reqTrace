@@ -493,6 +493,8 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       onChanged();
     } catch (e: any) {
       showToast('error', 'Не удалось проверить подключение', e.message);
+      // Неудачная попытка тоже фиксируется на бэке (unreachable) — подтянуть её на карточку.
+      onChanged();
     } finally {
       setChecking(false);
     }
@@ -592,9 +594,20 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       {/* Статусная строка */}
       <div style={{ marginTop: '8px', fontSize: '13px' }}>
         {status === 'ok' && (
-          <span style={{ color: colors.statusActive }}>
-            ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
-          </span>
+          project.my_last_check_result === 'unreachable' ? (
+            <>
+              <span style={{ color: colors.statusActive }}>● Подключено</span>
+              <div style={{ color: colors.statusOutdated, marginTop: '2px' }}>
+                ⚠ Confluence был недоступен при проверке
+                {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — проверьте
+                VPN или сеть
+              </div>
+            </>
+          ) : (
+            <span style={{ color: colors.statusActive }}>
+              ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
+            </span>
+          )
         )}
         {status === 'invalid' && (
           <span style={{ color: colors.statusLost }}>

@@ -45,6 +45,7 @@ def _item(project: Project, cred: ProjectCredential | None) -> ProjectListItem:
         my_status=cred.status if cred else None,
         my_username=cred.confluence_username if cred else None,
         last_check_at=cred.last_check_at if cred else None,
+        my_last_check_result=cred.last_check_result if cred else None,
     )
 
 
@@ -150,6 +151,7 @@ async def create_project(
         confluence_password_enc=encrypt_secret(data.confluence_password),
         status="ok",
         last_check_at=datetime.now(timezone.utc),
+        last_check_result="ok",
     )
     db.add(cred)
     await db.flush()
@@ -240,6 +242,7 @@ async def upsert_credentials(
             confluence_password_enc=encrypt_secret(password),
             status="ok",
             last_check_at=now,
+            last_check_result="ok",
         )
         db.add(cred)
     else:
@@ -247,6 +250,7 @@ async def upsert_credentials(
         cred.confluence_password_enc = encrypt_secret(password)
         cred.status = "ok"
         cred.last_check_at = now
+        cred.last_check_result = "ok"
 
     try:
         await db.flush()
@@ -280,12 +284,19 @@ async def check_credentials(
     except ConfluenceAuthError:
         cred.status = "invalid"
         cred.last_check_at = now
+        cred.last_check_result = "invalid"
         await db.flush()
         return CredentialCheckResult(status="invalid", last_check_at=now)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.warning("Confluence check failed for %s: %s", project.confluence_base_url, e)
+        # Сервер недоступен (VPN, сеть) — креды не виноваты: status не трогаем,
+        # но след попытки сохраняем. Коммит до raise: HTTPException откатит
+        # транзакцию get_db (тот же паттерн, что mark_invalid).
+        cred.last_check_at = now
+        cred.last_check_result = "unreachable"
+        await db.commit()
         raise HTTPException(
             status_code=502,
             detail=f"Не удалось подключиться к Confluence ({project.confluence_base_url}). Попробуйте позже",
@@ -293,6 +304,7 @@ async def check_credentials(
 
     cred.status = "ok"
     cred.last_check_at = now
+    cred.last_check_result = "ok"
     await db.flush()
     return CredentialCheckResult(status="ok", last_check_at=now)
 

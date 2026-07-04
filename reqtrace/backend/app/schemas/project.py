@@ -35,6 +35,7 @@ class ProjectListItem(BaseModel):
     my_status: Optional[str] = None        # ok | invalid | unchecked — только у участника
     my_username: Optional[str] = None
     last_check_at: Optional[datetime] = None
+    my_last_check_result: Optional[str] = None  # ok | invalid | unreachable — исход последней проверки
 
 
 class CredentialCheckResult(BaseModel):

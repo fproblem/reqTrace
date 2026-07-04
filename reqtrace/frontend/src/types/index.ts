@@ -22,6 +22,8 @@ export interface Project {
   my_status: 'ok' | 'invalid' | 'unchecked' | null;
   my_username: string | null;
   last_check_at: string | null;
+  /** Исход последней попытки проверки; unreachable — Confluence был недоступен (VPN, сеть). */
+  my_last_check_result: 'ok' | 'invalid' | 'unreachable' | null;
 }
 
 export interface CredentialCheckResult {

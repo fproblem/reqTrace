@@ -257,6 +257,20 @@ class TestCreateProject(ProjectTestBase):
         self.assertIn("присоединиться", resp.json()["detail"])
         self.assertEqual(self.session.added, [])
 
+    def test_create_duplicate_confluence_url_409(self):
+        """Дубль по нормализованному URL (регистр/слэш не спасают) → 409,
+        ничего не создано, до живой проверки кред дело не доходит."""
+        other = make_project(name="Другой проект", base_url="https://conf.bank-x.ru")
+        self.session.execute_results = [None, other]  # имя свободно, URL занят
+        with patch(CHECK_CONNECTION, new=AsyncMock(return_value=None)) as check:
+            resp = self.client.post("/api/projects", json=self.PAYLOAD)
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("уже подключён", resp.json()["detail"])
+        self.assertIn("Другой проект", resp.json()["detail"])
+        check.assert_not_awaited()
+        self.assertEqual(self.session.added, [])
+
 
 class TestCredentials(ProjectTestBase):
     def test_upsert_joins_project_with_ok_status(self):

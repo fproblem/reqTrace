@@ -128,6 +128,23 @@ async def create_project(
             detail="Проект с таким именем уже есть — возможно, стоит присоединиться к нему",
         )
 
+    # Дубль Confluence URL запрещён: проекты-двойники ведут одинаковые страницы
+    # с раздельным покрытием. Сравнение по нормализованному URL; демо-проекты
+    # (пустой URL) не в счёт. Уникального индекса нет сознательно — в базе
+    # могут жить дубли, созданные до запрета.
+    dup = await db.execute(
+        select(Project).where(
+            Project.confluence_base_url == base_url,
+            Project.is_demo == False,  # noqa: E712
+        ).limit(1)
+    )
+    dup_project = dup.scalar_one_or_none()
+    if dup_project:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Этот Confluence уже подключён в проекте «{dup_project.name}» — присоединитесь к нему в настройках",
+        )
+
     await _check_live(ConfluenceConnection(
         base_url=base_url, username=username, password=data.confluence_password,
     ))

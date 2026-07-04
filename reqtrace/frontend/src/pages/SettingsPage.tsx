@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { Project } from '../types';
 import { useToast } from '../components/Toast';
 import { colors, radii, shadows } from '../styles/tokens';
+import { normalizeBaseUrl } from '../utils/baseUrl';
 
 // --- Общие стили форм и модалок ---
 
@@ -228,11 +229,12 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
 
 interface ConnectModalProps {
   available: Project[];          // чужие проекты, к которым можно присоединиться
+  existing: Project[];           // все проекты — для предупреждения о дубле Confluence URL
   onClose: () => void;
   onDone: () => void;
 }
 
-const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, onDone }) => {
+const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing, onClose, onDone }) => {
   const [tab, setTab] = useState<'join' | 'create'>(available.length > 0 ? 'join' : 'create');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -302,8 +304,17 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, 
     </button>
   );
 
+  // Дубль Confluence URL запрещён (бэкенд ответит 409): проекты-двойники вели
+  // бы одинаковые страницы с раздельным покрытием. Подсказка и блокировка
+  // кнопки — ещё до сабмита.
+  const normalizedNewUrl = normalizeBaseUrl(confUrl);
+  const sameServer = normalizedNewUrl
+    ? existing.filter(p => normalizeBaseUrl(p.confluence_base_url) === normalizedNewUrl)
+    : [];
+
   const joinDisabled = !joinProjectId || !joinUser.trim() || !joinPass;
-  const createDisabled = !name.trim() || !confUrl.trim() || !createUser.trim() || !createPass;
+  const createDisabled = !name.trim() || !confUrl.trim() || !createUser.trim() || !createPass
+    || sameServer.length > 0;
 
   return (
     <Modal title="Подключить проект" onClose={onClose}>
@@ -360,6 +371,12 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, onClose, 
               <label style={labelStyle}>Confluence URL</label>
               <input type="text" value={confUrl} onChange={e => setConfUrl(e.target.value)}
                      placeholder="https://confluence.company.com" style={inputStyle} />
+              {sameServer.length > 0 && (
+                <div style={{ fontSize: '12px', color: colors.statusLost, marginTop: '4px', lineHeight: 1.5 }}>
+                  Этот Confluence уже подключён: {sameServer.map(p => `«${p.name}»`).join(', ')}.
+                  Создать проект-дубль нельзя — присоединитесь к существующему на вкладке «Присоединиться»
+                </div>
+              )}
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>
@@ -1007,6 +1024,7 @@ export const SettingsPage: React.FC = () => {
       {showConnect && (
         <ConnectProjectModal
           available={available}
+          existing={projects}
           onClose={() => setShowConnect(false)}
           onDone={load}
         />

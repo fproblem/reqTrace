@@ -11,6 +11,7 @@ from uuid import UUID
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -132,7 +133,15 @@ async def create_project(
         created_by=current_user.id,
     )
     db.add(project)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Гонка с параллельным созданием: select выше имя не увидел, но индекс
+        # uq_projects_name_lower его уже держит.
+        raise HTTPException(
+            status_code=409,
+            detail="Проект с таким именем уже есть — возможно, стоит присоединиться к нему",
+        )
 
     cred = ProjectCredential(
         project_id=project.id,
@@ -179,7 +188,11 @@ async def update_project(
     if data.jira_base_url is not None:
         project.jira_base_url = normalize_base_url(data.jira_base_url) or None
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Гонка с параллельным переименованием/созданием под тем же именем.
+        raise HTTPException(status_code=409, detail="Проект с таким именем уже есть")
     return _item(project, cred)
 
 
@@ -235,7 +248,15 @@ async def upsert_credentials(
         cred.status = "ok"
         cred.last_check_at = now
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Двойной сабмит присоединения: обе вставки прошли проверку «кред ещё
+        # нет», вторую отклонил uq_project_credentials_project_user.
+        raise HTTPException(
+            status_code=409,
+            detail="Креды уже сохранены параллельным запросом — попробуйте ещё раз",
+        )
     return _item(project, cred)
 
 

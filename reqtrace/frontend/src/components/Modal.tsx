@@ -43,6 +43,10 @@ export const modalTextStyle: React.CSSProperties = {
   lineHeight: 1.6,
   color: colors.textSecondary,
   textAlign: 'justify',
+  // Без pretty последняя строка-«сирота» оставляет предыдущую строку
+  // растянутой огромными пробелами — на глаз это читается как неровные
+  // межстрочные отступы (сами line box'ы ровные, замерено).
+  textWrap: 'pretty',
   marginTop: 0,
   marginBottom: '14px',
 };

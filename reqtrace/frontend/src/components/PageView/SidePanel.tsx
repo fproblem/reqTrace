@@ -78,7 +78,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       background: 'rgba(255,255,255,0.92)',
       backdropFilter: 'blur(20px)',
       height: '100%',
-      overflow: 'auto',
+      overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
     }}>
@@ -222,7 +222,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div style={{ padding: '20px', flex: 1 }}>
+      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {/* Status */}
         <div style={{
           display: 'inline-flex',
@@ -331,7 +331,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
 
         {/* Tests */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
               Привязанные тесты
@@ -496,11 +496,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           )}
         </div>
 
-        {/* Delete button */}
+      </div>
+
+      {/* Футер с удалением — прижат к низу панели и отделён от контента
+          линией, как шапка: деструктивное действие не смешивается с работой
+          над привязкой. */}
+      <div style={{
+        padding: '14px 20px',
+        borderTop: `1px solid ${colors.border}`,
+        flexShrink: 0,
+      }}>
         <button
           onClick={() => onDeleteHighlight(highlight.id)}
           style={{
-            marginTop: '20px',
             width: '100%',
             padding: '8px',
             borderRadius: radii.md,

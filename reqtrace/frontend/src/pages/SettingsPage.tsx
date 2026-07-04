@@ -333,9 +333,15 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
         <div style={fieldStyle}>
           <label style={labelStyle}>
             Пароль
-            <span style={{ color: colors.statusActive, fontWeight: 400, marginLeft: '8px' }}>
-              (установлен)
-            </span>
+            {project.my_status === 'invalid' ? (
+              <span style={{ color: colors.statusLost, fontWeight: 400, marginLeft: '8px' }}>
+                (установлен, но подключение не работает)
+              </span>
+            ) : (
+              <span style={{ color: colors.statusActive, fontWeight: 400, marginLeft: '8px' }}>
+                (установлен)
+              </span>
+            )}
           </label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                  placeholder="••••••••" style={inputStyle} />

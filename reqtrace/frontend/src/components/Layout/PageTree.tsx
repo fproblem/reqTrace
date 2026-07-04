@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
+import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
 
@@ -57,6 +58,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
+  const { version: treeVersion } = useTreeRefresh();
 
   const loadTree = useCallback(async () => {
     try {
@@ -69,8 +71,9 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     }
   }, [showToast]);
 
-  // Refetch tree on mount and when route changes (covers delete, refresh scenarios)
-  useEffect(() => { loadTree(); }, [location.pathname, loadTree]);
+  // Refetch tree on mount, when route changes (covers delete, refresh scenarios)
+  // and on explicit refresh signal (изменения проектов на экране настроек).
+  useEffect(() => { loadTree(); }, [location.pathname, treeVersion, loadTree]);
 
   // Проекты с кредами подтягиваются при открытии формы добавления.
   useEffect(() => {

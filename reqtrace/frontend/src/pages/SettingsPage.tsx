@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { useToast } from '../components/Toast';
+import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
@@ -840,6 +841,7 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
   const { showToast } = useToast();
+  const { refreshTree } = useTreeRefresh();
 
   const load = async () => {
     try {
@@ -849,6 +851,14 @@ export const SettingsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Любое изменение проектов (подключение, креды, переименование, отключение,
+  // удаление, результат проверки) меняет и дерево страниц в сайдбаре —
+  // обновляем его сразу, не дожидаясь смены маршрута.
+  const handleProjectsChanged = () => {
+    void load();
+    refreshTree();
   };
 
   useEffect(() => {
@@ -911,7 +921,7 @@ export const SettingsPage: React.FC = () => {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
           {joined.map(project => (
-            <ProjectCard key={project.id} project={project} onChanged={load} />
+            <ProjectCard key={project.id} project={project} onChanged={handleProjectsChanged} />
           ))}
         </div>
       )}
@@ -921,7 +931,7 @@ export const SettingsPage: React.FC = () => {
           available={available}
           existing={projects}
           onClose={() => setShowConnect(false)}
-          onDone={load}
+          onDone={handleProjectsChanged}
         />
       )}
     </div>

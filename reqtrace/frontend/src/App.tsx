@@ -6,6 +6,7 @@ import { PageDetailPage } from './pages/PageDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { Layout } from './components/Layout/Layout';
 import { ToastProvider } from './components/Toast';
+import { TreeRefreshProvider } from './hooks/useTreeRefresh';
 import { colors, fonts } from './styles/tokens';
 
 function AppContent() {
@@ -34,25 +35,27 @@ function AppContent() {
 
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: colors.textTertiary,
-              fontSize: '15px',
-            }}>
-              Выберите страницу в боковой панели
-            </div>
-          } />
-          <Route path="/pages/:pageId" element={<PageDetailPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Layout>
+      <TreeRefreshProvider>
+        <Layout>
+          <Routes>
+            <Route path="/" element={
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: colors.textTertiary,
+                fontSize: '15px',
+              }}>
+                Выберите страницу в боковой панели
+              </div>
+            } />
+            <Route path="/pages/:pageId" element={<PageDetailPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Layout>
+      </TreeRefreshProvider>
     </BrowserRouter>
   );
 }

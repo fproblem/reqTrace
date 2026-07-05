@@ -22,6 +22,8 @@ interface ContentRendererProps {
 // на краях прокручиваемой таблицы (как в Confluence). Без неё жёсткий обрез
 // текста на границе прокрутки выглядит как баг вёрстки: у левого края — будто
 // текст «уехал под» дерево страниц, у правого — под панель выделения.
+const SCROLL_SHADOW_WIDTH = 18; // px — совпадает с width у .table-scroll__shadow
+
 function updateScrollClipClasses(wrap: HTMLElement) {
   // У bleed-обёртки есть внутренние боковые паддинги (data-pad-x): контент
   // достигает края и начинает обрезаться, только пройдя прокруткой свой
@@ -32,6 +34,16 @@ function updateScrollClipClasses(wrap: HTMLElement) {
     'table-scroll--clip-right',
     wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - pad - 1,
   );
+  // Тени — absolute-оверлеи ПОВЕРХ контента (inset box-shadow рисовался под
+  // изображениями в ячейках и пропадал за ними). Absolute-дети скроллятся
+  // вместе с контентом, поэтому прижимаем их к видимым краям вручную — здесь
+  // же, куда уже сходятся scroll обёртки, ресайзы и пере-заморозка.
+  const shadowLeft = wrap.querySelector<HTMLElement>('.table-scroll__shadow--left');
+  const shadowRight = wrap.querySelector<HTMLElement>('.table-scroll__shadow--right');
+  if (shadowLeft) shadowLeft.style.left = `${wrap.scrollLeft}px`;
+  if (shadowRight) {
+    shadowRight.style.left = `${wrap.scrollLeft + wrap.clientWidth - SCROLL_SHADOW_WIDTH}px`;
+  }
 }
 
 function updateAllScrollClipClasses(container: HTMLDivElement) {
@@ -58,6 +70,13 @@ function stabilizeTables(container: HTMLDivElement) {
     if (bleed) wrap.dataset.padX = '32'; // = боковой паддинг .confluence-content
     table.parentNode?.insertBefore(wrap, table);
     wrap.appendChild(table);
+    // Тени краёв — пустые дивы без текста: textContent контейнера и набор
+    // блоков (BLOCK_SELECTOR) не меняются, привязки в безопасности.
+    (['left', 'right'] as const).forEach(side => {
+      const shadow = document.createElement('div');
+      shadow.className = `table-scroll__shadow table-scroll__shadow--${side}`;
+      wrap.appendChild(shadow);
+    });
     // Слушатель живёт вместе с DOM-узлом обёртки — отдельная очистка не нужна.
     wrap.addEventListener('scroll', () => updateScrollClipClasses(wrap));
   });
@@ -160,7 +179,7 @@ export const contentStyles = `
     overflow-x: auto;
     max-width: 100%;
     margin: 12px 0;
-    transition: box-shadow 0.15s;
+    position: relative; /* точка отсчёта для теней-оверлеев */
   }
   /* Таблицы верхнего уровня прокручиваются во всю ширину страницы: обёртка
      съедает боковые паддинги .confluence-content (32px — числа должны
@@ -177,17 +196,32 @@ export const contentStyles = `
     margin: 0;
   }
   /* Теневая подсказка на краях (классы вешает updateScrollClipClasses):
-     скрытый прокруткой контент «уходит в тень», а не обрезается как попало. */
-  .confluence-content .table-scroll--clip-left {
-    box-shadow: inset 18px 0 14px -14px rgba(0, 0, 0, 0.22);
+     скрытый прокруткой контент «уходит в тень», а не обрезается как попало.
+     Тени — оверлеи ПОВЕРХ контента (z-index), а не inset box-shadow обёртки:
+     тот рисуется под содержимым и пропадал за изображениями в ячейках.
+     Горизонтальную позицию (left) обновляет updateScrollClipClasses; width
+     должен совпадать со SCROLL_SHADOW_WIDTH. */
+  .confluence-content .table-scroll__shadow {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 18px;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
   }
-  .confluence-content .table-scroll--clip-right {
-    box-shadow: inset -18px 0 14px -14px rgba(0, 0, 0, 0.22);
+  .confluence-content .table-scroll__shadow--left {
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0));
   }
-  .confluence-content .table-scroll--clip-left.table-scroll--clip-right {
-    box-shadow:
-      inset 18px 0 14px -14px rgba(0, 0, 0, 0.22),
-      inset -18px 0 14px -14px rgba(0, 0, 0, 0.22);
+  .confluence-content .table-scroll__shadow--right {
+    background: linear-gradient(to left, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0));
+  }
+  .confluence-content .table-scroll--clip-left .table-scroll__shadow--left {
+    opacity: 1;
+  }
+  .confluence-content .table-scroll--clip-right .table-scroll__shadow--right {
+    opacity: 1;
   }
   .confluence-content th,
   .confluence-content td {

@@ -200,15 +200,38 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setRenderReport(prev => (sameRenderReport(prev, report) ? prev : report));
   }, []);
 
+  // Подскролл к выделению — после стабилизации раскладки. Открытие панели
+  // анимирует ширину контента 220мс, и координаты цели «плывут»: прицеливание
+  // сразу (раньше — таймер 50мс) могло оставить выделение за краем экрана.
+  // Вместо привязки к длительности анимации ждём, пока рамка цели не
+  // перестанет двигаться два кадра подряд — так учитывается и анимация, и
+  // дозагрузка контента, и незаконченный предыдущий smooth-scroll; потолок
+  // ~1с — страховка. Новая цель отменяет ожидание предыдущей (scrollSeqRef).
+  const scrollSeqRef = useRef(0);
   const scrollToHighlight = useCallback((highlightId: string) => {
-    setTimeout(() => {
+    const seq = ++scrollSeqRef.current;
+    let lastTop: number | null = null;
+    let frames = 0;
+    const tick = () => {
+      if (seq !== scrollSeqRef.current) return;
+      frames += 1;
       const el = contentAreaRef.current?.querySelector(
         `[data-highlight-id="${highlightId}"]`,
       );
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const { top } = el.getBoundingClientRect();
+        if ((lastTop !== null && Math.abs(top - lastTop) < 0.5) || frames >= 60) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+        lastTop = top;
+      } else {
+        lastTop = null;
+        if (frames >= 60) return;
       }
-    }, 50);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }, []);
 
   const handleNavigate = useCallback((h: Highlight) => {

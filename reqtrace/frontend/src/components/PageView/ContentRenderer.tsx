@@ -18,6 +18,22 @@ interface ContentRendererProps {
 // Безопасность для привязок: обёртка-div не входит в BLOCK_SELECTOR
 // HighlightLayer и не меняет textContent контейнера, поэтому блочные якоря
 // (anchor_block_*) и текстовые смещения сохранённых подсветок не сдвигаются.
+// Классы «контент обрезан слева/справа» — по ним CSS рисует теневую подсказку
+// на краях прокручиваемой таблицы (как в Confluence). Без неё жёсткий обрез
+// текста на границе прокрутки выглядит как баг вёрстки: у левого края — будто
+// текст «уехал под» дерево страниц, у правого — под панель выделения.
+function updateScrollClipClasses(wrap: HTMLElement) {
+  wrap.classList.toggle('table-scroll--clip-left', wrap.scrollLeft > 1);
+  wrap.classList.toggle(
+    'table-scroll--clip-right',
+    wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1,
+  );
+}
+
+function updateAllScrollClipClasses(container: HTMLDivElement) {
+  container.querySelectorAll<HTMLElement>('.table-scroll').forEach(updateScrollClipClasses);
+}
+
 function stabilizeTables(container: HTMLDivElement) {
   container.querySelectorAll<HTMLTableElement>('table').forEach(table => {
     // Уже обработана — либо вложена в обработанную (внешняя заморожена,
@@ -32,8 +48,11 @@ function stabilizeTables(container: HTMLDivElement) {
     wrap.className = 'table-scroll';
     table.parentNode?.insertBefore(wrap, table);
     wrap.appendChild(table);
+    // Слушатель живёт вместе с DOM-узлом обёртки — отдельная очистка не нужна.
+    wrap.addEventListener('scroll', () => updateScrollClipClasses(wrap));
   });
   container.dataset.tablesFrozenAt = String(Math.round(container.clientWidth));
+  updateAllScrollClipClasses(container);
 }
 
 // Пере-заморозка под новую ширину контейнера: зум браузера, ресайз окна,
@@ -52,6 +71,7 @@ function refreezeTables(container: HTMLDivElement) {
   const widths = tables.map(t => t.getBoundingClientRect().width);
   tables.forEach((t, i) => { if (widths[i] > 0) t.style.width = `${widths[i]}px`; });
   container.dataset.tablesFrozenAt = String(width);
+  updateAllScrollClipClasses(container);
 }
 
 export const ContentRenderer: React.FC<ContentRendererProps> = ({
@@ -84,6 +104,9 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({
     if (!container || typeof ResizeObserver === 'undefined') return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const ro = new ResizeObserver(() => {
+      // Теневые подсказки на краях таблиц зависят от ширины обёрток — обновляем
+      // сразу (в т.ч. во время анимации панели), это дёшево.
+      updateAllScrollClipClasses(container);
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (suspendRef.current) return;
@@ -127,9 +150,23 @@ export const contentStyles = `
     overflow-x: auto;
     max-width: 100%;
     margin: 12px 0;
+    transition: box-shadow 0.15s;
   }
   .confluence-content .table-scroll table {
     margin: 0;
+  }
+  /* Теневая подсказка на краях (классы вешает updateScrollClipClasses):
+     скрытый прокруткой контент «уходит в тень», а не обрезается как попало. */
+  .confluence-content .table-scroll--clip-left {
+    box-shadow: inset 18px 0 14px -14px rgba(0, 0, 0, 0.22);
+  }
+  .confluence-content .table-scroll--clip-right {
+    box-shadow: inset -18px 0 14px -14px rgba(0, 0, 0, 0.22);
+  }
+  .confluence-content .table-scroll--clip-left.table-scroll--clip-right {
+    box-shadow:
+      inset 18px 0 14px -14px rgba(0, 0, 0, 0.22),
+      inset -18px 0 14px -14px rgba(0, 0, 0, 0.22);
   }
   .confluence-content th,
   .confluence-content td {

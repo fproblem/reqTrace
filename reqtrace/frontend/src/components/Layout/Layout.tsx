@@ -153,30 +153,37 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     : (sidebar.collapsed ? RAIL_WIDTH : sidebar.width);
 
   // Same drag handle works both ways: drag left to collapse, drag right to expand.
+  // Грип-маркер («‖») убран: чёрточки висели поверх контента страницы рядом с
+  // разделителем. Вместо него тянется сама линия: узкая зона захвата (±4px)
+  // оседлала правую границу сайдбара, а визуальный отклик — подсветка линии
+  // ровно по разделителю при наведении и на всё время перетаскивания.
   const resizeHandle = (
     <div
       onMouseDown={startDrag}
       title={sidebar.collapsed ? 'Потяните вправо, чтобы раскрыть' : 'Потяните, чтобы изменить ширину (до упора — свернуть)'}
       style={{
-        // Straddle the divider: grip sits centred on the border, protruding outside.
-        position: 'absolute', top: 0, right: '-12px', width: '6px', height: '100%',
+        position: 'absolute', top: 0, right: '-4px', width: '8px', height: '100%',
         cursor: 'col-resize', zIndex: 3,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', justifyContent: 'center',
       }}
       onMouseEnter={e => {
-        const grip = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (grip) Array.from(grip.children).forEach(c => { (c as HTMLElement).style.background = colors.greenAccent; });
+        const line = e.currentTarget.firstElementChild as HTMLElement | null;
+        if (line) line.style.background = colors.greenAccent;
       }}
       onMouseLeave={e => {
-        const grip = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (grip) Array.from(grip.children).forEach(c => { (c as HTMLElement).style.background = colors.textTertiary; });
+        // Во время перетаскивания курсор уходит с зоны захвата — линия
+        // остаётся подсвеченной, погасит её ре-рендер по окончании драга.
+        if (draggingRef.current) return;
+        const line = e.currentTarget.firstElementChild as HTMLElement | null;
+        if (line) line.style.background = 'transparent';
       }}
     >
-      {/* Grip marker — signals the sidebar is draggable */}
-      <div style={{ display: 'flex', gap: '2px', alignItems: 'center', pointerEvents: 'none' }}>
-        <span style={{ width: '2px', height: '18px', borderRadius: '1px', background: colors.textTertiary, transition: 'background 0.15s' }} />
-        <span style={{ width: '2px', height: '18px', borderRadius: '1px', background: colors.textTertiary, transition: 'background 0.15s' }} />
-      </div>
+      <div style={{
+        width: '2px', height: '100%',
+        background: dragging ? colors.greenAccent : 'transparent',
+        transition: 'background 0.15s',
+        pointerEvents: 'none',
+      }} />
     </div>
   );
 

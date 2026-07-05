@@ -122,6 +122,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     e.preventDefault();
     draggingRef.current = true;
     rawXRef.current = e.clientX;
+    // Зону контента (дерево/рельса) инициализируем по фактической позиции
+    // курсора: dragTree — остаточное состояние ПРОШЛОГО драга (изначально
+    // false), и без этого клик по линии без движения мгновенно подменял
+    // дерево рельсой со стрелкой — до первого mousemove.
+    const tree = e.clientX >= MIN_WIDTH;
+    zoneRef.current = tree;
+    setDragTree(tree);
     setDragging(true);
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
@@ -167,8 +174,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         display: 'flex', justifyContent: 'center',
       }}
       onMouseEnter={e => {
+        // greenDark, не greenAccent: неоновая линия во всю высоту выбивалась
+        // из приглушённой стилистики интерфейса.
         const line = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (line) line.style.background = colors.greenAccent;
+        if (line) line.style.background = colors.greenDark;
       }}
       onMouseLeave={e => {
         // Во время перетаскивания курсор уходит с зоны захвата — линия
@@ -180,7 +189,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     >
       <div style={{
         width: '2px', height: '100%',
-        background: dragging ? colors.greenAccent : 'transparent',
+        background: dragging ? colors.greenDark : 'transparent',
         transition: 'background 0.15s',
         pointerEvents: 'none',
       }} />

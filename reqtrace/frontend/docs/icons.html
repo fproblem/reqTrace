@@ -1,0 +1,283 @@
+<!doctype html>
+<!-- Галерея иконок ReqTrace — src/components/icons.tsx.
+     Страница самодостаточна (открывается двойным кликом, в сборку не попадает).
+     ⚠ Добавили иконку в icons.tsx — продублируйте её в массив ICONS ниже:
+     SVG-контент копируется байт-в-байт, group/key/tint — по месту использования. -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Иконки ReqTrace — components/icons.tsx</title>
+<style>
+  :root {
+    --bg: #F8F9FA;
+    --card: #FFFFFF;
+    --text: #1A1A1A;
+    --text-2: #6B7280;
+    --text-3: #9CA3AF;
+    --border: rgba(0, 0, 0, 0.07);
+    --border-hover: rgba(0, 0, 0, 0.14);
+    --accent: #4DB830;
+    --accent-soft: rgba(122, 224, 90, 0.15);
+    --chip-bg: rgba(0, 0, 0, 0.045);
+    --code-bg: #1E2124;
+    --code-text: #D6E4D0;
+
+    --tint-green-bg: rgba(122, 224, 90, 0.10);  --tint-green-br: rgba(122, 224, 90, 0.45);  --tint-green-fg: #4DB830;
+    --tint-blue-bg: rgba(59, 130, 246, 0.08);   --tint-blue-br: rgba(59, 130, 246, 0.35);   --tint-blue-fg: #2563EB;
+    --tint-purple-bg: rgba(147, 102, 255, 0.08);--tint-purple-br: rgba(147, 102, 255, 0.35); --tint-purple-fg: #7C3AED;
+    --tint-amber-bg: rgba(245, 158, 11, 0.10);  --tint-amber-br: rgba(245, 158, 11, 0.40);  --tint-amber-fg: #B45309;
+    --tint-red-bg: rgba(239, 68, 68, 0.07);     --tint-red-br: rgba(239, 68, 68, 0.30);     --tint-red-fg: #DC2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141618;
+      --card: #1D2023;
+      --text: #ECEDEE;
+      --text-2: #A2A9B0;
+      --text-3: #6E757C;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.16);
+      --accent: #7AE05A;
+      --accent-soft: rgba(122, 224, 90, 0.12);
+      --chip-bg: rgba(255, 255, 255, 0.06);
+      --code-bg: #101214;
+      --code-text: #C6D9BF;
+      --tint-green-fg: #8BE96D; --tint-blue-fg: #7EB1FA; --tint-purple-fg: #B69AFA;
+      --tint-amber-fg: #F0B44A; --tint-red-fg: #F08080;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141618; --card: #1D2023; --text: #ECEDEE; --text-2: #A2A9B0; --text-3: #6E757C;
+    --border: rgba(255, 255, 255, 0.08); --border-hover: rgba(255, 255, 255, 0.16);
+    --accent: #7AE05A; --accent-soft: rgba(122, 224, 90, 0.12);
+    --chip-bg: rgba(255, 255, 255, 0.06); --code-bg: #101214; --code-text: #C6D9BF;
+    --tint-green-fg: #8BE96D; --tint-blue-fg: #7EB1FA; --tint-purple-fg: #B69AFA;
+    --tint-amber-fg: #F0B44A; --tint-red-fg: #F08080;
+  }
+  :root[data-theme="light"] {
+    --bg: #F8F9FA; --card: #FFFFFF; --text: #1A1A1A; --text-2: #6B7280; --text-3: #9CA3AF;
+    --border: rgba(0, 0, 0, 0.07); --border-hover: rgba(0, 0, 0, 0.14);
+    --accent: #4DB830; --accent-soft: rgba(122, 224, 90, 0.15);
+    --chip-bg: rgba(0, 0, 0, 0.045); --code-bg: #1E2124; --code-text: #D6E4D0;
+    --tint-green-fg: #4DB830; --tint-blue-fg: #2563EB; --tint-purple-fg: #7C3AED;
+    --tint-amber-fg: #B45309; --tint-red-fg: #DC2626;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    margin: 0;
+    padding: 36px 28px 64px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .counter {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    background: var(--accent-soft); border-radius: 100px; padding: 3px 11px; white-space: nowrap;
+  }
+  .lede { color: var(--text-2); font-size: 13.5px; max-width: 62ch; margin: 0 0 8px; }
+  .lede code, .card-name, .chip-key, .import-note code {
+    font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .lede code { font-size: 12px; background: var(--chip-bg); border-radius: 5px; padding: 1px 6px; }
+
+  section { margin-top: 34px; }
+  .group-label {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--text-3); margin-bottom: 14px;
+  }
+  .group-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .group-label .n { color: var(--text-3); font-weight: 500; letter-spacing: 0; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 14px 13px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .card:hover { border-color: var(--border-hover); }
+
+  .bubble {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bubble svg { display: block; }
+  .bubble.green  { background: var(--tint-green-bg);  border: 1px solid var(--tint-green-br);  color: var(--tint-green-fg); }
+  .bubble.blue   { background: var(--tint-blue-bg);   border: 1px solid var(--tint-blue-br);   color: var(--tint-blue-fg); }
+  .bubble.purple { background: var(--tint-purple-bg); border: 1px solid var(--tint-purple-br); color: var(--tint-purple-fg); }
+  .bubble.amber  { background: var(--tint-amber-bg);  border: 1px solid var(--tint-amber-br);  color: var(--tint-amber-fg); }
+  .bubble.red    { background: var(--tint-red-bg);    border: 1px solid var(--tint-red-br);    color: var(--tint-red-fg); }
+  .bubble.plain  { background: var(--chip-bg); border: 1px solid var(--border); color: var(--text-2); }
+
+  .card-name { font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }
+
+  .sizes { display: flex; align-items: flex-end; gap: 10px; color: var(--text-2); min-height: 24px; }
+  .sizes svg { display: block; }
+
+  .chip-key {
+    font-size: 10.5px; color: var(--text-3);
+    background: var(--chip-bg); border-radius: 5px; padding: 1px 7px;
+  }
+  .chip-key.none { background: transparent; }
+
+  .usage {
+    margin-top: 40px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px;
+  }
+  .usage h2 { font-size: 13px; font-weight: 700; margin: 0 0 10px; }
+  pre {
+    background: var(--code-bg); color: var(--code-text); border-radius: 10px;
+    padding: 13px 16px; margin: 0 0 10px; overflow-x: auto;
+    font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.6;
+  }
+  .import-note { color: var(--text-2); font-size: 12.5px; margin: 0; }
+  .import-note code { font-size: 11.5px; background: var(--chip-bg); border-radius: 5px; padding: 1px 5px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Иконки ReqTrace</h1>
+    <span class="counter" id="counter"></span>
+  </header>
+  <p class="lede">
+    Общая библиотека <code>src/components/icons.tsx</code> (появилась в v1.5.6).
+    Все иконки — feather-стиль, viewBox 24×24, обводка <code>currentColor</code>.
+    В плашке — оттенок, назначенный иконке в «Истории изменений»; серым ключ записи из
+    <code>changelog.json</code>. Ниже плашки — та же иконка в размерах 12 / 16 / 24.
+  </p>
+
+  <div id="sections"></div>
+
+  <div class="usage">
+    <h2>Как пользоваться</h2>
+    <pre>import { TrashIcon, SearchIcon } from '../components/icons';
+
+&lt;TrashIcon size={14} /&gt;
+&lt;SearchIcon size={13} strokeWidth={1.8} style={{ color: colors.textTertiary }} /&gt;</pre>
+    <p class="import-note">
+      Цвет наследуется от <code>color</code> родителя; у всех по умолчанию
+      <code>display: block</code> и <code>flexShrink: 0</code>. Иконки с поведением живут отдельно:
+      <code>RefreshIcon</code> (вращение с докруткой) и <code>XIcon</code> в <code>Modal</code>.
+    </p>
+  </div>
+</div>
+
+<script>
+  // Содержимое каждой иконки — байт-в-байт из components/icons.tsx.
+  const ICONS = [
+    // --- Действия ---
+    { g: 'Действия', name: 'PencilIcon', key: 'highlight', tint: 'green',
+      svg: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
+    { g: 'Действия', name: 'PlusIcon', key: 'plus', tint: 'green',
+      svg: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' },
+    { g: 'Действия', name: 'CrossIcon', key: null, tint: 'plain',
+      svg: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' },
+    { g: 'Действия', name: 'TrashIcon', key: 'trash', tint: 'red',
+      svg: '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>' },
+    { g: 'Действия', name: 'SearchIcon', key: 'search', tint: 'blue',
+      svg: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>' },
+    { g: 'Действия', name: 'SyncIcon', key: 'sync', tint: 'blue',
+      svg: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>' },
+
+    // --- Навигация ---
+    { g: 'Навигация', name: 'ChevronRightIcon', key: null, tint: 'plain',
+      svg: '<path d="M9 5.3L15.7 12 9 18.7"/>' },
+    { g: 'Навигация', name: 'ChevronsVerticalIcon', key: 'nav', tint: 'purple',
+      svg: '<path d="M7 8l5-5 5 5"/><path d="M7 16l5 5 5-5"/>' },
+    { g: 'Навигация', name: 'TargetIcon', key: 'target', tint: 'green',
+      svg: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/>' },
+
+    // --- Объекты интерфейса ---
+    { g: 'Объекты интерфейса', name: 'PanelIcon', key: 'panel', tint: 'blue',
+      svg: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/>' },
+    { g: 'Объекты интерфейса', name: 'LayoutIcon', key: 'layout', tint: 'amber',
+      svg: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>' },
+    { g: 'Объекты интерфейса', name: 'TableIcon', key: 'table', tint: 'amber',
+      svg: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="10" x2="12" y2="20"/>' },
+    { g: 'Объекты интерфейса', name: 'KeyboardIcon', key: 'keyboard', tint: 'purple',
+      svg: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><line x1="7" y1="14.5" x2="17" y2="14.5"/><line x1="6.5" y1="10" x2="6.51" y2="10"/><line x1="10.2" y1="10" x2="10.21" y2="10"/><line x1="13.8" y1="10" x2="13.81" y2="10"/><line x1="17.5" y1="10" x2="17.51" y2="10"/>' },
+    { g: 'Объекты интерфейса', name: 'DocumentIcon', key: 'doc', tint: 'blue',
+      svg: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>' },
+    { g: 'Объекты интерфейса', name: 'ImageIcon', key: 'image', tint: 'purple',
+      svg: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>' },
+    { g: 'Объекты интерфейса', name: 'BranchIcon', key: 'tree', tint: 'purple',
+      svg: '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/>' },
+    { g: 'Объекты интерфейса', name: 'LinkIcon', key: 'link', tint: 'blue',
+      svg: '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>' },
+
+    // --- Статусы и сущности ---
+    { g: 'Статусы и сущности', name: 'BellIcon', key: 'bell', tint: 'amber',
+      svg: '<path d="M18 8a6 6 0 00-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 20a2 2 0 01-3.4 0"/>' },
+    { g: 'Статусы и сущности', name: 'ClockIcon', key: 'timer', tint: 'amber',
+      svg: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+    { g: 'Статусы и сущности', name: 'FlagIcon', key: 'flag', tint: 'green',
+      svg: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>' },
+    { g: 'Статусы и сущности', name: 'GearIcon', key: 'gear', tint: 'purple',
+      svg: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 008.6 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 010-4h.09A1.65 1.65 0 004.6 8.6a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
+    { g: 'Статусы и сущности', name: 'LockIcon', key: 'lock', tint: 'amber',
+      svg: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>' },
+    { g: 'Статусы и сущности', name: 'ShieldIcon', key: 'shield', tint: 'green',
+      svg: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' },
+    { g: 'Статусы и сущности', name: 'UserIcon', key: 'user', tint: 'green',
+      svg: '<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>' },
+    { g: 'Статусы и сущности', name: 'DropletIcon', key: 'paint', tint: 'purple',
+      svg: '<path d="M12 2.7s6.5 7 6.5 11.3a6.5 6.5 0 11-13 0C5.5 9.7 12 2.7 12 2.7z"/>' },
+    { g: 'Статусы и сущности', name: 'SparkleIcon', key: 'sparkle', tint: 'green',
+      svg: '<path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z"/>' },
+  ];
+
+  function iconSvg(inner, size, strokeWidth) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="' + (strokeWidth || 2) + '" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
+  }
+
+  const groups = [];
+  for (const icon of ICONS) {
+    let group = groups.find(g => g.name === icon.g);
+    if (!group) { group = { name: icon.g, items: [] }; groups.push(group); }
+    group.items.push(icon);
+  }
+
+  document.getElementById('counter').textContent =
+    ICONS.length + ' иконок · ' + groups.length + ' группы · v1.5.6';
+
+  document.getElementById('sections').innerHTML = groups.map(group => `
+    <section>
+      <div class="group-label">${group.name} <span class="n">${group.items.length}</span></div>
+      <div class="grid">
+        ${group.items.map(icon => `
+          <div class="card">
+            <div class="bubble ${icon.tint}">${iconSvg(icon.svg, 18)}</div>
+            <div class="card-name">${icon.name}</div>
+            <div class="sizes">
+              ${iconSvg(icon.svg, 12)}${iconSvg(icon.svg, 16)}${iconSvg(icon.svg, 24)}
+            </div>
+            <div class="chip-key${icon.key ? '' : ' none'}">${icon.key ?? ' '}</div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `).join('');
+</script>
+</body>
+</html>

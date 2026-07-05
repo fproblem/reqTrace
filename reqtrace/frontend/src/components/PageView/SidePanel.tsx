@@ -63,6 +63,11 @@ const TrashIcon: React.FC = () => (
   </svg>
 );
 
+// Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
+// для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
+// прицеливаться (контент пере-вёрстывается, координаты цели плывут).
+export const PANEL_ANIM_MS = 220;
+
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
   // (позиция <mark> в DOM). Подробности — в compareByDomThenAnchor.
@@ -101,7 +106,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       return;
     }
     setOpen(false);
-    const t = setTimeout(() => setRendered(null), 300);
+    const t = setTimeout(() => setRendered(null), PANEL_ANIM_MS + 80);
     return () => clearTimeout(t);
   }, [activeHighlight]);
 
@@ -112,7 +117,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const shellStyle = (opened: boolean, withContent: boolean): React.CSSProperties => ({
     width: opened ? '360px' : '0px',
     flexShrink: 0,
-    transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease',
+    transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), border-color ${PANEL_ANIM_MS}ms ease`,
     borderLeft: `1px solid ${opened ? colors.border : 'transparent'}`,
     background: withContent ? 'rgba(255,255,255,0.92)' : 'transparent',
     backdropFilter: withContent ? 'blur(20px)' : undefined,

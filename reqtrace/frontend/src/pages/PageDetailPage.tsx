@@ -5,7 +5,7 @@ import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
 import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
 import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
-import { SidePanel } from '../components/PageView/SidePanel';
+import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
@@ -200,34 +200,55 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setRenderReport(prev => (sameRenderReport(prev, report) ? prev : report));
   }, []);
 
-  // Подскролл к выделению — после стабилизации раскладки. Открытие панели
-  // анимирует ширину контента 220мс, и координаты цели «плывут»: прицеливание
-  // сразу (раньше — таймер 50мс) могло оставить выделение за краем экрана.
-  // Вместо привязки к длительности анимации ждём, пока рамка цели не
-  // перестанет двигаться два кадра подряд — так учитывается и анимация, и
-  // дозагрузка контента, и незаконченный предыдущий smooth-scroll; потолок
-  // ~1с — страховка. Новая цель отменяет ожидание предыдущей (scrollSeqRef).
+  // Момент последнего ОТКРЫТИЯ панели (null — закрыта). Пока не истекло окно
+  // анимации ширины, подскроллу прицеливаться нельзя: таблицы при пере-вёрстке
+  // «едут» дискретными скачками, и эвристика стабильности координат ловила
+  // ложное затишье посреди анимации.
+  const panelOpenedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedHighlight) {
+      if (panelOpenedAtRef.current === null) panelOpenedAtRef.current = performance.now();
+    } else {
+      panelOpenedAtRef.current = null;
+    }
+  }, [selectedHighlight]);
+
+  // Подскролл к выделению — строго после анимации открытия панели. Сначала
+  // детерминированно пережидаем окно анимации (PANEL_ANIM_MS + запас на
+  // хвостовую пере-вёрстку), затем второй линией защиты ждём, пока рамка цели
+  // не постоит на месте три кадра подряд (дозагрузка контента, незаконченный
+  // предыдущий smooth-scroll). При давно открытой панели окно уже истекло —
+  // скролл срабатывает через ~3 кадра, навигация стрелками остаётся быстрой.
+  // Потолок ожидания ~1.5с — страховка; новая цель отменяет предыдущую.
   const scrollSeqRef = useRef(0);
   const scrollToHighlight = useCallback((highlightId: string) => {
     const seq = ++scrollSeqRef.current;
+    const deadline = performance.now() + 1500;
     let lastTop: number | null = null;
-    let frames = 0;
+    let stable = 0;
     const tick = () => {
       if (seq !== scrollSeqRef.current) return;
-      frames += 1;
+      const now = performance.now();
       const el = contentAreaRef.current?.querySelector(
         `[data-highlight-id="${highlightId}"]`,
       );
-      if (el) {
+      if (now >= deadline) {
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      const openedAt = panelOpenedAtRef.current;
+      const animating = openedAt !== null && now - openedAt < PANEL_ANIM_MS + 60;
+      if (el && !animating) {
         const { top } = el.getBoundingClientRect();
-        if ((lastTop !== null && Math.abs(top - lastTop) < 0.5) || frames >= 60) {
+        stable = lastTop !== null && Math.abs(top - lastTop) < 0.5 ? stable + 1 : 0;
+        lastTop = top;
+        if (stable >= 2) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
         }
-        lastTop = top;
       } else {
         lastTop = null;
-        if (frames >= 60) return;
+        stable = 0;
       }
       requestAnimationFrame(tick);
     };

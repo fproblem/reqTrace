@@ -174,10 +174,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         display: 'flex', justifyContent: 'center',
       }}
       onMouseEnter={e => {
-        // greenDark, не greenAccent: неоновая линия во всю высоту выбивалась
+        // greenLight, не greenAccent: неоновая линия во всю высоту выбивалась
         // из приглушённой стилистики интерфейса.
         const line = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (line) line.style.background = colors.greenDark;
+        if (line) line.style.background = colors.greenLight;
       }}
       onMouseLeave={e => {
         // Во время перетаскивания курсор уходит с зоны захвата — линия
@@ -189,7 +189,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     >
       <div style={{
         width: '2px', height: '100%',
-        background: dragging ? colors.greenDark : 'transparent',
+        background: dragging ? colors.greenLight : 'transparent',
         transition: 'background 0.15s',
         pointerEvents: 'none',
       }} />

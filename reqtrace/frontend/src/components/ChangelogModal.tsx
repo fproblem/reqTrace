@@ -42,6 +42,7 @@ const ICON_TINTS = {
   blue: { bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.35)', fg: '#2563EB' },
   purple: { bg: 'rgba(147, 102, 255, 0.08)', border: 'rgba(147, 102, 255, 0.35)', fg: '#7C3AED' },
   amber: { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.40)', fg: '#B45309' },
+  red: { bg: 'rgba(239, 68, 68, 0.07)', border: 'rgba(239, 68, 68, 0.30)', fg: '#DC2626' },
 } as const;
 
 const svgProps = {
@@ -92,6 +93,66 @@ const CHANGE_ICONS: Record<string, { tint: keyof typeof ICON_TINTS; svg: React.R
   sparkle: {
     tint: 'green',
     svg: <svg {...svgProps}><path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z" /></svg>,
+  },
+  panel: {
+    tint: 'blue',
+    svg: <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="15" y1="4" x2="15" y2="20" /></svg>,
+  },
+  table: {
+    tint: 'amber',
+    svg: <svg {...svgProps}><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="12" y1="10" x2="12" y2="20" /></svg>,
+  },
+  keyboard: {
+    tint: 'purple',
+    svg: <svg {...svgProps}><rect x="2.5" y="6" width="19" height="12" rx="2" /><line x1="7" y1="14.5" x2="17" y2="14.5" /><line x1="6.5" y1="10" x2="6.51" y2="10" /><line x1="10.2" y1="10" x2="10.21" y2="10" /><line x1="13.8" y1="10" x2="13.81" y2="10" /><line x1="17.5" y1="10" x2="17.51" y2="10" /></svg>,
+  },
+  bell: {
+    tint: 'amber',
+    svg: <svg {...svgProps}><path d="M18 8a6 6 0 00-12 0c0 7-3 8-3 8h18s-3-1-3-8" /><path d="M13.7 20a2 2 0 01-3.4 0" /></svg>,
+  },
+  trash: {
+    tint: 'red',
+    svg: <svg {...svgProps}><path d="M3 6h18" /><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>,
+  },
+  gear: {
+    tint: 'purple',
+    svg: <svg {...svgProps}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 008.6 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 010-4h.09A1.65 1.65 0 004.6 8.6a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>,
+  },
+  lock: {
+    tint: 'amber',
+    svg: <svg {...svgProps}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>,
+  },
+  user: {
+    tint: 'green',
+    svg: <svg {...svgProps}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>,
+  },
+  doc: {
+    tint: 'blue',
+    svg: <svg {...svgProps}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></svg>,
+  },
+  flag: {
+    tint: 'green',
+    svg: <svg {...svgProps}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>,
+  },
+  image: {
+    tint: 'purple',
+    svg: <svg {...svgProps}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>,
+  },
+  shield: {
+    tint: 'green',
+    svg: <svg {...svgProps}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
+  },
+  sync: {
+    tint: 'blue',
+    svg: <svg {...svgProps}><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>,
+  },
+  target: {
+    tint: 'green',
+    svg: <svg {...svgProps}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3.5" /></svg>,
+  },
+  nav: {
+    tint: 'purple',
+    svg: <svg {...svgProps}><path d="M7 8l5-5 5 5" /><path d="M7 16l5 5 5-5" /></svg>,
   },
 };
 

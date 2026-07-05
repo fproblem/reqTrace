@@ -83,27 +83,42 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const confirmRef = useRef<HTMLDivElement>(null);
 
   // Плавное появление/скрытие: анимируется ширина корня 0↔360 (как у
-  // inline-комментариев Confluence). Пока идёт анимация закрытия, продолжаем
-  // рисовать последнее выделение (rendered) — активного уже нет — и
-  // размонтируем контент по таймеру чуть длиннее транзишена (220мс).
+  // inline-комментариев Confluence). Корень живёт в DOM постоянно (пустой,
+  // шириной 0 — см. return ниже): транзишен тогда стартует из уже
+  // зафиксированного браузером width:0 при ЛЮБОМ сценарии открытия. Прежний
+  // вариант «смонтировать с width:0 и раскрыть через два rAF» проигрывал
+  // гонку кадров, когда открытие сопровождалось тяжёлой синхронной работой
+  // (клик по чипу статуса: пересортировка, перерисовка слоя, подскролл), — и
+  // панель появлялась скачком. Пока идёт анимация закрытия, продолжаем
+  // рисовать последнее выделение (rendered) — активного уже нет — и убираем
+  // контент по таймеру чуть длиннее транзишена (220мс).
   const [rendered, setRendered] = useState<Highlight | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (activeHighlight) {
       setRendered(activeHighlight);
-      // Два rAF: первый кадр фиксирует панель с width:0 в DOM, второй
-      // запускает транзишен — иначе браузер схлопнет оба состояния и
-      // панель появится скачком.
-      let raf2 = 0;
-      const raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => setOpen(true));
-      });
-      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+      setOpen(true);
+      return;
     }
     setOpen(false);
     const t = setTimeout(() => setRendered(null), 300);
     return () => clearTimeout(t);
   }, [activeHighlight]);
+
+  // Оболочка панели — общая для пустого и наполненного состояния, чтобы React
+  // переиспользовал один DOM-узел и транзишен ширины не прерывался. Фон и блюр
+  // только при контенте: у пустой оболочки прозрачная рамка (1px) не должна
+  // просвечивать белой полоской у правого края.
+  const shellStyle = (opened: boolean, withContent: boolean): React.CSSProperties => ({
+    width: opened ? '360px' : '0px',
+    flexShrink: 0,
+    transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease',
+    borderLeft: `1px solid ${opened ? colors.border : 'transparent'}`,
+    background: withContent ? 'rgba(255,255,255,0.92)' : 'transparent',
+    backdropFilter: withContent ? 'blur(20px)' : undefined,
+    height: '100%',
+    overflow: 'hidden',
+  });
 
   // Закрытие поповера: клик вне футера или Escape (как у меню «⋮»).
   useEffect(() => {
@@ -163,9 +178,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   }, [confirmOpen, testKey, onClose, rendered]);
 
   // Дальше рисуем rendered: во время анимации закрытия activeHighlight уже
-  // null, а панель ещё должна показывать последнее выделение.
+  // null, а панель ещё должна показывать последнее выделение. Когда показывать
+  // нечего — возвращаем пустую оболочку, а не null: она держит DOM-узел живым
+  // для следующего транзишена.
   const highlight = rendered;
-  if (!highlight) return null;
+  if (!highlight) return <div style={shellStyle(false, false)} />;
 
   const sorted = sortedByPosition(allHighlights);
   const currentIndex = sorted.findIndex(h => h.id === highlight.id);
@@ -224,16 +241,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     });
 
   return (
-    <div style={{
-      width: open ? '360px' : '0px',
-      flexShrink: 0,
-      transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease',
-      borderLeft: `1px solid ${open ? colors.border : 'transparent'}`,
-      background: 'rgba(255,255,255,0.92)',
-      backdropFilter: 'blur(20px)',
-      height: '100%',
-      overflow: 'hidden',
-    }}>
+    <div style={shellStyle(open, true)}>
       {/* Контент — на фиксированной ширине панели: при анимации ширины корня
           он не пере-верстается, а «въезжает» справа единым блоком (левый край
           корня движется вместе с шириной, контент прижат к нему). */}

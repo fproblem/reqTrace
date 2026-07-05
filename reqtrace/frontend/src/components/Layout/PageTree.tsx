@@ -5,6 +5,7 @@ import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { Select } from '../Select';
+import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
@@ -130,6 +131,67 @@ const TreeReveal: React.FC<{ expanded: boolean; children: React.ReactNode }> = (
   );
 };
 
+// --- Иконки и кнопки шапки сайдбара ---
+
+const PlusIcon: React.FC = () => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const SearchIcon: React.FC = () => (
+  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
+    <circle cx="11" cy="11" r="7" />
+    <line x1="20" y1="20" x2="16.2" y2="16.2" />
+  </svg>
+);
+
+const ClearIcon: React.FC = () => (
+  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+// Кнопка-иконка шапки сайдбара — в стиле кнопок верхнего бара приложения:
+// заметная зона нажатия с ховер- и пресс-подсветкой вместо «голой» иконки.
+const HeaderIconButton: React.FC<{
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}> = ({ title, onClick, disabled, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    title={title}
+    style={{
+      width: '26px',
+      height: '26px',
+      padding: 0,
+      borderRadius: radii.sm,
+      border: 'none',
+      background: 'transparent',
+      color: colors.textSecondary,
+      cursor: disabled ? 'default' : 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      transition: 'background 0.15s, color 0.15s',
+    }}
+    onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
+    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+    onMouseDown={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.09)'; }}
+    onMouseUp={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
+  >
+    {children}
+  </button>
+);
+
 function loadExpandState(): Record<string, boolean> {
   try {
     const stored = localStorage.getItem(TREE_STATE_KEY);
@@ -151,7 +213,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [projects, setProjects] = useState<ProjectTree[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandState, setExpandState] = useState<Record<string, boolean>>(loadExpandState);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [adding, setAdding] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -182,11 +244,11 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   // Проекты с кредами подтягиваются при открытии формы добавления.
   useEffect(() => {
-    if (!showAddForm) return;
+    if (!showAddModal) return;
     api.listProjects()
       .then(setMyProjects)
       .catch(() => setMyProjects([]));
-  }, [showAddForm]);
+  }, [showAddModal]);
 
   // Проекты текущего пользователя, которым подходит введённая ссылка.
   const candidateProjects = useMemo(() => {
@@ -213,6 +275,12 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     });
   }, []);
 
+  const closeAddModal = useCallback(() => {
+    setShowAddModal(false);
+    setNewUrl('');
+    setError('');
+  }, []);
+
   const handleAddPage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUrl.trim()) return;
@@ -222,7 +290,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       const projectId = candidateProjects.length > 1 ? selectedProjectId : undefined;
       const page = await api.addPage(newUrl.trim(), projectId);
       setNewUrl('');
-      setShowAddForm(false);
+      setShowAddModal(false);
       await loadTree();
       navigate(`/pages/${page.id}`);
       onPageAdded?.();
@@ -332,195 +400,168 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
+      {/* Шапка панели: заголовок, действия и поиск. Отделена от дерева линией
+          во всю ширину сайдбара (отступы панель раздаёт сама, см. Layout);
+          дерево скроллится под ней. */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '0 4px',
-        marginBottom: '8px',
+        flexShrink: 0,
+        padding: '14px 10px 10px',
+        borderBottom: `1px solid ${colors.border}`,
       }}>
-        <span style={{
-          fontSize: '11px',
-          fontWeight: 600,
-          color: colors.textTertiary,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0 4px',
+          marginBottom: '8px',
         }}>
-          Проекты
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-          <button
-            onClick={handleSyncTree}
-            disabled={syncing}
-            title="Синхронизировать структуру с Confluence (перенос/добавление страниц)"
-            style={{
-              width: '22px',
-              height: '22px',
-              borderRadius: radii.sm,
-              border: 'none',
-              background: 'transparent',
-              color: colors.textSecondary,
-              cursor: syncing ? 'default' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s',
-            }}
-          >
-            <RefreshIcon size={12} spinning={syncing} />
-          </button>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            title="Добавить страницу"
-            style={{
-              width: '22px',
-              height: '22px',
-              borderRadius: radii.sm,
-              border: 'none',
-              background: showAddForm ? colors.greenLight : 'transparent',
-              color: showAddForm ? colors.greenDark : colors.textSecondary,
-              fontSize: '16px',
-              lineHeight: '22px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s',
-            }}
-          >
-            +
-          </button>
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            color: colors.textTertiary,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}>
+            Проекты
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <HeaderIconButton
+              title="Синхронизировать структуру с Confluence (перенос/добавление страниц)"
+              onClick={handleSyncTree}
+              disabled={syncing}
+            >
+              <RefreshIcon size={13} spinning={syncing} />
+            </HeaderIconButton>
+            <HeaderIconButton title="Добавить страницу" onClick={() => setShowAddModal(true)}>
+              <PlusIcon />
+            </HeaderIconButton>
+          </div>
         </div>
+
+        {/* Search — лупа слева, очистка справа */}
+        {!loading && hasAnyPages && (
+          <div style={{ padding: '0 4px', position: 'relative' }}>
+            <span style={{
+              position: 'absolute',
+              left: '13px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: colors.textTertiary,
+              display: 'flex',
+              pointerEvents: 'none',
+            }}>
+              <SearchIcon />
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Найти страницу..."
+              style={{
+                width: '100%',
+                padding: '7px 30px 7px 28px',
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                fontSize: '12px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.15s',
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
+              onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                title="Очистить поиск"
+                style={{
+                  position: 'absolute',
+                  right: '9px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: '18px',
+                  height: '18px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'none',
+                  border: 'none',
+                  borderRadius: radii.sm,
+                  cursor: 'pointer',
+                  color: colors.textTertiary,
+                }}
+              >
+                <ClearIcon />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Add form */}
-      {showAddForm && (
-        <form onSubmit={handleAddPage} style={{ marginBottom: '10px', padding: '0 4px' }}>
-          <input
-            type="text"
-            value={newUrl}
-            onChange={e => setNewUrl(e.target.value)}
-            placeholder="Confluence URL..."
-            autoFocus
-            style={{
-              width: '100%',
-              padding: '6px 8px',
-              borderRadius: radii.sm,
-              border: `1px solid ${colors.border}`,
-              fontSize: '12px',
-              fontFamily: 'inherit',
-              outline: 'none',
-              boxSizing: 'border-box',
-              marginBottom: '6px',
-            }}
-          />
-          {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
-          {candidateProjects.length > 1 && (
-            <Select
-              value={selectedProjectId}
-              onChange={setSelectedProjectId}
-              size="sm"
-              title="Проект, в который добавить страницу"
-              style={{ marginBottom: '6px' }}
-              options={candidateProjects.map(p => ({
-                value: p.id,
-                label: `В проект: ${p.name}`,
-              }))}
-            />
-          )}
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button
-              type="submit"
-              disabled={!newUrl.trim() || adding}
+      {/* Модалка добавления страницы: в узком сайдбаре инлайн-форме тесно —
+          URL не влезает, а выбор проекта появлялся неожиданно. */}
+      {showAddModal && (
+        <Modal title="Добавить страницу" onClose={closeAddModal} width="460px">
+          <form onSubmit={handleAddPage}>
+            <p style={modalTextStyle}>
+              Вставьте ссылку на страницу Confluence — она добавится в дерево
+              вместе со структурой своего раздела.
+            </p>
+            <input
+              type="text"
+              value={newUrl}
+              onChange={e => setNewUrl(e.target.value)}
+              placeholder="https://confluence…/pages/viewpage.action?pageId=…"
+              autoFocus
               style={{
-                flex: 1,
-                padding: '4px 8px',
-                borderRadius: radii.sm,
-                border: 'none',
-                background: colors.greenAccent,
-                color: '#fff',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: newUrl.trim() && !adding ? 'pointer' : 'default',
-                fontFamily: 'inherit',
-                opacity: !newUrl.trim() || adding ? 0.5 : 1,
-              }}
-            >
-              {adding ? '...' : 'Добавить'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowAddForm(false); setNewUrl(''); setError(''); }}
-              style={{
-                padding: '4px 8px',
-                borderRadius: radii.sm,
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: radii.md,
                 border: `1px solid ${colors.border}`,
-                background: 'transparent',
-                color: colors.textSecondary,
-                fontSize: '11px',
-                cursor: 'pointer',
+                fontSize: '13px',
                 fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.15s',
               }}
-            >
-              Отмена
-            </button>
-          </div>
-          {error && (
-            <div style={{ color: colors.statusLost, fontSize: '11px', marginTop: '4px' }}>
-              {error}
+              onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
+              onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+            />
+            {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
+            {candidateProjects.length > 1 && (
+              <Select
+                value={selectedProjectId}
+                onChange={setSelectedProjectId}
+                size="sm"
+                title="Проект, в который добавить страницу"
+                style={{ marginTop: '10px', width: '100%' }}
+                options={candidateProjects.map(p => ({
+                  value: p.id,
+                  label: `В проект: ${p.name}`,
+                }))}
+              />
+            )}
+            {error && (
+              <div style={{ color: colors.statusLost, fontSize: '12px', marginTop: '10px' }}>
+                {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
+              <ModalButton type="button" onClick={closeAddModal}>
+                Отмена
+              </ModalButton>
+              <ModalButton type="submit" variant="primary" disabled={!newUrl.trim() || adding}>
+                {adding ? 'Добавляем…' : 'Добавить'}
+              </ModalButton>
             </div>
-          )}
-        </form>
-      )}
-
-      {/* Search */}
-      {!loading && hasAnyPages && (
-        <div style={{ padding: '0 4px', marginBottom: '8px', position: 'relative' }}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Найти страницу..."
-            style={{
-              width: '100%',
-              padding: '6px 26px 6px 8px',
-              borderRadius: radii.sm,
-              border: `1px solid ${colors.border}`,
-              fontSize: '12px',
-              fontFamily: 'inherit',
-              outline: 'none',
-              boxSizing: 'border-box',
-              transition: 'border-color 0.15s',
-            }}
-            onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
-            onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                position: 'absolute',
-                right: '8px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: colors.textTertiary,
-                fontSize: '14px',
-                padding: '0 2px',
-                lineHeight: 1,
-              }}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+          </form>
+        </Modal>
       )}
 
       {/* Tree content */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
         {loading ? (
           <div style={{ padding: '20px 4px', color: colors.textTertiary, fontSize: '12px' }}>
             Загрузка...

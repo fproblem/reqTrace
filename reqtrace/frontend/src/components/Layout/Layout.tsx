@@ -367,7 +367,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </>
           ) : (
             <>
-              <div style={{ flex: 1, overflow: 'hidden', padding: '14px 10px 4px', minWidth: 0 }}>
+              {/* Отступы панель раздаёт сама (PageTree): линия под её шапкой
+                  должна идти во всю ширину сайдбара, до самых краёв. */}
+              <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
                 <PageTree />
               </div>
 

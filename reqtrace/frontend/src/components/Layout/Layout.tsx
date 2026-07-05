@@ -206,12 +206,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background blobs */}
-      <div style={{
-        position: 'fixed', top: '-10%', left: '-5%',
-        width: '500px', height: '500px', borderRadius: '50%',
-        background: colors.blobLilac, filter: 'blur(80px)', zIndex: 0,
-      }} />
+      {/* Background blobs. Сиреневого в углу шапки/сайдбара сознательно НЕТ:
+          он просвечивал сквозь их полупрозрачный фон и красил разделительные
+          линии в разные оттенки вдоль ширины (линии «разного цвета»). */}
       <div style={{
         position: 'fixed', bottom: '-15%', right: '-5%',
         width: '600px', height: '600px', borderRadius: '50%',

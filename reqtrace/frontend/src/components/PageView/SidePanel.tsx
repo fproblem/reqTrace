@@ -138,6 +138,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const hasNext = currentIndex < sorted.length - 1;
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
+  const noTests = highlight.tests.length === 0;
 
   // Навигация по статусу: плашка ведёт к следующему выделению с тем же
   // статусом (по кругу, в порядке отрисовки на странице). В день актуализации
@@ -423,7 +424,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </div>
         )}
 
-        {/* Reanchor button for outdated highlights */}
+        {/* Reanchor button for outdated highlights. Без тестов кнопка
+            задизейблена: актуализация подтверждает, что привязанные тесты всё
+            ещё покрывают текст — «актуальное» выделение без единого теста
+            вводило бы в заблуждение. Привязали первый тест — кнопка оживает. */}
         {highlight.status === 'outdated' && onReanchor && (
           <button
             onClick={async () => {
@@ -434,7 +438,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 setReanchoring(false);
               }
             }}
-            disabled={reanchoring}
+            disabled={reanchoring || noTests}
+            title={noTests
+              ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
+              : undefined}
             style={{
               display: 'block',
               alignItems: 'center',
@@ -448,22 +455,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               color: colors.statusOutdated,
               fontSize: '13px',
               fontWeight: 600,
-              cursor: reanchoring ? 'wait' : 'pointer',
+              cursor: reanchoring ? 'wait' : noTests ? 'default' : 'pointer',
               fontFamily: 'inherit',
               transition: 'all 0.15s',
-              opacity: reanchoring ? 0.7 : 1,
+              opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
             }}
             onMouseEnter={e => {
-              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
             }}
             onMouseDown={e => {
-              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
             }}
             onMouseUp={e => {
-              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
             }}
           >
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}

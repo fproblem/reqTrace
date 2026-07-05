@@ -4,16 +4,131 @@ import { colors, radii } from '../../styles/tokens';
 interface ContentRendererProps {
   html: string;
   onContentReady?: (container: HTMLDivElement) => void;
+  /** true — правая панель открыта или анимируется. Пока это так, пере-заморозка
+   *  ширин таблиц не выполняется: сужение контента самой панелью не должно
+   *  пере-вёрстывать таблицы (в этом весь смысл заморозки). */
+  suspendTableRefreeze?: boolean;
 }
 
-export const ContentRenderer: React.FC<ContentRendererProps> = ({ html, onContentReady }) => {
+// Таблицы не пере-вёрстываются при изменении ширины контента (открытие правой
+// панели, ресайз сайдбара/окна): фактическая ширина каждой таблицы
+// замораживается в момент рендера контента, а таблица оборачивается в
+// контейнер с собственным горизонтальным скроллом — как в Confluence. Широкая
+// таблица не «уходит под панель», а скроллится внутри себя.
+// Безопасность для привязок: обёртка-div не входит в BLOCK_SELECTOR
+// HighlightLayer и не меняет textContent контейнера, поэтому блочные якоря
+// (anchor_block_*) и текстовые смещения сохранённых подсветок не сдвигаются.
+// Классы «контент обрезан слева/справа» — по ним CSS рисует теневую подсказку
+// на краях прокручиваемой таблицы (как в Confluence). Без неё жёсткий обрез
+// текста на границе прокрутки выглядит как баг вёрстки: у левого края — будто
+// текст «уехал под» дерево страниц, у правого — под панель выделения.
+function updateScrollClipClasses(wrap: HTMLElement) {
+  // У bleed-обёртки есть внутренние боковые паддинги (data-pad-x): контент
+  // достигает края и начинает обрезаться, только пройдя прокруткой свой
+  // паддинг — до этого тень не нужна.
+  const pad = Number(wrap.dataset.padX || 0);
+  wrap.classList.toggle('table-scroll--clip-left', wrap.scrollLeft > pad + 1);
+  wrap.classList.toggle(
+    'table-scroll--clip-right',
+    wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - pad - 1,
+  );
+}
+
+function updateAllScrollClipClasses(container: HTMLDivElement) {
+  container.querySelectorAll<HTMLElement>('.table-scroll').forEach(updateScrollClipClasses);
+}
+
+function stabilizeTables(container: HTMLDivElement) {
+  container.querySelectorAll<HTMLTableElement>('table').forEach(table => {
+    // Уже обработана — либо вложена в обработанную (внешняя заморожена,
+    // значит внутренняя пере-вёрстываться не может; идём в порядке документа).
+    if (table.closest('.table-scroll')) return;
+    // Авторская инлайновая ширина из Confluence запоминается: пере-заморозка
+    // должна отталкиваться от исходного правила, а не от прошлого фриза.
+    table.dataset.origWidth = table.style.width;
+    const width = table.getBoundingClientRect().width;
+    if (width > 0) table.style.width = `${width}px`;
+    const wrap = document.createElement('div');
+    // Таблице верхнего уровня — прокрутка во всю ширину страницы (bleed:
+    // обёртка съедает боковые паддинги контейнера, обрез и тень прилегают
+    // вплотную к боковым панелям). Таблицам внутри макросов/цитат — обычная
+    // обёртка: их родитель уже даёт свои рамки и паддинги.
+    const bleed = table.parentElement === container;
+    wrap.className = bleed ? 'table-scroll table-scroll--bleed' : 'table-scroll';
+    if (bleed) wrap.dataset.padX = '32'; // = боковой паддинг .confluence-content
+    table.parentNode?.insertBefore(wrap, table);
+    wrap.appendChild(table);
+    // Слушатель живёт вместе с DOM-узлом обёртки — отдельная очистка не нужна.
+    wrap.addEventListener('scroll', () => updateScrollClipClasses(wrap));
+  });
+  container.dataset.tablesFrozenAt = String(Math.round(container.clientWidth));
+  updateAllScrollClipClasses(container);
+}
+
+// Пере-заморозка под новую ширину контейнера: зум браузера, ресайз окна,
+// сворачивание/растяжение левого сайдбара — «эталонная» ширина изменилась, и
+// замороженные размеры пора пересчитать. Возвращаем таблицам исходное правило
+// ширины, даём раскладке пересчитаться и замораживаем заново. Чтения и записи
+// батчами в одном синхронном проходе — промежуточное состояние не пейнтится.
+// При неизменной ширине (напр., цикл открыл-закрыл панель) — ничего не делаем.
+function refreezeTables(container: HTMLDivElement) {
+  const width = Math.round(container.clientWidth);
+  if (container.dataset.tablesFrozenAt === String(width)) return;
+  const tables = Array.from(
+    container.querySelectorAll<HTMLTableElement>('.table-scroll > table'),
+  );
+  tables.forEach(t => { t.style.width = t.dataset.origWidth ?? ''; });
+  const widths = tables.map(t => t.getBoundingClientRect().width);
+  tables.forEach((t, i) => { if (widths[i] > 0) t.style.width = `${widths[i]}px`; });
+  container.dataset.tablesFrozenAt = String(width);
+  updateAllScrollClipClasses(container);
+}
+
+export const ContentRenderer: React.FC<ContentRendererProps> = ({
+  html, onContentReady, suspendTableRefreeze,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Актуальное значение флага для отложенного (дебаунс) колбэка обсервера.
+  const suspendRef = useRef(!!suspendTableRefreeze);
+  useEffect(() => { suspendRef.current = !!suspendTableRefreeze; }, [suspendTableRefreeze]);
+
   useEffect(() => {
-    if (containerRef.current && onContentReady) {
-      onContentReady(containerRef.current);
+    if (containerRef.current) {
+      // До onContentReady: потребители (HighlightLayer, обработчики выделения)
+      // должны видеть уже стабилизированный DOM.
+      stabilizeTables(containerRef.current);
+      onContentReady?.(containerRef.current);
     }
   }, [html, onContentReady]);
+
+  // Пере-заморозка при изменении ширины контейнера. Дебаунс пережидает шквал
+  // событий от анимации панели (RO стреляет каждый кадр) и плавных ресайзов;
+  // при открытой/анимирующейся панели пересчёт подавлен (suspendRef), а цикл
+  // «открыл-закрыл» без прочих изменений отсеет проверка ширины в refreeze.
+  // Так пересчёт срабатывает на зум, ресайз окна и левого сайдбара — но не на
+  // правую панель. Заодно самолечится заморозка на суженной ширине, если
+  // контент перезагрузили при открытой панели: закрытие её пересчитает.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ro = new ResizeObserver(() => {
+      // Теневые подсказки на краях таблиц зависят от ширины обёрток — обновляем
+      // сразу (в т.ч. во время анимации панели), это дёшево.
+      updateAllScrollClipClasses(container);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (suspendRef.current) return;
+        refreezeTables(container);
+      }, 200);
+    });
+    ro.observe(container);
+    return () => {
+      clearTimeout(timer);
+      ro.disconnect();
+    };
+  }, []);
 
   return (
     <div
@@ -38,6 +153,41 @@ export const contentStyles = `
     border-collapse: collapse;
     width: 100%;
     margin: 12px 0;
+  }
+  /* Обёртка таблицы (stabilizeTables): внешние отступы переезжают с таблицы
+     на неё, широкая таблица скроллится внутри, не растягивая страницу. */
+  .confluence-content .table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 12px 0;
+    transition: box-shadow 0.15s;
+  }
+  /* Таблицы верхнего уровня прокручиваются во всю ширину страницы: обёртка
+     съедает боковые паддинги .confluence-content (32px — числа должны
+     совпадать с padding контейнера и data-pad-x) отрицательными маргинами и
+     возвращает их внутренними. Обрез контента и тень прилегают вплотную к
+     дереву страниц и панели выделения — без пустых полос по краям, — а
+     непрокрученная таблица по-прежнему стоит в своей текстовой колонке. */
+  .confluence-content .table-scroll--bleed {
+    max-width: none;
+    margin: 12px -32px;
+    padding: 0 32px;
+  }
+  .confluence-content .table-scroll table {
+    margin: 0;
+  }
+  /* Теневая подсказка на краях (классы вешает updateScrollClipClasses):
+     скрытый прокруткой контент «уходит в тень», а не обрезается как попало. */
+  .confluence-content .table-scroll--clip-left {
+    box-shadow: inset 18px 0 14px -14px rgba(0, 0, 0, 0.22);
+  }
+  .confluence-content .table-scroll--clip-right {
+    box-shadow: inset -18px 0 14px -14px rgba(0, 0, 0, 0.22);
+  }
+  .confluence-content .table-scroll--clip-left.table-scroll--clip-right {
+    box-shadow:
+      inset 18px 0 14px -14px rgba(0, 0, 0, 0.22),
+      inset -18px 0 14px -14px rgba(0, 0, 0, 0.22);
   }
   .confluence-content th,
   .confluence-content td {

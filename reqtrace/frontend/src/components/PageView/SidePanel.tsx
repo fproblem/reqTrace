@@ -63,6 +63,11 @@ const TrashIcon: React.FC = () => (
   </svg>
 );
 
+// Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
+// для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
+// прицеливаться (контент пере-вёрстывается, координаты цели плывут).
+export const PANEL_ANIM_MS = 220;
+
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
   // (позиция <mark> в DOM). Подробности — в compareByDomThenAnchor.
@@ -70,7 +75,7 @@ function sortedByPosition(highlights: Highlight[]): Highlight[] {
 }
 
 export const SidePanel: React.FC<SidePanelProps> = ({
-  highlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
+  highlight: activeHighlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
   onAddTest, onRemoveTest, onDeleteHighlight, onReanchor, onNavigate,
 }) => {
   const { showToast } = useToast();
@@ -81,6 +86,44 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // Компактное подтверждение удаления — поповер над кнопкой в футере.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const confirmRef = useRef<HTMLDivElement>(null);
+
+  // Плавное появление/скрытие: анимируется ширина корня 0↔360 (как у
+  // inline-комментариев Confluence). Корень живёт в DOM постоянно (пустой,
+  // шириной 0 — см. return ниже): транзишен тогда стартует из уже
+  // зафиксированного браузером width:0 при ЛЮБОМ сценарии открытия. Прежний
+  // вариант «смонтировать с width:0 и раскрыть через два rAF» проигрывал
+  // гонку кадров, когда открытие сопровождалось тяжёлой синхронной работой
+  // (клик по чипу статуса: пересортировка, перерисовка слоя, подскролл), — и
+  // панель появлялась скачком. Пока идёт анимация закрытия, продолжаем
+  // рисовать последнее выделение (rendered) — активного уже нет — и убираем
+  // контент по таймеру чуть длиннее транзишена (220мс).
+  const [rendered, setRendered] = useState<Highlight | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (activeHighlight) {
+      setRendered(activeHighlight);
+      setOpen(true);
+      return;
+    }
+    setOpen(false);
+    const t = setTimeout(() => setRendered(null), PANEL_ANIM_MS + 80);
+    return () => clearTimeout(t);
+  }, [activeHighlight]);
+
+  // Оболочка панели — общая для пустого и наполненного состояния, чтобы React
+  // переиспользовал один DOM-узел и транзишен ширины не прерывался. Фон и блюр
+  // только при контенте: у пустой оболочки прозрачная рамка (1px) не должна
+  // просвечивать белой полоской у правого края.
+  const shellStyle = (opened: boolean, withContent: boolean): React.CSSProperties => ({
+    width: opened ? '360px' : '0px',
+    flexShrink: 0,
+    transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), border-color ${PANEL_ANIM_MS}ms ease`,
+    borderLeft: `1px solid ${opened ? colors.border : 'transparent'}`,
+    background: withContent ? 'rgba(255,255,255,0.92)' : 'transparent',
+    backdropFilter: withContent ? 'blur(20px)' : undefined,
+    height: '100%',
+    overflow: 'hidden',
+  });
 
   // Закрытие поповера: клик вне футера или Escape (как у меню «⋮»).
   useEffect(() => {
@@ -100,14 +143,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   }, [confirmOpen]);
 
   // Переключились на другое выделение — вопрос больше не актуален.
-  useEffect(() => { setConfirmOpen(false); }, [highlight?.id]);
+  useEffect(() => { setConfirmOpen(false); }, [rendered?.id]);
 
   // Автофокус в поле теста: главный сценарий — «выделил текст → привязал
   // тест», обязательный клик в поле между ними лишний. Срабатывает при
-  // открытии панели и при переходе на другое выделение.
+  // открытии панели и при переходе на другое выделение. preventScroll —
+  // нативный доскролл к фокусу во время анимации ширины дёргал бы раскладку;
+  // вместо него после раскрытия мягко доводим поле сами, если оно за краем.
   useEffect(() => {
-    if (highlight) testInputRef.current?.focus();
-  }, [highlight?.id]);
+    if (!rendered) return;
+    const input = testInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const t = setTimeout(() => input.scrollIntoView({ block: 'nearest' }), 260);
+    return () => clearTimeout(t);
+  }, [rendered?.id]);
 
   // Escape закрывает панель — с автофокусом поля весь цикл «выделил →
   // привязал тесты → закрыл» проходит без мыши. Слои: открытый поповер
@@ -118,6 +168,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Панель теперь смонтирована всегда (ради анимации) — закрытой Escape не адресован.
+      if (!rendered) return;
       if (confirmOpen) return;
       if (document.querySelector('[role="dialog"], [role="menu"]')) return;
       if (e.target === testInputRef.current && testKey) {
@@ -128,9 +180,14 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [confirmOpen, testKey, onClose]);
+  }, [confirmOpen, testKey, onClose, rendered]);
 
-  if (!highlight) return null;
+  // Дальше рисуем rendered: во время анимации закрытия activeHighlight уже
+  // null, а панель ещё должна показывать последнее выделение. Когда показывать
+  // нечего — возвращаем пустую оболочку, а не null: она держит DOM-узел живым
+  // для следующего транзишена.
+  const highlight = rendered;
+  if (!highlight) return <div style={shellStyle(false, false)} />;
 
   const sorted = sortedByPosition(allHighlights);
   const currentIndex = sorted.findIndex(h => h.id === highlight.id);
@@ -138,6 +195,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const hasNext = currentIndex < sorted.length - 1;
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
+  const noTests = highlight.tests.length === 0;
 
   // Навигация по статусу: плашка ведёт к следующему выделению с тем же
   // статусом (по кругу, в порядке отрисовки на странице). В день актуализации
@@ -188,16 +246,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     });
 
   return (
-    <div style={{
-      width: '360px',
-      borderLeft: `1px solid ${colors.border}`,
-      background: 'rgba(255,255,255,0.92)',
-      backdropFilter: 'blur(20px)',
-      height: '100%',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
+    <div style={shellStyle(open, true)}>
+      {/* Контент — на фиксированной ширине панели: при анимации ширины корня
+          он не пере-верстается, а «въезжает» справа единым блоком (левый край
+          корня движется вместе с шириной, контент прижат к нему). */}
+      <div style={{
+        width: '360px',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
       {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
           (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
           ровно под «⋮», стрелка «вниз» — под «Обновить». */}
@@ -208,7 +266,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* baseline, не center: кегли разные (15px и 12px), и центрирование
+            по высоте строк поднимало базовую линию счётчика на ~1px над
+            базовой линией слова — текст в одной строке ровняем по baseline. */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontWeight: 600, fontSize: '15px', color: colors.textPrimary }}>
             Выделение
           </span>
@@ -423,7 +484,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </div>
         )}
 
-        {/* Reanchor button for outdated highlights */}
+        {/* Reanchor button for outdated highlights. Без тестов кнопка
+            задизейблена: актуализация подтверждает, что привязанные тесты всё
+            ещё покрывают текст — «актуальное» выделение без единого теста
+            вводило бы в заблуждение. Привязали первый тест — кнопка оживает. */}
         {highlight.status === 'outdated' && onReanchor && (
           <button
             onClick={async () => {
@@ -434,7 +498,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 setReanchoring(false);
               }
             }}
-            disabled={reanchoring}
+            disabled={reanchoring || noTests}
+            title={noTests
+              ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
+              : undefined}
             style={{
               display: 'block',
               alignItems: 'center',
@@ -448,22 +515,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               color: colors.statusOutdated,
               fontSize: '13px',
               fontWeight: 600,
-              cursor: reanchoring ? 'wait' : 'pointer',
+              cursor: reanchoring ? 'wait' : noTests ? 'default' : 'pointer',
               fontFamily: 'inherit',
               transition: 'all 0.15s',
-              opacity: reanchoring ? 0.7 : 1,
+              opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
             }}
             onMouseEnter={e => {
-              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
             }}
             onMouseDown={e => {
-              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
             }}
             onMouseUp={e => {
-              if (!reanchoring) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
             }}
           >
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}
@@ -836,6 +903,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         >
           Удалить выделение
         </button>
+      </div>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
 import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
 import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
-import { SidePanel } from '../components/PageView/SidePanel';
+import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
@@ -107,6 +107,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
+  // Переход на другую страницу через дерево НЕ размонтирует компонент —
+  // в маршруте меняется только :pageId. Выделение прошлой страницы сбрасываем,
+  // иначе панель оставалась открытой с чужими данными (закроется штатной
+  // анимацией); заодно гасим попап «Привязать тесты» и устаревший отчёт слоя.
+  useEffect(() => {
+    setSelectedHighlight(null);
+    setShowSelectionPopup(false);
+    setRenderReport(null);
+  }, [pageId]);
+
   // Меню действий (троеточие) закрывается по клику вне него и по Escape.
   useEffect(() => {
     if (!showActionsMenu) return;
@@ -200,15 +210,59 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setRenderReport(prev => (sameRenderReport(prev, report) ? prev : report));
   }, []);
 
+  // Момент последнего ОТКРЫТИЯ панели (null — закрыта). Пока не истекло окно
+  // анимации ширины, подскроллу прицеливаться нельзя: таблицы при пере-вёрстке
+  // «едут» дискретными скачками, и эвристика стабильности координат ловила
+  // ложное затишье посреди анимации.
+  const panelOpenedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedHighlight) {
+      if (panelOpenedAtRef.current === null) panelOpenedAtRef.current = performance.now();
+    } else {
+      panelOpenedAtRef.current = null;
+    }
+  }, [selectedHighlight]);
+
+  // Подскролл к выделению — строго после анимации открытия панели. Сначала
+  // детерминированно пережидаем окно анимации (PANEL_ANIM_MS + запас на
+  // хвостовую пере-вёрстку), затем второй линией защиты ждём, пока рамка цели
+  // не постоит на месте три кадра подряд (дозагрузка контента, незаконченный
+  // предыдущий smooth-scroll). При давно открытой панели окно уже истекло —
+  // скролл срабатывает через ~3 кадра, навигация стрелками остаётся быстрой.
+  // Потолок ожидания ~1.5с — страховка; новая цель отменяет предыдущую.
+  const scrollSeqRef = useRef(0);
   const scrollToHighlight = useCallback((highlightId: string) => {
-    setTimeout(() => {
+    const seq = ++scrollSeqRef.current;
+    const deadline = performance.now() + 1500;
+    let lastTop: number | null = null;
+    let stable = 0;
+    const tick = () => {
+      if (seq !== scrollSeqRef.current) return;
+      const now = performance.now();
       const el = contentAreaRef.current?.querySelector(
         `[data-highlight-id="${highlightId}"]`,
       );
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (now >= deadline) {
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
       }
-    }, 50);
+      const openedAt = panelOpenedAtRef.current;
+      const animating = openedAt !== null && now - openedAt < PANEL_ANIM_MS + 60;
+      if (el && !animating) {
+        const { top } = el.getBoundingClientRect();
+        stable = lastTop !== null && Math.abs(top - lastTop) < 0.5 ? stable + 1 : 0;
+        lastTop = top;
+        if (stable >= 2) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+      } else {
+        lastTop = null;
+        stable = 0;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }, []);
 
   const handleNavigate = useCallback((h: Highlight) => {
@@ -1059,6 +1113,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                   <ContentRenderer
                     html={page.content_html}
                     onContentReady={setContentContainer}
+                    suspendTableRefreeze={!!selectedHighlight}
                   />
                   <HighlightLayer
                     container={contentContainer}
@@ -1126,21 +1181,21 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           )}
         </div>
 
-        {/* Side panel */}
-        {selectedHighlight && (
-          <SidePanel
-            highlight={selectedHighlight}
-            allHighlights={highlights}
-            jiraBaseUrl={jiraBaseUrl}
-            notOnPage={selectedNotOnPage}
-            onClose={() => setSelectedHighlight(null)}
-            onAddTest={handleAddTest}
-            onRemoveTest={handleRemoveTest}
-            onDeleteHighlight={handleDeleteHighlight}
-            onReanchor={handleReanchor}
-            onNavigate={handleNavigate}
-          />
-        )}
+        {/* Side panel — рендерится всегда: появление/скрытие панель анимирует
+            сама (ширина 0↔360), при условном монтировании анимации закрытия
+            не было бы — React размонтировал бы её мгновенно. */}
+        <SidePanel
+          highlight={selectedHighlight}
+          allHighlights={highlights}
+          jiraBaseUrl={jiraBaseUrl}
+          notOnPage={selectedNotOnPage}
+          onClose={() => setSelectedHighlight(null)}
+          onAddTest={handleAddTest}
+          onRemoveTest={handleRemoveTest}
+          onDeleteHighlight={handleDeleteHighlight}
+          onReanchor={handleReanchor}
+          onNavigate={handleNavigate}
+        />
       </div>
 
       {/* Selection popup */}

@@ -128,17 +128,23 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   // Рамка выбора позиционируется по client-rect'ам текста, поэтому при изменении
   // ширины контента (открытие/закрытие правой панели, ресайз окна) её нужно
   // перерисовать — текст уже переносится сам, а overlay про это не знает.
+  // То же при горизонтальном скролле таблицы в .table-scroll: текст двигается
+  // ВНУТРИ контейнера, и рамка без перерисовки оставалась бы на старом месте.
+  // scroll не всплывает — слушаем в capture-фазе, она ловит скролл потомков.
   useEffect(() => {
     if (!container || typeof ResizeObserver === 'undefined') return;
     let raf = 0;
-    const ro = new ResizeObserver(() => {
+    const redraw = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => drawSelectionOutline(container, selectedHighlightId));
-    });
+    };
+    const ro = new ResizeObserver(redraw);
     ro.observe(container);
+    container.addEventListener('scroll', redraw, true);
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      container.removeEventListener('scroll', redraw, true);
     };
   }, [container, selectedHighlightId]);
 
@@ -381,6 +387,29 @@ function cssEscapeId(id: string): string {
   return cssObj?.escape ? cssObj.escape(id) : id.replace(/["\\]/g, '\\$&');
 }
 
+// Видимая область метки с учётом обрезки предками с overflow ≠ visible между
+// меткой и контейнером (например, .table-scroll вокруг таблиц): client-rect'ы
+// текста геометрически существуют и за краем прокрутки, и без пересечения с
+// этой областью рамка обводила бы спрятанный текст. null — обрезки нет.
+// Координаты — viewport (как у getClientRects).
+function visibleClipBox(el: Element, container: HTMLElement): Band | null {
+  let clip: Band | null = null;
+  for (let node = el.parentElement; node && node !== container; node = node.parentElement) {
+    const style = window.getComputedStyle(node);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const r = node.getBoundingClientRect();
+    clip = clip
+      ? {
+          left: Math.max(clip.left, r.left),
+          top: Math.max(clip.top, r.top),
+          right: Math.min(clip.right, r.right),
+          bottom: Math.min(clip.bottom, r.bottom),
+        }
+      : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  }
+  return clip;
+}
+
 function drawSelectionOutline(container: HTMLElement, selectedId: string | null): void {
   // Снести прошлую рамку (смена выбора / ресайз / перерисовка привязок).
   container.querySelectorAll(`.${OUTLINE_OVERLAY_CLASS}`).forEach(el => el.remove());
@@ -411,7 +440,25 @@ function drawSelectionOutline(container: HTMLElement, selectedId: string | null)
     const range = document.createRange();
     range.setStartBefore(run[0]);
     range.setEndAfter(run[run.length - 1]);
-    const bands = buildLineBands(Array.from(range.getClientRects()), containerRect);
+    let rects: Band[] = Array.from(range.getClientRects()).map(r => ({
+      left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+    }));
+    // Текст в прокручиваемой обёртке (таблицы) обводим только в её видимой
+    // части: скрытые за краем прокрутки куски выбрасываем, частично видимые —
+    // обрезаем. Смежная группа меток не пересекает границу таблицы, поэтому
+    // цепочка обрезки первой метки представляет всю группу.
+    const clip = visibleClipBox(run[0], container);
+    if (clip) {
+      rects = rects
+        .map(r => ({
+          left: Math.max(r.left, clip.left),
+          top: Math.max(r.top, clip.top),
+          right: Math.min(r.right, clip.right),
+          bottom: Math.min(r.bottom, clip.bottom),
+        }))
+        .filter(r => r.right - r.left > 0.5 && r.bottom - r.top > 0.5);
+    }
+    const bands = buildLineBands(rects, containerRect);
     if (bands.length > 0) paths.push(buildRoundedRectilinearPath(bands));
   }
   if (paths.length === 0) return;
@@ -464,9 +511,9 @@ function groupContiguousMarks(marks: HTMLElement[]): HTMLElement[][] {
 // Прямоугольники диапазона (по одному+ на строку) -> строчные полосы в
 // координатах контейнера. Полосы стыкуются по общей границе и снабжаются
 // отступами, чтобы рамка не липла к тексту.
-function buildLineBands(rects: DOMRect[], containerRect: DOMRect): Band[] {
+function buildLineBands(rects: Band[], containerRect: DOMRect): Band[] {
   const norm = rects
-    .filter(r => r.width > 0.5 && r.height > 0.5)
+    .filter(r => r.right - r.left > 0.5 && r.bottom - r.top > 0.5)
     .map(r => ({
       left: r.left - containerRect.left,
       right: r.right - containerRect.left,

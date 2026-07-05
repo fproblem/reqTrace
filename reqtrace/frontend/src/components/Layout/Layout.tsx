@@ -232,6 +232,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         flexShrink: 0,
         padding: '0 16px',
         ...glassmorphism,
+        // glassmorphism несёт рамку со всех сторон — шапке нужна только нижняя,
+        // остальные рисовали лишние линии по краям окна.
+        border: 'none',
         borderBottom: `1px solid ${colors.border}`,
         position: 'relative',
         zIndex: 2,
@@ -330,6 +333,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             width: `${width}px`,
             flexShrink: 0,
             ...glassmorphism,
+            // Только правая граница: верхняя из glassmorphism складывалась с
+            // нижней границей шапки в двойную (2px) линию над сайдбаром.
+            border: 'none',
             borderRight: `1px solid ${colors.border}`,
             position: 'relative',
             display: 'flex',

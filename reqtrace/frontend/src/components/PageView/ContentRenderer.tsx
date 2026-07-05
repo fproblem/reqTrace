@@ -4,20 +4,8 @@ import { colors, radii } from '../../styles/tokens';
 interface ContentRendererProps {
   html: string;
   onContentReady?: (container: HTMLDivElement) => void;
-  /** true — правая панель открыта или анимируется. Пока это так, пере-заморозка
-   *  ширин таблиц не выполняется: сужение контента самой панелью не должно
-   *  пере-вёрстывать таблицы (в этом весь смысл заморозки). */
-  suspendTableRefreeze?: boolean;
 }
 
-// Таблицы не пере-вёрстываются при изменении ширины контента (открытие правой
-// панели, ресайз сайдбара/окна): фактическая ширина каждой таблицы
-// замораживается в момент рендера контента, а таблица оборачивается в
-// контейнер с собственным горизонтальным скроллом — как в Confluence. Широкая
-// таблица не «уходит под панель», а скроллится внутри себя.
-// Безопасность для привязок: обёртка-div не входит в BLOCK_SELECTOR
-// HighlightLayer и не меняет textContent контейнера, поэтому блочные якоря
-// (anchor_block_*) и текстовые смещения сохранённых подсветок не сдвигаются.
 // Классы «контент обрезан слева/справа» — по ним CSS рисует теневую подсказку
 // на краях прокручиваемой таблицы (как в Confluence). Без неё жёсткий обрез
 // текста на границе прокрутки выглядит как баг вёрстки: у левого края — будто
@@ -34,16 +22,24 @@ function updateAllScrollClipClasses(container: HTMLDivElement) {
   container.querySelectorAll<HTMLElement>('.table-scroll').forEach(updateScrollClipClasses);
 }
 
-function stabilizeTables(container: HTMLDivElement) {
+// Таблицы ведут себя как в Confluence — по их собственной семантике ширины:
+//  • фиксированная (инлайновые px от автора) — не сжимается; если не влезает,
+//    прокручивается по горизонтали внутри собственной обёртки;
+//  • относительная (проценты, class="relative-table") или без ширины (наш CSS
+//    даёт 100%) — эластичная, пере-вёрстывается вместе с контейнером.
+// Замораживать эластичные таблицы в px нельзя (пробовали): процентные
+// «relative-table» переставали ужиматься при открытии панели, начинали
+// скроллиться, и навигация к выделению утаскивала их вбок с обрезанной
+// первой колонкой. Обёртка же нужна всем: негабаритная таблица не растягивает
+// страницу и не «уходит под» соседние панели.
+// Безопасность для привязок: обёртка-div не входит в BLOCK_SELECTOR
+// HighlightLayer и не меняет textContent контейнера, поэтому блочные якоря
+// (anchor_block_*) и текстовые смещения сохранённых подсветок не сдвигаются.
+function wrapTables(container: HTMLDivElement) {
   container.querySelectorAll<HTMLTableElement>('table').forEach(table => {
-    // Уже обработана — либо вложена в обработанную (внешняя заморожена,
-    // значит внутренняя пере-вёрстываться не может; идём в порядке документа).
+    // Уже обёрнута — либо вложена в обёрнутую (живёт в ячейке внешней и
+    // прокручивается вместе с ней; идём в порядке документа).
     if (table.closest('.table-scroll')) return;
-    // Авторская инлайновая ширина из Confluence запоминается: пере-заморозка
-    // должна отталкиваться от исходного правила, а не от прошлого фриза.
-    table.dataset.origWidth = table.style.width;
-    const width = table.getBoundingClientRect().width;
-    if (width > 0) table.style.width = `${width}px`;
     const wrap = document.createElement('div');
     wrap.className = 'table-scroll';
     table.parentNode?.insertBefore(wrap, table);
@@ -51,73 +47,29 @@ function stabilizeTables(container: HTMLDivElement) {
     // Слушатель живёт вместе с DOM-узлом обёртки — отдельная очистка не нужна.
     wrap.addEventListener('scroll', () => updateScrollClipClasses(wrap));
   });
-  container.dataset.tablesFrozenAt = String(Math.round(container.clientWidth));
   updateAllScrollClipClasses(container);
 }
 
-// Пере-заморозка под новую ширину контейнера: зум браузера, ресайз окна,
-// сворачивание/растяжение левого сайдбара — «эталонная» ширина изменилась, и
-// замороженные размеры пора пересчитать. Возвращаем таблицам исходное правило
-// ширины, даём раскладке пересчитаться и замораживаем заново. Чтения и записи
-// батчами в одном синхронном проходе — промежуточное состояние не пейнтится.
-// При неизменной ширине (напр., цикл открыл-закрыл панель) — ничего не делаем.
-function refreezeTables(container: HTMLDivElement) {
-  const width = Math.round(container.clientWidth);
-  if (container.dataset.tablesFrozenAt === String(width)) return;
-  const tables = Array.from(
-    container.querySelectorAll<HTMLTableElement>('.table-scroll > table'),
-  );
-  tables.forEach(t => { t.style.width = t.dataset.origWidth ?? ''; });
-  const widths = tables.map(t => t.getBoundingClientRect().width);
-  tables.forEach((t, i) => { if (widths[i] > 0) t.style.width = `${widths[i]}px`; });
-  container.dataset.tablesFrozenAt = String(width);
-  updateAllScrollClipClasses(container);
-}
-
-export const ContentRenderer: React.FC<ContentRendererProps> = ({
-  html, onContentReady, suspendTableRefreeze,
-}) => {
+export const ContentRenderer: React.FC<ContentRendererProps> = ({ html, onContentReady }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Актуальное значение флага для отложенного (дебаунс) колбэка обсервера.
-  const suspendRef = useRef(!!suspendTableRefreeze);
-  useEffect(() => { suspendRef.current = !!suspendTableRefreeze; }, [suspendTableRefreeze]);
 
   useEffect(() => {
     if (containerRef.current) {
       // До onContentReady: потребители (HighlightLayer, обработчики выделения)
-      // должны видеть уже стабилизированный DOM.
-      stabilizeTables(containerRef.current);
+      // должны видеть уже обёрнутые таблицы.
+      wrapTables(containerRef.current);
       onContentReady?.(containerRef.current);
     }
   }, [html, onContentReady]);
 
-  // Пере-заморозка при изменении ширины контейнера. Дебаунс пережидает шквал
-  // событий от анимации панели (RO стреляет каждый кадр) и плавных ресайзов;
-  // при открытой/анимирующейся панели пересчёт подавлен (suspendRef), а цикл
-  // «открыл-закрыл» без прочих изменений отсеет проверка ширины в refreeze.
-  // Так пересчёт срабатывает на зум, ресайз окна и левого сайдбара — но не на
-  // правую панель. Заодно самолечится заморозка на суженной ширине, если
-  // контент перезагрузили при открытой панели: закрытие её пересчитает.
+  // Теневые подсказки на краях таблиц зависят от ширины обёрток — обновляем
+  // при любом ресайзе контента (панель выделения, зум, сайдбар, окно).
   useEffect(() => {
     const container = containerRef.current;
     if (!container || typeof ResizeObserver === 'undefined') return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const ro = new ResizeObserver(() => {
-      // Теневые подсказки на краях таблиц зависят от ширины обёрток — обновляем
-      // сразу (в т.ч. во время анимации панели), это дёшево.
-      updateAllScrollClipClasses(container);
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (suspendRef.current) return;
-        refreezeTables(container);
-      }, 200);
-    });
+    const ro = new ResizeObserver(() => updateAllScrollClipClasses(container));
     ro.observe(container);
-    return () => {
-      clearTimeout(timer);
-      ro.disconnect();
-    };
+    return () => ro.disconnect();
   }, []);
 
   return (

@@ -69,7 +69,13 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   onRenderReport,
 }) => {
   const applyHighlights = useCallback(() => {
-    if (!container) return;
+    // Оторванный от документа контейнер — прошлая жизнь: ContentRenderer уже
+    // размонтирован (переход через виртуальную страницу, вкладка «Изменения»),
+    // а состояние contentContainer ещё хранит старый div. Прогон по нему давал
+    // отчёт «ни одна привязка не отрисовалась», и вызывающий код МАССОВО
+    // помечал привязки новой страницы утраченными, а следующим прогоном
+    // возвращал их в «Требует проверки» — «актуально» самопроизвольно сгорало.
+    if (!container || !container.isConnected) return;
 
     container.querySelectorAll('.highlight-mark').forEach(el => {
       const parent = el.parentNode;

@@ -70,7 +70,7 @@ function sortedByPosition(highlights: Highlight[]): Highlight[] {
 }
 
 export const SidePanel: React.FC<SidePanelProps> = ({
-  highlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
+  highlight: activeHighlight, allHighlights, jiraBaseUrl, notOnPage, onClose,
   onAddTest, onRemoveTest, onDeleteHighlight, onReanchor, onNavigate,
 }) => {
   const { showToast } = useToast();
@@ -81,6 +81,29 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // Компактное подтверждение удаления — поповер над кнопкой в футере.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const confirmRef = useRef<HTMLDivElement>(null);
+
+  // Плавное появление/скрытие: анимируется ширина корня 0↔360 (как у
+  // inline-комментариев Confluence). Пока идёт анимация закрытия, продолжаем
+  // рисовать последнее выделение (rendered) — активного уже нет — и
+  // размонтируем контент по таймеру чуть длиннее транзишена (220мс).
+  const [rendered, setRendered] = useState<Highlight | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (activeHighlight) {
+      setRendered(activeHighlight);
+      // Два rAF: первый кадр фиксирует панель с width:0 в DOM, второй
+      // запускает транзишен — иначе браузер схлопнет оба состояния и
+      // панель появится скачком.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setOpen(true));
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    }
+    setOpen(false);
+    const t = setTimeout(() => setRendered(null), 300);
+    return () => clearTimeout(t);
+  }, [activeHighlight]);
 
   // Закрытие поповера: клик вне футера или Escape (как у меню «⋮»).
   useEffect(() => {
@@ -100,14 +123,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   }, [confirmOpen]);
 
   // Переключились на другое выделение — вопрос больше не актуален.
-  useEffect(() => { setConfirmOpen(false); }, [highlight?.id]);
+  useEffect(() => { setConfirmOpen(false); }, [rendered?.id]);
 
   // Автофокус в поле теста: главный сценарий — «выделил текст → привязал
   // тест», обязательный клик в поле между ними лишний. Срабатывает при
-  // открытии панели и при переходе на другое выделение.
+  // открытии панели и при переходе на другое выделение. preventScroll —
+  // нативный доскролл к фокусу во время анимации ширины дёргал бы раскладку;
+  // вместо него после раскрытия мягко доводим поле сами, если оно за краем.
   useEffect(() => {
-    if (highlight) testInputRef.current?.focus();
-  }, [highlight?.id]);
+    if (!rendered) return;
+    const input = testInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const t = setTimeout(() => input.scrollIntoView({ block: 'nearest' }), 260);
+    return () => clearTimeout(t);
+  }, [rendered?.id]);
 
   // Escape закрывает панель — с автофокусом поля весь цикл «выделил →
   // привязал тесты → закрыл» проходит без мыши. Слои: открытый поповер
@@ -118,6 +148,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Панель теперь смонтирована всегда (ради анимации) — закрытой Escape не адресован.
+      if (!rendered) return;
       if (confirmOpen) return;
       if (document.querySelector('[role="dialog"], [role="menu"]')) return;
       if (e.target === testInputRef.current && testKey) {
@@ -128,8 +160,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [confirmOpen, testKey, onClose]);
+  }, [confirmOpen, testKey, onClose, rendered]);
 
+  // Дальше рисуем rendered: во время анимации закрытия activeHighlight уже
+  // null, а панель ещё должна показывать последнее выделение.
+  const highlight = rendered;
   if (!highlight) return null;
 
   const sorted = sortedByPosition(allHighlights);
@@ -190,15 +225,24 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
   return (
     <div style={{
-      width: '360px',
-      borderLeft: `1px solid ${colors.border}`,
+      width: open ? '360px' : '0px',
+      flexShrink: 0,
+      transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease',
+      borderLeft: `1px solid ${open ? colors.border : 'transparent'}`,
       background: 'rgba(255,255,255,0.92)',
       backdropFilter: 'blur(20px)',
       height: '100%',
       overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
     }}>
+      {/* Контент — на фиксированной ширине панели: при анимации ширины корня
+          он не пере-верстается, а «въезжает» справа единым блоком (левый край
+          корня движется вместе с шириной, контент прижат к нему). */}
+      <div style={{
+        width: '360px',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
       {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
           (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
           ровно под «⋮», стрелка «вниз» — под «Обновить». */}
@@ -843,6 +887,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         >
           Удалить выделение
         </button>
+      </div>
       </div>
     </div>
   );

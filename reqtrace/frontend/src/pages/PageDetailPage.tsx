@@ -1126,21 +1126,21 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           )}
         </div>
 
-        {/* Side panel */}
-        {selectedHighlight && (
-          <SidePanel
-            highlight={selectedHighlight}
-            allHighlights={highlights}
-            jiraBaseUrl={jiraBaseUrl}
-            notOnPage={selectedNotOnPage}
-            onClose={() => setSelectedHighlight(null)}
-            onAddTest={handleAddTest}
-            onRemoveTest={handleRemoveTest}
-            onDeleteHighlight={handleDeleteHighlight}
-            onReanchor={handleReanchor}
-            onNavigate={handleNavigate}
-          />
-        )}
+        {/* Side panel — рендерится всегда: появление/скрытие панель анимирует
+            сама (ширина 0↔360), при условном монтировании анимации закрытия
+            не было бы — React размонтировал бы её мгновенно. */}
+        <SidePanel
+          highlight={selectedHighlight}
+          allHighlights={highlights}
+          jiraBaseUrl={jiraBaseUrl}
+          notOnPage={selectedNotOnPage}
+          onClose={() => setSelectedHighlight(null)}
+          onAddTest={handleAddTest}
+          onRemoveTest={handleRemoveTest}
+          onDeleteHighlight={handleDeleteHighlight}
+          onReanchor={handleReanchor}
+          onNavigate={handleNavigate}
+        />
       </div>
 
       {/* Selection popup */}

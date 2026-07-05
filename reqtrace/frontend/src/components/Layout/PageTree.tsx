@@ -134,7 +134,7 @@ const TreeReveal: React.FC<{ expanded: boolean; children: React.ReactNode }> = (
 // --- Иконки и кнопки шапки сайдбара ---
 
 const PlusIcon: React.FC = () => (
-  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor"
        strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
     <line x1="12" y1="5" x2="12" y2="19" />
     <line x1="5" y1="12" x2="19" y2="12" />
@@ -157,8 +157,8 @@ const ClearIcon: React.FC = () => (
   </svg>
 );
 
-// Кнопка-иконка шапки сайдбара — в стиле кнопок верхнего бара приложения:
-// заметная зона нажатия с ховер- и пресс-подсветкой вместо «голой» иконки.
+// Кнопка-иконка шапки сайдбара — в точности как кнопки верхних баров страницы
+// («Обновить», «Ещё действия»): 34×34, рамка, белый фон, тот же ховер.
 const HeaderIconButton: React.FC<{
   title: string;
   onClick: () => void;
@@ -170,23 +170,31 @@ const HeaderIconButton: React.FC<{
     disabled={disabled}
     title={title}
     style={{
-      width: '26px',
-      height: '26px',
+      width: '34px',
+      height: '34px',
       padding: 0,
-      borderRadius: radii.sm,
-      border: 'none',
-      background: 'transparent',
+      borderRadius: radii.md,
+      border: `1px solid ${colors.border}`,
+      background: colors.white,
       color: colors.textSecondary,
       cursor: disabled ? 'default' : 'pointer',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      transition: 'background 0.15s, color 0.15s',
+      flexShrink: 0,
+      transition: 'all 0.15s',
     }}
-    onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
-    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-    onMouseDown={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.09)'; }}
-    onMouseUp={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
+    onMouseEnter={e => {
+      if (disabled) return;
+      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+      e.currentTarget.style.borderColor = colors.borderHover;
+      e.currentTarget.style.color = colors.textPrimary;
+    }}
+    onMouseLeave={e => {
+      e.currentTarget.style.background = colors.white;
+      e.currentTarget.style.borderColor = colors.border;
+      e.currentTarget.style.color = colors.textSecondary;
+    }}
   >
     {children}
   </button>
@@ -400,50 +408,25 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Шапка панели: заголовок, действия и поиск. Отделена от дерева линией
-          во всю ширину сайдбара (отступы панель раздаёт сама, см. Layout);
-          дерево скроллится под ней. */}
+      {/* Шапка панели: поиск и действия одной строкой. Высота 64px — ровно как
+          у верхнего бара страницы: их нижние линии стыкуются в одну. Линия — во
+          всю ширину сайдбара (отступы панель раздаёт сама, см. Layout); дерево
+          скроллится под шапкой. */}
       <div style={{
         flexShrink: 0,
-        padding: '14px 10px 10px',
+        height: '64px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '0 10px',
         borderBottom: `1px solid ${colors.border}`,
       }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0 4px',
-          marginBottom: '8px',
-        }}>
-          <span style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: colors.textTertiary,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}>
-            Проекты
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <HeaderIconButton
-              title="Синхронизировать структуру с Confluence (перенос/добавление страниц)"
-              onClick={handleSyncTree}
-              disabled={syncing}
-            >
-              <RefreshIcon size={13} spinning={syncing} />
-            </HeaderIconButton>
-            <HeaderIconButton title="Добавить страницу" onClick={() => setShowAddModal(true)}>
-              <PlusIcon />
-            </HeaderIconButton>
-          </div>
-        </div>
-
-        {/* Search — лупа слева, очистка справа */}
-        {!loading && hasAnyPages && (
-          <div style={{ padding: '0 4px', position: 'relative' }}>
+        {/* Search — поле как у ввода ключа теста в панели выделения */}
+        {!loading && hasAnyPages ? (
+          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
             <span style={{
               position: 'absolute',
-              left: '13px',
+              left: '11px',
               top: '50%',
               transform: 'translateY(-50%)',
               color: colors.textTertiary,
@@ -459,10 +442,11 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               placeholder="Найти страницу..."
               style={{
                 width: '100%',
-                padding: '7px 30px 7px 28px',
+                padding: '8px 30px 8px 30px',
+                lineHeight: '16px',
                 borderRadius: radii.md,
                 border: `1px solid ${colors.border}`,
-                fontSize: '12px',
+                fontSize: '13px',
                 fontFamily: 'inherit',
                 outline: 'none',
                 boxSizing: 'border-box',
@@ -497,7 +481,19 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               </button>
             )}
           </div>
+        ) : (
+          <div style={{ flex: 1 }} />
         )}
+        <HeaderIconButton
+          title="Синхронизировать структуру с Confluence (перенос/добавление страниц)"
+          onClick={handleSyncTree}
+          disabled={syncing}
+        >
+          <RefreshIcon size={16} spinning={syncing} />
+        </HeaderIconButton>
+        <HeaderIconButton title="Добавить страницу" onClick={() => setShowAddModal(true)}>
+          <PlusIcon />
+        </HeaderIconButton>
       </div>
 
       {/* Модалка добавления страницы: в узком сайдбаре инлайн-форме тесно —

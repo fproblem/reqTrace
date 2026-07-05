@@ -369,7 +369,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     // Без message: про удаление связей с тестами уже предупредила карточка
     // подтверждения в панели — в тосте хватает заголовка.
     const toastId = showUndoToast('warning', 'Выделение удалено', {
-      seconds: 7,
+      seconds: 5,
       actionLabel: 'Отменить',
       onExpire: commit,
       onAction: restore,

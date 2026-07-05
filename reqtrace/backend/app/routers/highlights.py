@@ -12,12 +12,12 @@ from app.models.snapshot import PageSnapshot
 from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
 from app.models.user import User
-from app.project_access import require_page_access
+from app.project_access import render_page_html, require_page_access
 from app.schemas.highlight import (
     HighlightCreate, HighlightResponse,
     TestLinkCreate, TestLinkResponse,
 )
-from app.services.highlight_projection import extract_text_at_anchor
+from app.services.highlight_projection import resolve_reanchor
 
 HIGHLIGHT_LOAD_OPTIONS = [
     selectinload(Highlight.tests),
@@ -116,7 +116,7 @@ async def reanchor_highlight(
     highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
-    await require_page_access(db, highlight.page_id, current_user)
+    page, project, _ = await require_page_access(db, highlight.page_id, current_user)
     if highlight.status != "outdated":
         raise HTTPException(status_code=400, detail="Only outdated highlights can be reanchored")
 
@@ -130,17 +130,40 @@ async def reanchor_highlight(
     if not latest_snapshot:
         raise HTTPException(status_code=400, detail="No snapshot available")
 
-    if highlight.anchor_block_start is not None:
-        extracted = extract_text_at_anchor(
-            latest_snapshot.content_html,
+    # Пересчёт — по ОБРАБОТАННОМУ HTML (координаты фронта) и без слепой
+    # перезаписи: цитата либо подтверждается под якорем, либо находится текстовым
+    # поиском (лечит съехавшие якоря), либо актуализация честно отклоняется —
+    # раньше здесь молча записывался чужой текст со страницы (баг v1.5.6).
+    if highlight.anchor_block_start is not None or highlight.text_content:
+        rendered = render_page_html(
+            latest_snapshot.content_html, highlight.page_id, project
+        ) or ""
+        resolved = resolve_reanchor(
+            rendered,
+            highlight.text_content or "",
+            highlight.text_before or "",
+            highlight.text_after or "",
             highlight.anchor_block_start,
             highlight.anchor_block_end,
             highlight.start_char_offset or 0,
             highlight.end_char_offset or 0,
         )
-        highlight.text_content = extracted["text_content"]
-        highlight.text_before = extracted["text_before"]
-        highlight.text_after = extracted["text_after"]
+        if resolved is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Выделенный текст не найден в текущей версии страницы — "
+                    "актуализация отменена, чтобы не потерять цитату. "
+                    "Обновите страницу и проверьте выделение."
+                ),
+            )
+        highlight.text_content = resolved["text_content"]
+        highlight.text_before = resolved["text_before"]
+        highlight.text_after = resolved["text_after"]
+        highlight.anchor_block_start = resolved["anchor_block_start"]
+        highlight.anchor_block_end = resolved["anchor_block_end"]
+        highlight.start_char_offset = resolved["start_char_offset"]
+        highlight.end_char_offset = resolved["end_char_offset"]
 
     highlight.status = "active"
     highlight.snapshot_id = latest_snapshot.id

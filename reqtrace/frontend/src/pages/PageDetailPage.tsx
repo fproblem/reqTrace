@@ -369,7 +369,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     // Без message: про удаление связей с тестами уже предупредила карточка
     // подтверждения в панели — в тосте хватает заголовка.
     const toastId = showUndoToast('warning', 'Выделение удалено', {
-      seconds: 7,
+      seconds: 5,
       actionLabel: 'Отменить',
       onExpire: commit,
       onAction: restore,
@@ -603,7 +603,11 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
         {/* Top bar */}
         <div style={{
-          padding: '14px 24px',
+          // Высота фиксирована (64px, как у шапки сайдбара) — их нижние линии
+          // стыкуются в одну сплошную. Не паддингами: контент разной высоты
+          // давал бы разную высоту бара.
+          height: '64px',
+          padding: '0 24px',
           background: 'rgba(255,255,255,0.9)',
           backdropFilter: 'blur(20px)',
           borderBottom: `1px solid ${colors.border}`,
@@ -780,14 +784,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
       {/* Top bar */}
       <div style={{
-        padding: '14px 24px',
+        // 64px — как у шапки сайдбара: нижние линии двух баров стыкуются.
+        height: '64px',
+        padding: '0 24px',
+        flexShrink: 0,
         background: 'rgba(255,255,255,0.9)',
         backdropFilter: 'blur(20px)',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        flexShrink: 0,
         position: 'relative',
         zIndex: 10,
       }}>

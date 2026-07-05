@@ -206,12 +206,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background blobs */}
-      <div style={{
-        position: 'fixed', top: '-10%', left: '-5%',
-        width: '500px', height: '500px', borderRadius: '50%',
-        background: colors.blobLilac, filter: 'blur(80px)', zIndex: 0,
-      }} />
+      {/* Background blobs. Сиреневого в углу шапки/сайдбара сознательно НЕТ:
+          он просвечивал сквозь их полупрозрачный фон и красил разделительные
+          линии в разные оттенки вдоль ширины (линии «разного цвета»). */}
       <div style={{
         position: 'fixed', bottom: '-15%', right: '-5%',
         width: '600px', height: '600px', borderRadius: '50%',
@@ -232,6 +229,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         flexShrink: 0,
         padding: '0 16px',
         ...glassmorphism,
+        // glassmorphism несёт рамку со всех сторон — шапке нужна только нижняя,
+        // остальные рисовали лишние линии по краям окна.
+        border: 'none',
         borderBottom: `1px solid ${colors.border}`,
         position: 'relative',
         zIndex: 2,
@@ -330,6 +330,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             width: `${width}px`,
             flexShrink: 0,
             ...glassmorphism,
+            // Только правая граница: верхняя из glassmorphism складывалась с
+            // нижней границей шапки в двойную (2px) линию над сайдбаром.
+            border: 'none',
             borderRight: `1px solid ${colors.border}`,
             position: 'relative',
             display: 'flex',
@@ -361,7 +364,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </>
           ) : (
             <>
-              <div style={{ flex: 1, overflow: 'hidden', padding: '14px 10px 4px', minWidth: 0 }}>
+              {/* Отступы панель раздаёт сама (PageTree): линия под её шапкой
+                  должна идти во всю ширину сайдбара, до самых краёв. */}
+              <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
                 <PageTree />
               </div>
 

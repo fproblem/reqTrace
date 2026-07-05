@@ -818,7 +818,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               lineHeight: 1.45,
               marginBottom: '16px',
             }}>
-              Связи с тестами удалятся вместе с ним. После удаления будет 7 секунд, чтобы передумать
+              Связи с тестами удалятся вместе с ним. После удаления будет 5 секунд, чтобы передумать
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button

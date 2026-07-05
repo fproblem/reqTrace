@@ -4,7 +4,16 @@ Highlight projection engine – block-based approach.
 When a Confluence page is updated, this module aligns the block structure
 of the old and new HTML and projects highlight anchors to the new version.
 This mirrors how Confluence inline comments survive edits.
+
+⚠ Координатное пространство: блочные якоря привязок (номера блоков и
+символьные смещения) фронт считает по DOM ОБРАБОТАННОГО HTML
+(process_confluence_html / render_page_html). Все функции этого модуля,
+принимающие html, обязаны получать то же ОБРАБОТАННОЕ представление — сырой
+storage-XML даёт другую разбивку: текст ссылок и кода в нём сидит в
+CDATA/атрибутах и невидим HTML-парсеру, из-за чего цитаты при реанкоре
+подменялись чужим текстом (баг v1.5.6).
 """
+import bisect
 import logging
 from difflib import SequenceMatcher
 
@@ -136,8 +145,24 @@ def extract_text_at_anchor(
     start_char_offset: int,
     end_char_offset: int,
 ) -> dict:
-    """Extract text_content, text_before, text_after at the given anchor positions."""
-    blocks = extract_blocks(html)
+    """Extract text_content, text_before, text_after at the given anchor positions.
+
+    html — ОБРАБОТАННЫЙ HTML (render_page_html), см. предупреждение в шапке модуля.
+    """
+    return _extract_at_anchor(
+        extract_blocks(html),
+        anchor_block_start, anchor_block_end,
+        start_char_offset, end_char_offset,
+    )
+
+
+def _extract_at_anchor(
+    blocks: list[str],
+    anchor_block_start: int,
+    anchor_block_end: int | None,
+    start_char_offset: int,
+    end_char_offset: int,
+) -> dict:
     if anchor_block_end is None:
         anchor_block_end = anchor_block_start
 
@@ -178,6 +203,183 @@ def extract_text_at_anchor(
     }
 
 
+def _strip_with_map(s: str) -> tuple[str, list[int]]:
+    """Текст без пробельных символов + карта: map[i] = индекс i-го непробельного
+    символа в исходной строке. Зеркало stripWhitespaceWithMap на фронте."""
+    chars: list[str] = []
+    mapping: list[int] = []
+    for i, ch in enumerate(s):
+        if not ch.isspace():
+            chars.append(ch)
+            mapping.append(i)
+    return "".join(chars), mapping
+
+
+def _find_stripped_occurrence(
+    haystack: str, needle: str, before: str, after: str
+) -> int:
+    """Лучшее вхождение needle в haystack (все строки — уже без пробелов):
+    при нескольких вхождениях выбирается то, у которого длиннее непрерывное
+    совпадение окружения с before/after. Зеркало findBestMatchIndex на фронте.
+    -1 — вхождений нет."""
+    occurrences: list[int] = []
+    i = haystack.find(needle)
+    while i != -1 and len(occurrences) < 50:
+        occurrences.append(i)
+        i = haystack.find(needle, i + 1)
+    if not occurrences:
+        return -1
+    if len(occurrences) == 1:
+        return occurrences[0]
+
+    best, best_score = occurrences[0], -1
+    for idx in occurrences:
+        score = 0
+        if before:
+            actual = haystack[max(0, idx - len(before)):idx]
+            for k in range(1, min(len(actual), len(before)) + 1):
+                if actual[-k] != before[-k]:
+                    break
+                score += 1
+        if after:
+            tail_start = idx + len(needle)
+            actual = haystack[tail_start:tail_start + len(after)]
+            for k in range(min(len(actual), len(after))):
+                if actual[k] != after[k]:
+                    break
+                score += 1
+        if score > best_score:
+            best_score, best = score, idx
+    return best
+
+
+def _block_coords(blocks: list[str], start: int, end: int) -> dict:
+    """Смещения [start, end) в "".join(blocks) → блочные якоря."""
+    bounds = [0]
+    for b in blocks:
+        bounds.append(bounds[-1] + len(b))
+    start_block = min(bisect.bisect_right(bounds, start) - 1, len(blocks) - 1)
+    end_block = min(bisect.bisect_right(bounds, end - 1) - 1, len(blocks) - 1)
+    return {
+        "anchor_block_start": start_block,
+        "anchor_block_end": end_block,
+        "start_char_offset": start - bounds[start_block],
+        "end_char_offset": end - bounds[end_block],
+    }
+
+
+def _find_split_span(haystack: str, needle: str, before: str) -> tuple[int, int] | None:
+    """Найти needle в haystack с РОВНО ОДНОЙ вставкой внутри: самый длинный
+    префикс, у которого суффикс находится дальше по тексту. Возвращает [start, end)
+    объемлющего диапазона (вместе со вставкой) или None. Все строки — без
+    пробелов. Зеркало findSplitRangesIgnoringWhitespace на фронте."""
+    anchor_from = 0
+    if before:
+        bi = haystack.find(before)
+        if bi != -1:
+            anchor_from = bi + len(before)
+
+    def try_split(from_: int) -> tuple[int, int] | None:
+        for k in range(len(needle) - 1, 0, -1):
+            a = haystack.find(needle[:k], from_)
+            if a == -1:
+                continue
+            b = haystack.find(needle[k:], a + k)
+            if b == -1:
+                continue
+            return a, b + (len(needle) - k)
+        return None
+
+    span = try_split(anchor_from)
+    if span is None and anchor_from != 0:
+        span = try_split(0)
+    return span
+
+
+def resolve_reanchor(
+    html: str,
+    text_content: str,
+    text_before: str,
+    text_after: str,
+    anchor_block_start: int | None,
+    anchor_block_end: int | None,
+    start_char_offset: int,
+    end_char_offset: int,
+) -> dict | None:
+    """Пересчитать привязку для «Актуализировать», НЕ теряя цитату.
+
+    html — ОБРАБОТАННЫЙ HTML снимка (render_page_html): то же представление,
+    по которому фронт считал якоря и рисует страницу.
+
+    Порядок (от строгого к терпимому) — те же правила, по которым фронт
+    решает, ГДЕ показать привязку (highlightMatching.ts):
+      1) текст под якорем совпадает с цитатой без учёта пробелов → якоря верны,
+         обновляются только text_before/text_after;
+      2) цитата находится на странице текстовым поиском (неоднозначность
+         снимается контекстом) → якоря пересчитываются от найденного места —
+         лечит якоря, съехавшие от старых версий проекции;
+      3) цитата лежит «разрывом» — префикс + суффикс с одной вставкой между
+         ними (как инлайн-комментарий Confluence) → цитатой становится весь
+         найденный диапазон вместе со вставкой;
+      4) ничего не подошло → None: вызывающий код НЕ должен перезаписывать
+         привязку — молчаливая перезапись превращала цитату в чужой текст.
+
+    Возвращает dict с новыми text_content/text_before/text_after и якорями.
+    """
+    blocks = extract_blocks(html)
+    full_text = "".join(blocks)
+    stored_stripped, _ = _strip_with_map(text_content or "")
+    if not stored_stripped or not blocks:
+        return None
+
+    if anchor_block_start is not None and 0 <= anchor_block_start < len(blocks):
+        anchored = _extract_at_anchor(
+            blocks, anchor_block_start, anchor_block_end,
+            start_char_offset, end_char_offset,
+        )
+        anchored_stripped, _ = _strip_with_map(anchored["text_content"])
+        if anchored_stripped == stored_stripped:
+            return {
+                **anchored,
+                "anchor_block_start": anchor_block_start,
+                "anchor_block_end": (
+                    anchor_block_end if anchor_block_end is not None
+                    else anchor_block_start
+                ),
+                "start_char_offset": start_char_offset,
+                "end_char_offset": end_char_offset,
+            }
+
+    haystack, hay_map = _strip_with_map(full_text)
+    before_stripped, _ = _strip_with_map(text_before or "")
+    after_stripped, _ = _strip_with_map(text_after or "")
+    at = _find_stripped_occurrence(
+        haystack, stored_stripped, before_stripped, after_stripped
+    )
+    if at != -1:
+        orig_start = hay_map[at]
+        orig_end = hay_map[at + len(stored_stripped) - 1] + 1
+        return {
+            "text_content": full_text[orig_start:orig_end],
+            "text_before": full_text[max(0, orig_start - 100):orig_start],
+            "text_after": full_text[orig_end:orig_end + 100],
+            **_block_coords(blocks, orig_start, orig_end),
+        }
+
+    span = _find_split_span(haystack, stored_stripped, before_stripped)
+    if span is not None:
+        orig_start = hay_map[span[0]]
+        orig_end = hay_map[span[1] - 1] + 1
+        return {
+            "text_content": full_text[orig_start:orig_end],
+            "text_before": full_text[max(0, orig_start - 100):orig_start],
+            "text_after": full_text[orig_end:orig_end + 100],
+            **_block_coords(blocks, orig_start, orig_end),
+        }
+
+    return None
+
+
 def project_highlights(
     highlights: list[dict],
     new_content_html: str,
@@ -185,6 +387,8 @@ def project_highlights(
 ) -> list[dict]:
     """
     Project all highlights onto new content.
+
+    Оба html — ОБРАБОТАННЫЕ (render_page_html), см. предупреждение в шапке модуля.
 
     For highlights with block anchoring (anchor_block_start is set):
       uses structural block alignment between old and new HTML.

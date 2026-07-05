@@ -18,7 +18,30 @@ from app.crypto import decrypt_secret
 from app.models.page import Page
 from app.models.project import Project, ProjectCredential
 from app.models.user import User
-from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
+from app.services.confluence import (
+    ConfluenceAuthError,
+    ConfluenceConnection,
+    process_confluence_html,
+)
+
+
+def render_page_html(raw_html: str | None, page_id, project: Project) -> str | None:
+    """Обработанный HTML снимка — ровно то представление, что отдаётся фронту.
+
+    Снимки хранят сырой storage-XML Confluence, где видимый текст ссылок и кода
+    сидит в CDATA/атрибутах и невидим HTML-парсеру. Блочные якоря привязок фронт
+    считает по обработанному DOM, поэтому ЛЮБАЯ серверная работа с якорями
+    (проекция при refresh, извлечение текста при реанкоре) обязана идти по этому
+    же представлению — иначе координаты расходятся и цитаты портятся."""
+    if not raw_html:
+        return raw_html
+    return process_confluence_html(
+        raw_html,
+        str(page_id),
+        jira_base_url=project.jira_base_url or "",
+        # У демо-проекта нет Confluence — прокси-ссылки ему не нужны.
+        project_id="" if project.is_demo else str(project.id),
+    )
 
 
 def normalize_base_url(url: str) -> str:

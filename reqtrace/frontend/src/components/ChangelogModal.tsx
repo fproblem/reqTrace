@@ -1,13 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, modalTextStyle } from './Modal';
+import { Modal } from './Modal';
 import { colors, radii } from '../styles/tokens';
+import {
+  IconProps,
+  BellIcon, BranchIcon, ChevronsVerticalIcon, ClockIcon, DocumentIcon,
+  DropletIcon, FlagIcon, GearIcon, ImageIcon, KeyboardIcon, LayoutIcon, LinkIcon,
+  LockIcon, PanelIcon, PencilIcon, PlusIcon, SearchIcon, ShieldIcon, SparkleIcon,
+  SyncIcon, TableIcon, TargetIcon, TrashIcon, UserIcon,
+} from './icons';
+
+// Запись изменения: новые версии ведут объекты с заголовком и иконкой
+// (рендерятся «линией времени» с цветными значками), старые — просто строки
+// (компактный пункт с точкой на той же линии). Оба формата живут вместе.
+interface ChangeItem {
+  icon?: string;
+  title?: string;
+  text: string;
+}
+type Change = string | ChangeItem;
 
 interface ChangelogEntry {
   version: string;
   title?: string;
   date: string;
-  changes: string[];
+  changes: Change[];
 }
+
+const asItem = (c: Change): ChangeItem => (typeof c === 'string' ? { text: c } : c);
 
 interface ChangelogModalProps {
   open: boolean;
@@ -23,6 +42,105 @@ function formatDate(iso: string): string {
   });
 }
 
+// --- Значки изменений: пастельная плашка + цветная иконка ---
+
+const ICON_TINTS = {
+  green: { bg: 'rgba(122, 224, 90, 0.10)', border: 'rgba(122, 224, 90, 0.45)', fg: colors.greenDark },
+  blue: { bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.35)', fg: '#2563EB' },
+  purple: { bg: 'rgba(147, 102, 255, 0.08)', border: 'rgba(147, 102, 255, 0.35)', fg: '#7C3AED' },
+  amber: { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.40)', fg: '#B45309' },
+  red: { bg: 'rgba(239, 68, 68, 0.07)', border: 'rgba(239, 68, 68, 0.30)', fg: '#DC2626' },
+} as const;
+
+// Ключ иконки из changelog.json → визуал: сама иконка (общая библиотека
+// components/icons.tsx) и оттенок плашки.
+const CHANGE_ICONS: Record<string, { tint: keyof typeof ICON_TINTS; Icon: React.FC<IconProps> }> = {
+  highlight: { tint: 'green', Icon: PencilIcon },
+  link: { tint: 'blue', Icon: LinkIcon },
+  tree: { tint: 'purple', Icon: BranchIcon },
+  layout: { tint: 'amber', Icon: LayoutIcon },
+  search: { tint: 'blue', Icon: SearchIcon },
+  plus: { tint: 'green', Icon: PlusIcon },
+  paint: { tint: 'purple', Icon: DropletIcon },
+  timer: { tint: 'amber', Icon: ClockIcon },
+  sparkle: { tint: 'green', Icon: SparkleIcon },
+  panel: { tint: 'blue', Icon: PanelIcon },
+  table: { tint: 'amber', Icon: TableIcon },
+  keyboard: { tint: 'purple', Icon: KeyboardIcon },
+  bell: { tint: 'amber', Icon: BellIcon },
+  trash: { tint: 'red', Icon: TrashIcon },
+  gear: { tint: 'purple', Icon: GearIcon },
+  lock: { tint: 'amber', Icon: LockIcon },
+  user: { tint: 'green', Icon: UserIcon },
+  doc: { tint: 'blue', Icon: DocumentIcon },
+  flag: { tint: 'green', Icon: FlagIcon },
+  image: { tint: 'purple', Icon: ImageIcon },
+  shield: { tint: 'green', Icon: ShieldIcon },
+  sync: { tint: 'blue', Icon: SyncIcon },
+  target: { tint: 'green', Icon: TargetIcon },
+  nav: { tint: 'purple', Icon: ChevronsVerticalIcon },
+};
+
+// Одна запись на линии времени. Записи с иконкой/заголовком получают цветной
+// значок и жирный заголовок; строковые (старые версии) — компактную точку.
+// Соединительная линия рисуется между значками, у последней записи её нет.
+const ChangeRow: React.FC<{ item: ChangeItem; isLast: boolean }> = ({ item, isLast }) => {
+  const iconDef = item.icon ? CHANGE_ICONS[item.icon] : undefined;
+  const tint = iconDef ? ICON_TINTS[iconDef.tint] : undefined;
+
+  return (
+    <div style={{ display: 'flex', gap: '14px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '30px' }}>
+        {iconDef && tint ? (
+          <div style={{
+            width: '30px',
+            height: '30px',
+            borderRadius: radii.md,
+            background: tint.bg,
+            border: `1px solid ${tint.border}`,
+            color: tint.fg,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <iconDef.Icon size={15} />
+          </div>
+        ) : (
+          <div style={{
+            width: '7px',
+            height: '7px',
+            borderRadius: '50%',
+            background: colors.textTertiary,
+            opacity: 0.55,
+            marginTop: '6px',
+            flexShrink: 0,
+          }} />
+        )}
+        {!isLast && (
+          <div style={{ width: '1px', flex: 1, background: colors.border, marginTop: '6px' }} />
+        )}
+      </div>
+      <div style={{ minWidth: 0, paddingBottom: isLast ? 0 : (item.title ? '16px' : '10px') }}>
+        {item.title && (
+          <div style={{
+            fontSize: '13.5px',
+            fontWeight: 600,
+            color: colors.textPrimary,
+            marginBottom: '4px',
+            lineHeight: 1.4,
+          }}>
+            {item.title}
+          </div>
+        )}
+        <div style={{ fontSize: '13px', lineHeight: 1.5, color: colors.textSecondary, textWrap: 'pretty' }}>
+          {item.text}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose }) => {
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
 
@@ -36,87 +154,128 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ open, onClose })
 
   if (!open) return null;
 
-  return (
-    <Modal title="История изменений" width="520px" onClose={onClose}>
-      <div>
-          {entries.length === 0 ? (
-            <div style={{
-              color: colors.textTertiary,
-              fontSize: '14px',
-              textAlign: 'center',
-              padding: '40px 0',
-            }}>
-              Нет записей
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {entries.map((entry, idx) => (
-                <div
-                  key={entry.version}
-                  style={{
-                    border: `1px solid ${colors.border}`,
-                    borderLeft: `3px solid ${idx === 0 ? colors.greenAccent : colors.border}`,
-                    borderRadius: radii.md,
-                    padding: '18px 20px',
-                    background: idx === 0
-                      ? 'rgba(122, 224, 90, 0.03)'
-                      : colors.white,
-                  }}
-                >
-                  {/* Version header: номер слева, дата справа; заголовок релиза — строкой ниже */}
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'baseline',
-                    gap: '12px',
-                    marginBottom: entry.title ? '2px' : '12px',
-                  }}>
-                    <span style={{
-                      fontSize: '15px',
-                      fontWeight: 700,
-                      color: colors.textPrimary,
-                      fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                    }}>
-                      v{entry.version}
-                    </span>
-                    <span style={{
-                      fontSize: '13px',
-                      color: colors.textTertiary,
-                      flexShrink: 0,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {formatDate(entry.date)}
-                    </span>
-                  </div>
-                  {entry.title && (
-                    <div style={{
-                      fontSize: '13.5px',
-                      fontWeight: 600,
-                      color: colors.textSecondary,
-                      marginBottom: '12px',
-                    }}>
-                      {entry.title}
-                    </div>
-                  )}
+  const [current, ...older] = entries;
 
-                  {/* Changes list */}
-                  <ul style={{
-                    margin: 0,
-                    paddingLeft: '18px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                  }}>
-                    {entry.changes.map((change, ci) => (
-                      <li key={ci} style={{ ...modalTextStyle, marginBottom: 0 }}>
-                        {change}
-                      </li>
-                    ))}
-                  </ul>
+  return (
+    <Modal title="История изменений" width="560px" onClose={onClose}>
+      <div>
+        {entries.length === 0 ? (
+          <div style={{
+            color: colors.textTertiary,
+            fontSize: '14px',
+            textAlign: 'center',
+            padding: '40px 0',
+          }}>
+            Нет записей
+          </div>
+        ) : (
+          <>
+            {/* Текущая версия — карточкой: номер, бейдж, заголовок релиза, дата */}
+            <div style={{
+              border: `1px solid rgba(122, 224, 90, 0.45)`,
+              borderRadius: radii.lg,
+              padding: '14px 18px',
+              background: 'rgba(122, 224, 90, 0.05)',
+              marginBottom: '20px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  fontSize: '15px',
+                  fontWeight: 700,
+                  color: colors.textPrimary,
+                  fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                }}>
+                  v{current.version}
+                </span>
+                <span style={{
+                  padding: '2px 9px',
+                  borderRadius: radii.pill,
+                  background: colors.greenLight,
+                  color: colors.greenDark,
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}>
+                  Текущая версия
+                </span>
+                <span style={{
+                  marginLeft: 'auto',
+                  fontSize: '12.5px',
+                  color: colors.textTertiary,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {formatDate(current.date)}
+                </span>
+              </div>
+              {current.title && (
+                <div style={{
+                  marginTop: '7px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  color: colors.textPrimary,
+                }}>
+                  {current.title}
                 </div>
+              )}
+            </div>
+
+            {/* Изменения текущей версии — линией времени */}
+            <div>
+              {current.changes.map((c, ci) => (
+                <ChangeRow key={ci} item={asItem(c)} isLast={ci === current.changes.length - 1} />
               ))}
             </div>
-          )}
+
+            {/* Прошлые версии — компактнее, той же линией времени */}
+            {older.map(entry => (
+              <div key={entry.version} style={{
+                marginTop: '22px',
+                paddingTop: '18px',
+                borderTop: `1px solid ${colors.border}`,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: '10px',
+                  marginBottom: '12px',
+                }}>
+                  <span style={{
+                    fontSize: '13.5px',
+                    fontWeight: 700,
+                    color: colors.textPrimary,
+                    fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  }}>
+                    v{entry.version}
+                  </span>
+                  {entry.title && (
+                    <span style={{
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: colors.textSecondary,
+                      minWidth: 0,
+                    }}>
+                      {entry.title}
+                    </span>
+                  )}
+                  <span style={{
+                    marginLeft: 'auto',
+                    fontSize: '12px',
+                    color: colors.textTertiary,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {formatDate(entry.date)}
+                  </span>
+                </div>
+                <div>
+                  {entry.changes.map((c, ci) => (
+                    <ChangeRow key={ci} item={asItem(c)} isLast={ci === entry.changes.length - 1} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </Modal>
   );

@@ -1103,6 +1103,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                   <ContentRenderer
                     html={page.content_html}
                     onContentReady={setContentContainer}
+                    suspendTableRefreeze={!!selectedHighlight}
                   />
                   <HighlightLayer
                     container={contentContainer}

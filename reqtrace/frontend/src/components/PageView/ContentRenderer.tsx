@@ -4,6 +4,10 @@ import { colors, radii } from '../../styles/tokens';
 interface ContentRendererProps {
   html: string;
   onContentReady?: (container: HTMLDivElement) => void;
+  /** true — правая панель открыта или анимируется. Пока это так, пере-заморозка
+   *  ширин таблиц не выполняется: сужение контента самой панелью не должно
+   *  пере-вёрстывать таблицы (в этом весь смысл заморозки). */
+  suspendTableRefreeze?: boolean;
 }
 
 // Таблицы не пере-вёрстываются при изменении ширины контента (открытие правой
@@ -19,6 +23,9 @@ function stabilizeTables(container: HTMLDivElement) {
     // Уже обработана — либо вложена в обработанную (внешняя заморожена,
     // значит внутренняя пере-вёрстываться не может; идём в порядке документа).
     if (table.closest('.table-scroll')) return;
+    // Авторская инлайновая ширина из Confluence запоминается: пере-заморозка
+    // должна отталкиваться от исходного правила, а не от прошлого фриза.
+    table.dataset.origWidth = table.style.width;
     const width = table.getBoundingClientRect().width;
     if (width > 0) table.style.width = `${width}px`;
     const wrap = document.createElement('div');
@@ -26,10 +33,35 @@ function stabilizeTables(container: HTMLDivElement) {
     table.parentNode?.insertBefore(wrap, table);
     wrap.appendChild(table);
   });
+  container.dataset.tablesFrozenAt = String(Math.round(container.clientWidth));
 }
 
-export const ContentRenderer: React.FC<ContentRendererProps> = ({ html, onContentReady }) => {
+// Пере-заморозка под новую ширину контейнера: зум браузера, ресайз окна,
+// сворачивание/растяжение левого сайдбара — «эталонная» ширина изменилась, и
+// замороженные размеры пора пересчитать. Возвращаем таблицам исходное правило
+// ширины, даём раскладке пересчитаться и замораживаем заново. Чтения и записи
+// батчами в одном синхронном проходе — промежуточное состояние не пейнтится.
+// При неизменной ширине (напр., цикл открыл-закрыл панель) — ничего не делаем.
+function refreezeTables(container: HTMLDivElement) {
+  const width = Math.round(container.clientWidth);
+  if (container.dataset.tablesFrozenAt === String(width)) return;
+  const tables = Array.from(
+    container.querySelectorAll<HTMLTableElement>('.table-scroll > table'),
+  );
+  tables.forEach(t => { t.style.width = t.dataset.origWidth ?? ''; });
+  const widths = tables.map(t => t.getBoundingClientRect().width);
+  tables.forEach((t, i) => { if (widths[i] > 0) t.style.width = `${widths[i]}px`; });
+  container.dataset.tablesFrozenAt = String(width);
+}
+
+export const ContentRenderer: React.FC<ContentRendererProps> = ({
+  html, onContentReady, suspendTableRefreeze,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Актуальное значение флага для отложенного (дебаунс) колбэка обсервера.
+  const suspendRef = useRef(!!suspendTableRefreeze);
+  useEffect(() => { suspendRef.current = !!suspendTableRefreeze; }, [suspendTableRefreeze]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -39,6 +71,31 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ html, onConten
       onContentReady?.(containerRef.current);
     }
   }, [html, onContentReady]);
+
+  // Пере-заморозка при изменении ширины контейнера. Дебаунс пережидает шквал
+  // событий от анимации панели (RO стреляет каждый кадр) и плавных ресайзов;
+  // при открытой/анимирующейся панели пересчёт подавлен (suspendRef), а цикл
+  // «открыл-закрыл» без прочих изменений отсеет проверка ширины в refreeze.
+  // Так пересчёт срабатывает на зум, ресайз окна и левого сайдбара — но не на
+  // правую панель. Заодно самолечится заморозка на суженной ширине, если
+  // контент перезагрузили при открытой панели: закрытие её пересчитает.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (suspendRef.current) return;
+        refreezeTables(container);
+      }, 200);
+    });
+    ro.observe(container);
+    return () => {
+      clearTimeout(timer);
+      ro.disconnect();
+    };
+  }, []);
 
   return (
     <div

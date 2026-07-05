@@ -20,6 +20,7 @@ from app.models.user import User
 from app.project_access import (
     connection_for,
     get_or_create_demo_project,
+    render_page_html,
     require_confluence_project,
     require_page_access,
     require_project_access,
@@ -32,9 +33,7 @@ from app.schemas.page import (
     TreeNodeItem, SpaceTreeResponse, ProjectTreeResponse, TreeSyncResult,
 )
 from app.services import confluence
-from app.services.confluence import (
-    ConfluenceAuthError, ConfluenceConnection, process_confluence_html,
-)
+from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
 from app.services.diff_engine import has_text_changed
 from app.services.highlight_projection import project_highlights
 
@@ -65,19 +64,6 @@ DEMO_HTML = """
 """
 
 
-def _render_html(raw_html: str | None, page_id, project: Project) -> str | None:
-    """Process stored Confluence HTML so images, Jira links, statuses etc. render correctly."""
-    if not raw_html:
-        return raw_html
-    return process_confluence_html(
-        raw_html,
-        str(page_id),
-        jira_base_url=project.jira_base_url or "",
-        # У демо-проекта нет Confluence — прокси-ссылки ему не нужны.
-        project_id="" if project.is_demo else str(project.id),
-    )
-
-
 def _page_detail(
     page: Page,
     project: Project,
@@ -106,7 +92,7 @@ def _page_detail(
             confirmed_by=baseline.confirmed_by,
             confirmed_at=baseline.confirmed_at,
         ) if baseline else None,
-        content_html=_render_html(snapshot.content_html, page.id, project) if snapshot else None,
+        content_html=render_page_html(snapshot.content_html, page.id, project) if snapshot else None,
     )
 
 
@@ -759,8 +745,16 @@ async def refresh_page(
             for h in highlights
         ]
 
-        old_html = latest_snapshot.content_html if latest_snapshot else None
-        projected = project_highlights(hl_dicts, page_data.content_html, old_html)
+        # Проекция — строго в координатах ОБРАБОТАННОГО HTML (render_page_html):
+        # якоря привязок фронт считал по нему. Сырой storage-XML давал другую
+        # разбивку на блоки (текст ссылок/кода в CDATA невидим парсеру), из-за
+        # чего якоря дрейфовали при каждом обновлении.
+        rendered_new = render_page_html(page_data.content_html, page.id, project) or ""
+        rendered_old = (
+            render_page_html(latest_snapshot.content_html, page.id, project)
+            if latest_snapshot else None
+        )
+        projected = project_highlights(hl_dicts, rendered_new, rendered_old)
 
         for proj in projected:
             for h in highlights:

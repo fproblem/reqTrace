@@ -120,6 +120,13 @@ CI=true npx react-scripts test --watchAll=false src/components/PageView/highligh
 # типизация:   npx tsc --noEmit
 ```
 
+Серверная половина этой же логики — `backend/app/services/highlight_projection.py`
+(проекция привязок при refresh и `resolve_reanchor` для «Актуализировать»).
+⚠ Все функции якорей работают строго по ОБРАБОТАННОМУ HTML (`render_page_html`),
+как и фронт: сырой storage-XML снимка даёт другие блоки/смещения (текст ссылок
+и кода в CDATA невидим парсеру) и до v1.5.6 портил цитаты при актуализации.
+Тесты: `backend/tests/test_highlight_projection.py` (команда тестов бэкенда выше).
+
 ## Конвенции
 
 - UI и пользовательские сообщения — на русском (см. `api/client.ts`, маппинг ошибок).

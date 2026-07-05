@@ -6,6 +6,7 @@ import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { Select } from '../Select';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
+import { ChevronRightIcon, CrossIcon, PlusIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
@@ -57,32 +58,18 @@ if (typeof document !== 'undefined' && !document.getElementById(TREE_STYLES_ID))
   document.head.appendChild(style);
 }
 
-// SVG-шеврон раскрытия: остриё вправо, при раскрытии поворачивается вниз —
-// как в Confluence. Прежний текстовый глиф ▶ брался из фолбэк-шрифтов и
-// выглядел грубым треугольником.
+// Шеврон раскрытия: остриё вправо, при раскрытии поворачивается вниз — как в
+// Confluence. Толщина 2.7 повторяет прежний вид (1.8 на вьюбоксе 16 ≈ 2.7 на 24).
 const TreeChevron: React.FC<{ expanded: boolean; size?: number }> = ({ expanded, size = 12 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 16 16"
-    fill="none"
-    aria-hidden="true"
+  <ChevronRightIcon
+    size={size}
+    strokeWidth={2.7}
     style={{
       color: colors.textTertiary,
       transition: 'transform 0.18s ease',
       transform: expanded ? 'rotate(90deg)' : 'none',
-      flexShrink: 0,
-      display: 'block',
     }}
-  >
-    <path
-      d="M6 3.5 L10.5 8 L6 12.5"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
+  />
 );
 
 // Обёртка каскада: монтирует детей при раскрытии и держит их в DOM на время
@@ -130,32 +117,6 @@ const TreeReveal: React.FC<{ expanded: boolean; children: React.ReactNode }> = (
     </>
   );
 };
-
-// --- Иконки и кнопки шапки сайдбара ---
-
-const PlusIcon: React.FC = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
-
-const SearchIcon: React.FC = () => (
-  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
-    <circle cx="11" cy="11" r="7" />
-    <line x1="20" y1="20" x2="16.2" y2="16.2" />
-  </svg>
-);
-
-const ClearIcon: React.FC = () => (
-  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       strokeWidth={2} strokeLinecap="round" style={{ display: 'block' }}>
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
 
 // Кнопка-иконка шапки сайдбара — в точности как кнопки верхних баров страницы
 // («Обновить», «Ещё действия»): 34×34, рамка, белый фон, тот же ховер.
@@ -433,7 +394,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               display: 'flex',
               pointerEvents: 'none',
             }}>
-              <SearchIcon />
+              <SearchIcon size={13} />
             </span>
             <input
               type="text"
@@ -477,7 +438,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
                   color: colors.textTertiary,
                 }}
               >
-                <ClearIcon />
+                <CrossIcon size={12} />
               </button>
             )}
           </div>

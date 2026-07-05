@@ -253,7 +253,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* baseline, не center: кегли разные (15px и 12px), и центрирование
+            по высоте строк поднимало базовую линию счётчика на ~1px над
+            базовой линией слова — текст в одной строке ровняем по baseline. */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontWeight: 600, fontSize: '15px', color: colors.textPrimary }}>
             Выделение
           </span>

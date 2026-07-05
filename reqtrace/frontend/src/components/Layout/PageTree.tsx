@@ -27,6 +27,109 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   );
 }
 
+// --- Каскадное раскрытие/сворачивание вложенных списков (как в Confluence) ---
+
+const REVEAL_MS = 160;           // высота+прозрачность одной строки
+const REVEAL_STEP_MS = 26;       // шаг «волны» между соседними строками
+const REVEAL_TOTAL_CAP_MS = 240; // потолок волны, чтобы длинные списки не тянулись
+
+// Стили — один раз на документ (паттерн RefreshIcon): строк в дереве много,
+// по <style> на каждую плодить не хочется. Высота строки анимируется через
+// grid-template-rows 0fr↔1fr — без измерения содержимого в JS.
+const TREE_STYLES_ID = 'reqtrace-tree-reveal-styles';
+if (typeof document !== 'undefined' && !document.getElementById(TREE_STYLES_ID)) {
+  const style = document.createElement('style');
+  style.id = TREE_STYLES_ID;
+  style.textContent = `
+.tree-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows ${REVEAL_MS}ms ease, opacity ${REVEAL_MS}ms ease;
+}
+.tree-reveal--open { grid-template-rows: 1fr; opacity: 1; }
+.tree-reveal-inner { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .tree-reveal { transition: none; }
+}
+`;
+  document.head.appendChild(style);
+}
+
+// SVG-шеврон раскрытия: остриё вправо, при раскрытии поворачивается вниз —
+// как в Confluence. Прежний текстовый глиф ▶ брался из фолбэк-шрифтов и
+// выглядел грубым треугольником.
+const TreeChevron: React.FC<{ expanded: boolean; size?: number }> = ({ expanded, size = 12 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+    style={{
+      color: colors.textTertiary,
+      transition: 'transform 0.18s ease',
+      transform: expanded ? 'rotate(90deg)' : 'none',
+      flexShrink: 0,
+      display: 'block',
+    }}
+  >
+    <path
+      d="M6 3.5 L10.5 8 L6 12.5"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// Обёртка каскада: монтирует детей при раскрытии и держит их в DOM на время
+// анимации сворачивания. Появление — плавно с первой строки до последней,
+// сворачивание — в обратном порядке (задержки зеркалятся). Каждый прямой
+// ребёнок анимируется как строка; его собственное раскрытое поддерево едет
+// внутри этой строки единым блоком.
+const TreeReveal: React.FC<{ expanded: boolean; children: React.ReactNode }> = ({ expanded, children }) => {
+  const [mounted, setMounted] = useState(expanded);
+  const [open, setOpen] = useState(expanded);
+  const items = React.Children.toArray(children);
+  const count = items.length;
+  const step = count > 1
+    ? Math.min(REVEAL_STEP_MS, Math.round(REVEAL_TOTAL_CAP_MS / (count - 1)))
+    : 0;
+
+  useEffect(() => {
+    if (expanded) {
+      setMounted(true);
+      // Два кадра: закрытое состояние должно попасть в раскладку до снятия,
+      // иначе transition не запустится и список раскроется скачком.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setOpen(true));
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    }
+    setOpen(false);
+    const timer = setTimeout(() => setMounted(false), (count - 1) * step + REVEAL_MS);
+    return () => clearTimeout(timer);
+  }, [expanded, count, step]);
+
+  if (!mounted) return null;
+  return (
+    <>
+      {items.map((item, i) => (
+        <div
+          key={React.isValidElement(item) && item.key != null ? item.key : i}
+          className={open ? 'tree-reveal tree-reveal--open' : 'tree-reveal'}
+          style={{ transitionDelay: `${(open ? i : count - 1 - i) * step}ms` }}
+        >
+          <div className="tree-reveal-inner">{item}</div>
+        </div>
+      ))}
+    </>
+  );
+};
+
 function loadExpandState(): Record<string, boolean> {
   try {
     const stored = localStorage.getItem(TREE_STATE_KEY);
@@ -588,16 +691,7 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
           textAlign: 'left',
         }}
       >
-        <span style={{
-          fontSize: '10px',
-          color: colors.textTertiary,
-          transition: 'transform 0.15s',
-          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-          display: 'inline-block',
-          flexShrink: 0,
-        }}>
-          ▶
-        </span>
+        <TreeChevron expanded={isExpanded} size={13} />
         <span style={{
           fontSize: '12.5px',
           fontWeight: 700,
@@ -611,8 +705,8 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
           {project.project_name}
         </span>
       </button>
-      {isExpanded && (
-        <div style={{ marginLeft: '8px' }}>
+      <div style={{ marginLeft: '8px' }}>
+        <TreeReveal expanded={isExpanded}>
           {project.spaces.map(space => (
             <SpaceNode
               key={space.space_key}
@@ -626,8 +720,8 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
               searchQuery={searchQuery}
             />
           ))}
-        </div>
-      )}
+        </TreeReveal>
+      </div>
     </div>
   );
 };
@@ -704,15 +798,7 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ projectId, space, expandState, to
             textAlign: 'left',
           }}
         >
-          <span style={{
-            fontSize: '10px',
-            color: colors.textTertiary,
-            transition: 'transform 0.15s',
-            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-            display: 'inline-block',
-          }}>
-            ▶
-          </span>
+          <TreeChevron expanded={isExpanded} size={12} />
           <span style={{
             fontSize: '12px',
             fontWeight: 600,
@@ -725,24 +811,22 @@ const SpaceNode: React.FC<SpaceNodeProps> = ({ projectId, space, expandState, to
           </span>
         </button>
       </div>
-      {isExpanded && (
-        <div>
-          {childrenMap.__roots__.map(node => (
-            <TreeNodeComponent
-              key={node.id}
-              node={node}
-              childrenMap={childrenMap}
-              depth={0}
-              expandState={expandState}
-              toggleExpand={toggleExpand}
-              activePageId={activePageId}
-              navigate={navigate}
-              isSearching={isSearching}
-              searchQuery={searchQuery}
-            />
-          ))}
-        </div>
-      )}
+      <TreeReveal expanded={isExpanded}>
+        {childrenMap.__roots__.map(node => (
+          <TreeNodeComponent
+            key={node.id}
+            node={node}
+            childrenMap={childrenMap}
+            depth={0}
+            expandState={expandState}
+            toggleExpand={toggleExpand}
+            activePageId={activePageId}
+            navigate={navigate}
+            isSearching={isSearching}
+            searchQuery={searchQuery}
+          />
+        ))}
+      </TreeReveal>
     </div>
   );
 };
@@ -831,10 +915,6 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
           <span
             onClick={handleChevronClick}
             style={{
-              fontSize: '8px',
-              color: colors.textTertiary,
-              transition: 'transform 0.15s',
-              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -843,7 +923,7 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
               flexShrink: 0,
             }}
           >
-            ▶
+            <TreeChevron expanded={isExpanded} size={12} />
           </span>
         ) : (
           <span style={{ width: '12px', flexShrink: 0 }} />
@@ -878,21 +958,25 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
         </span>
       </button>
 
-      {/* Children */}
-      {isExpanded && children.map(child => (
-        <TreeNodeComponent
-          key={child.id}
-          node={child}
-          childrenMap={childrenMap}
-          depth={depth + 1}
-          expandState={expandState}
-          toggleExpand={toggleExpand}
-          activePageId={activePageId}
-          navigate={navigate}
-          isSearching={isSearching}
-          searchQuery={searchQuery}
-        />
-      ))}
+      {/* Children — каскад появления сверху вниз и сворачивания снизу вверх */}
+      {hasChildren && (
+        <TreeReveal expanded={isExpanded}>
+          {children.map(child => (
+            <TreeNodeComponent
+              key={child.id}
+              node={child}
+              childrenMap={childrenMap}
+              depth={depth + 1}
+              expandState={expandState}
+              toggleExpand={toggleExpand}
+              activePageId={activePageId}
+              navigate={navigate}
+              isSearching={isSearching}
+              searchQuery={searchQuery}
+            />
+          ))}
+        </TreeReveal>
+      )}
     </div>
   );
 });

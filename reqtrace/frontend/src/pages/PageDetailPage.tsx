@@ -107,6 +107,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
+  // Переход на другую страницу через дерево НЕ размонтирует компонент —
+  // в маршруте меняется только :pageId. Выделение прошлой страницы сбрасываем,
+  // иначе панель оставалась открытой с чужими данными (закроется штатной
+  // анимацией); заодно гасим попап «Привязать тесты» и устаревший отчёт слоя.
+  useEffect(() => {
+    setSelectedHighlight(null);
+    setShowSelectionPopup(false);
+    setRenderReport(null);
+  }, [pageId]);
+
   // Меню действий (троеточие) закрывается по клику вне него и по Escape.
   useEffect(() => {
     if (!showActionsMenu) return;

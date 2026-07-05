@@ -11,6 +11,7 @@ import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
+import { computeStatusSync } from '../components/PageView/statusSync';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -563,16 +564,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // Статус пишем в БД best-effort (эндпоинты идемпотентны), локально — сразу.
   useEffect(() => {
     if (!renderReport) return;
-    const { rendered, considered } = renderReport;
-
-    const toLose: string[] = [];
-    const toRecover: string[] = [];
-    highlights.forEach(h => {
-      if (!considered.has(h.id)) return;
-      const isRendered = rendered.has(h.id);
-      if (!isRendered && h.status !== 'lost') toLose.push(h.id);
-      else if (isRendered && h.status === 'lost') toRecover.push(h.id);
-    });
+    const { toLose, toRecover } = computeStatusSync(highlights, renderReport);
     if (toLose.length === 0 && toRecover.length === 0) return;
 
     const apply = (h: Highlight): Highlight => {

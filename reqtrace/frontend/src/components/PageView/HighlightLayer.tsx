@@ -61,6 +61,71 @@ interface HighlightLayerProps {
   onRenderReport?: (report: HighlightRenderReport) => void;
 }
 
+// Полный прогон размещения (без React): снять прежние метки, разместить все
+// привязки заново и вернуть отчёт об отрисовке. Вынесен из компонента, чтобы
+// хрупкую логику размещения можно было гонять юнит-тестами на jsdom
+// (highlightPlacement.test.ts) — как highlightMatching для сопоставления.
+//
+// null — контейнера нет либо он ОТОРВАН от документа: ContentRenderer уже
+// размонтирован (переход через виртуальную страницу, вкладка «Изменения»), а
+// состояние contentContainer ещё хранит старый div. Прогон по нему давал отчёт
+// «ни одна привязка не отрисовалась», и вызывающий код МАССОВО помечал
+// привязки новой страницы утраченными, а следующим прогоном возвращал их в
+// «Требует проверки» — «актуально» самопроизвольно сгорало (баг v1.5.7).
+export function applyHighlightsToContainer(
+  container: HTMLElement | null,
+  highlights: Highlight[],
+  selectedId: string | null,
+  onClick: (h: Highlight) => void,
+): HighlightRenderReport | null {
+  if (!container || !container.isConnected) return null;
+
+  container.querySelectorAll('.highlight-mark').forEach(el => {
+    const parent = el.parentNode;
+    if (parent) {
+      while (el.firstChild) {
+        parent.insertBefore(el.firstChild, el);
+      }
+      parent.removeChild(el);
+    }
+  });
+  container.normalize();
+
+  const blocks = getContentBlocks(container);
+
+  const rendered = new Set<string>();
+  const considered = new Set<string>();
+
+  for (const highlight of highlights) {
+    // Пытаемся отрисовать ВСЕ привязки, в т.ч. «утраченные»: если такая снова
+    // легла на страницу (текст вернулся или подсветка ложится «разрывом»),
+    // вызывающий код вернёт её из «Утрачено». Иначе lost-статус был бы
+    // «липким» — однажды утраченную привязку слой больше никогда не пробовал
+    // бы показать.
+    considered.add(highlight.id);
+
+    try {
+      let ok = false;
+      if (highlight.anchor_block_start != null) {
+        ok = applyBlockAnchored(container, blocks, highlight, selectedId, onClick);
+      }
+      // Фолбэк: блочный якорь не дал ни одной метки (номер блока уехал за
+      // пределы текущей структуры либо смещения схлопнулись в пустой диапазон
+      // после изменения контента) — пробуем разместить по тексту. Так метка
+      // не пропадает молча. Для legacy-привязок (anchor_block_start == null)
+      // это и есть основной путь.
+      if (!ok) {
+        ok = applyLegacyTextSearch(container, highlight, selectedId, onClick);
+      }
+      if (ok) rendered.add(highlight.id);
+    } catch (err) {
+      console.warn('Failed to apply highlight:', highlight.id, err);
+    }
+  }
+
+  return { rendered, considered };
+}
+
 export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   container,
   highlights,
@@ -69,62 +134,15 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   onRenderReport,
 }) => {
   const applyHighlights = useCallback(() => {
-    // Оторванный от документа контейнер — прошлая жизнь: ContentRenderer уже
-    // размонтирован (переход через виртуальную страницу, вкладка «Изменения»),
-    // а состояние contentContainer ещё хранит старый div. Прогон по нему давал
-    // отчёт «ни одна привязка не отрисовалась», и вызывающий код МАССОВО
-    // помечал привязки новой страницы утраченными, а следующим прогоном
-    // возвращал их в «Требует проверки» — «актуально» самопроизвольно сгорало.
-    if (!container || !container.isConnected) return;
-
-    container.querySelectorAll('.highlight-mark').forEach(el => {
-      const parent = el.parentNode;
-      if (parent) {
-        while (el.firstChild) {
-          parent.insertBefore(el.firstChild, el);
-        }
-        parent.removeChild(el);
-      }
-    });
-    container.normalize();
-
-    const blocks = getContentBlocks(container);
-
-    const rendered = new Set<string>();
-    const considered = new Set<string>();
-
-    for (const highlight of highlights) {
-      // Пытаемся отрисовать ВСЕ привязки, в т.ч. «утраченные»: если такая снова
-      // легла на страницу (текст вернулся или подсветка ложится «разрывом»),
-      // вызывающий код вернёт её из «Утрачено». Иначе lost-статус был бы
-      // «липким» — однажды утраченную привязку слой больше никогда не пробовал
-      // бы показать.
-      considered.add(highlight.id);
-
-      try {
-        let ok = false;
-        if (highlight.anchor_block_start != null) {
-          ok = applyBlockAnchored(container, blocks, highlight, selectedHighlightId, onHighlightClick);
-        }
-        // Фолбэк: блочный якорь не дал ни одной метки (номер блока уехал за
-        // пределы текущей структуры либо смещения схлопнулись в пустой диапазон
-        // после изменения контента) — пробуем разместить по тексту. Так метка
-        // не пропадает молча. Для legacy-привязок (anchor_block_start == null)
-        // это и есть основной путь.
-        if (!ok) {
-          ok = applyLegacyTextSearch(container, highlight, selectedHighlightId, onHighlightClick);
-        }
-        if (ok) rendered.add(highlight.id);
-      } catch (err) {
-        console.warn('Failed to apply highlight:', highlight.id, err);
-      }
-    }
-
-    onRenderReport?.({ rendered, considered });
+    const report = applyHighlightsToContainer(
+      container, highlights, selectedHighlightId, onHighlightClick,
+    );
+    if (!report) return;
+    onRenderReport?.(report);
 
     // Единая рамка вокруг выбранной привязки рисуется поверх текста отдельным
     // слоем — иначе она «рвётся» по каждому инлайн-тегу (см. drawSelectionOutline).
-    drawSelectionOutline(container, selectedHighlightId);
+    drawSelectionOutline(container!, selectedHighlightId);
   }, [container, highlights, selectedHighlightId, onHighlightClick, onRenderReport]);
 
   useEffect(() => {

@@ -128,17 +128,23 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   // Рамка выбора позиционируется по client-rect'ам текста, поэтому при изменении
   // ширины контента (открытие/закрытие правой панели, ресайз окна) её нужно
   // перерисовать — текст уже переносится сам, а overlay про это не знает.
+  // То же при горизонтальном скролле таблицы в .table-scroll: текст двигается
+  // ВНУТРИ контейнера, и рамка без перерисовки оставалась бы на старом месте.
+  // scroll не всплывает — слушаем в capture-фазе, она ловит скролл потомков.
   useEffect(() => {
     if (!container || typeof ResizeObserver === 'undefined') return;
     let raf = 0;
-    const ro = new ResizeObserver(() => {
+    const redraw = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => drawSelectionOutline(container, selectedHighlightId));
-    });
+    };
+    const ro = new ResizeObserver(redraw);
     ro.observe(container);
+    container.addEventListener('scroll', redraw, true);
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      container.removeEventListener('scroll', redraw, true);
     };
   }, [container, selectedHighlightId]);
 

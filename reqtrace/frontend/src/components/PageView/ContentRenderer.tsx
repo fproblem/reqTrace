@@ -6,12 +6,37 @@ interface ContentRendererProps {
   onContentReady?: (container: HTMLDivElement) => void;
 }
 
+// Таблицы не пере-вёрстываются при изменении ширины контента (открытие правой
+// панели, ресайз сайдбара/окна): фактическая ширина каждой таблицы
+// замораживается в момент рендера контента, а таблица оборачивается в
+// контейнер с собственным горизонтальным скроллом — как в Confluence. Широкая
+// таблица не «уходит под панель», а скроллится внутри себя.
+// Безопасность для привязок: обёртка-div не входит в BLOCK_SELECTOR
+// HighlightLayer и не меняет textContent контейнера, поэтому блочные якоря
+// (anchor_block_*) и текстовые смещения сохранённых подсветок не сдвигаются.
+function stabilizeTables(container: HTMLDivElement) {
+  container.querySelectorAll<HTMLTableElement>('table').forEach(table => {
+    // Уже обработана — либо вложена в обработанную (внешняя заморожена,
+    // значит внутренняя пере-вёрстываться не может; идём в порядке документа).
+    if (table.closest('.table-scroll')) return;
+    const width = table.getBoundingClientRect().width;
+    if (width > 0) table.style.width = `${width}px`;
+    const wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    table.parentNode?.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+}
+
 export const ContentRenderer: React.FC<ContentRendererProps> = ({ html, onContentReady }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (containerRef.current && onContentReady) {
-      onContentReady(containerRef.current);
+    if (containerRef.current) {
+      // До onContentReady: потребители (HighlightLayer, обработчики выделения)
+      // должны видеть уже стабилизированный DOM.
+      stabilizeTables(containerRef.current);
+      onContentReady?.(containerRef.current);
     }
   }, [html, onContentReady]);
 
@@ -38,6 +63,16 @@ export const contentStyles = `
     border-collapse: collapse;
     width: 100%;
     margin: 12px 0;
+  }
+  /* Обёртка таблицы (stabilizeTables): внешние отступы переезжают с таблицы
+     на неё, широкая таблица скроллится внутри, не растягивая страницу. */
+  .confluence-content .table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 12px 0;
+  }
+  .confluence-content .table-scroll table {
+    margin: 0;
   }
   .confluence-content th,
   .confluence-content td {

@@ -123,9 +123,11 @@ const ArtAddPage: React.FC = () => (
     gap: '8px',
   }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      {/* Точка нейтральная: цветные точки в реальном дереве — статусы
+          привязок, у свежедобавленных страниц их ещё нет. */}
       <span style={{
         width: '6px', height: '6px', borderRadius: '50%',
-        background: colors.greenAccent, flexShrink: 0,
+        background: 'rgba(0, 0, 0, 0.18)', flexShrink: 0,
       }} />
       <span style={artBar('58%')} />
     </div>
@@ -170,7 +172,7 @@ const ArtLinkTest: React.FC = () => (
         fontSize: '10.5px', fontWeight: 600,
         fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       }}>
-        SI-1284
+        PROJECT-123
       </span>
       <span style={{ color: colors.statusActive, display: 'flex' }}>
         <StatusAlertIcon kind="ok" size={14} />
@@ -186,7 +188,9 @@ const ONBOARDING_STEPS: {
 }[] = [
   {
     title: 'Подключите проект',
-    text: 'Адрес Confluence и ваши рабочие логин/пароль: присоединитесь к существующему проекту команды или создайте новый.',
+    // Адрес Confluence упоминается только для создания: при присоединении к
+    // существующему проекту нужны лишь свои логин и пароль.
+    text: 'Присоединитесь к проекту команды своими логином и паролем — или создайте новый, указав адрес Confluence.',
     art: <ArtConnect />,
   },
   {
@@ -196,7 +200,7 @@ const ONBOARDING_STEPS: {
   },
   {
     title: 'Привяжите тесты',
-    text: 'Выделите фрагмент требования и укажите ключ теста из Jira. ReqTrace проследит, чтобы покрытие не устаревало.',
+    text: 'Выделите фрагмент требования, нажмите «Привязать тесты» и укажите ключ теста из Jira. Дальше ReqTrace проследит, чтобы покрытие не устаревало.',
     art: <ArtLinkTest />,
   },
 ];
@@ -1212,7 +1216,7 @@ export const SettingsPage: React.FC = () => {
             </span>
           </div>
           <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '18px' }}>
-            Мы поможем быстро настроить отслеживание покрытия требований тестами.
+            Три шага — и покрытие требований под контролем.
           </div>
 
           <div style={{

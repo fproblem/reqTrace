@@ -353,6 +353,22 @@ function formatCheckedAt(iso: string | null): string {
   });
 }
 
+// Строка-факт о безопасности кред — у полей пароля в модалках: работает в
+// момент ввода, когда пользователь и сомневается, кто увидит его пароль.
+const CredsSecurityNote: React.FC = () => (
+  <div style={{
+    display: 'flex', alignItems: 'flex-start', gap: '6px',
+    fontSize: '12px', color: colors.textTertiary, lineHeight: 1.5,
+  }}>
+    <span style={{ marginTop: '2px', display: 'flex', flexShrink: 0 }}>
+      <LockIcon size={12} />
+    </span>
+    <span>
+      Логин и пароль личные: хранятся зашифрованными и не видны даже участникам проекта
+    </span>
+  </div>
+);
+
 // --- Модал «Подключить проект»: присоединиться / создать новый ---
 
 interface ConnectModalProps {
@@ -482,6 +498,9 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
                 <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
                   Подключение проверяется сразу — присоединиться без работающих кред нельзя
                 </div>
+                <div style={{ marginTop: '6px' }}>
+                  <CredsSecurityNote />
+                </div>
               </div>
             </>
           )
@@ -496,6 +515,10 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
               <label style={labelStyle}>Confluence URL</label>
               <input type="text" value={confUrl} onChange={e => setConfUrl(e.target.value)}
                      placeholder="https://confluence.company.com" style={inputStyle} />
+              <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px', lineHeight: 1.5 }}>
+                Проект объединяет страницы одного Confluence — команда увидит общее дерево,
+                привязки и статусы покрытия
+              </div>
               {sameServer.length > 0 && (
                 <div style={{ fontSize: '12px', color: colors.statusLost, marginTop: '4px', lineHeight: 1.5 }}>
                   Этот Confluence уже подключён: {sameServer.map(p => `«${p.name}»`).join(', ')}.
@@ -521,6 +544,9 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
                 <input type="password" value={createPass} onChange={e => setCreatePass(e.target.value)}
                        placeholder="password" style={inputStyle} />
               </div>
+            </div>
+            <div style={{ margin: '-6px 0 14px' }}>
+              <CredsSecurityNote />
             </div>
           </>
         )}
@@ -601,6 +627,9 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
                  placeholder="••••••••" style={inputStyle} />
           <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
             Оставьте пустым, чтобы сохранить текущий пароль
+          </div>
+          <div style={{ marginTop: '6px' }}>
+            <CredsSecurityNote />
           </div>
         </div>
 
@@ -1188,11 +1217,12 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {/* «Мои проекты» — раздел того же ранга, что «Профиль»: заголовок того
-          же кегля, действие в строке заголовка, подводка ниже на всю ширину
-          (в тесной колонке слева от кнопки она рвалась на короткие строки). */}
+          же кегля, действие в строке заголовка. Пояснения про проект и
+          безопасность кред живут в модалке подключения — у самих полей,
+          в момент ввода, а не абзацем-сиротой на странице. */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        gap: '16px', marginBottom: '8px',
+        gap: '16px', marginBottom: '16px',
       }}>
         <h2 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, margin: 0 }}>
           Мои проекты
@@ -1216,16 +1246,6 @@ export const SettingsPage: React.FC = () => {
           Подключить проект
         </button>
       </div>
-
-      <p style={{
-        fontSize: '14px', color: colors.textSecondary, lineHeight: 1.6,
-        margin: '0 0 20px', maxWidth: '640px',
-      }}>
-        Проект объединяет страницы одного Confluence: команда видит общее дерево,
-        привязки и статусы покрытия. Подключение при этом личное — в Confluence вы
-        ходите своими логином и паролем, они хранятся зашифрованными и не видны
-        никому, даже участникам проекта.
-      </p>
 
       {joined.length === 0 ? (
         /* Онбординг пустого состояния. Кнопок здесь сознательно нет

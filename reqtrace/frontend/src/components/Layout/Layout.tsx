@@ -11,7 +11,12 @@ interface LayoutProps {
 }
 
 const SIDEBAR_KEY = 'reqtrace_sidebar';
-const MIN_WIDTH = 150;  // tree appears at / collapses below this drag width
+// Порог появления/сворачивания дерева при перетаскивании. 220 — минимум, при
+// котором в шапке панели уживаются поиск и две кнопки 34px (у́же — поле
+// поиска сжималось в щель и налезало на кнопки), а тексты пустых состояний
+// не рвутся по слову на строку. Сохранённая ширина у́же порога подтянется
+// при загрузке (см. loadSidebarState).
+const MIN_WIDTH = 220;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 240;
 const RAIL_WIDTH = 48;

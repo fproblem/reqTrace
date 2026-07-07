@@ -6,7 +6,7 @@ import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { Select } from '../Select';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
-import { ChevronRightIcon, CrossIcon, PlusIcon, SearchIcon } from '../icons';
+import { ChevronRightIcon, CrossIcon, DocumentIcon, PlusIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
@@ -366,6 +366,8 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
 
   const hasAnyPages = projects.some(p => p.spaces.some(s => s.pages.length > 0));
   const isEmptySearch = isSearching && filteredProjects.length === 0;
+  // Поиску нечего искать без страниц (и пока дерево грузится).
+  const searchDisabled = loading || !hasAnyPages;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -382,69 +384,77 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
         padding: '0 10px',
         borderBottom: `1px solid ${colors.border}`,
       }}>
-        {/* Search — поле как у ввода ключа теста в панели выделения */}
-        {!loading && hasAnyPages ? (
-          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-            <span style={{
-              position: 'absolute',
-              left: '11px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: colors.textTertiary,
-              display: 'flex',
-              pointerEvents: 'none',
-            }}>
-              <SearchIcon size={13} />
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Найти страницу..."
+        {/* Search — поле как у ввода ключа теста в панели выделения. При
+            пустом дереве строка НЕ исчезает (пропадающее поле читалось как
+            баг вёрстки), а дизейблится с подсказкой, когда поиск заработает. */}
+        <div
+          style={{ flex: 1, minWidth: 0, position: 'relative' }}
+          title={searchDisabled && !loading
+            ? 'Поиск заработает, когда появятся страницы: подключите проект и добавьте первую страницу'
+            : undefined}
+        >
+          <span style={{
+            position: 'absolute',
+            left: '11px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: colors.textTertiary,
+            opacity: searchDisabled ? 0.55 : 1,
+            display: 'flex',
+            pointerEvents: 'none',
+          }}>
+            <SearchIcon size={13} />
+          </span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Найти страницу..."
+            disabled={searchDisabled}
+            style={{
+              width: '100%',
+              padding: '8px 30px 8px 30px',
+              lineHeight: '16px',
+              borderRadius: radii.md,
+              border: `1px solid ${colors.border}`,
+              fontSize: '13px',
+              fontFamily: 'inherit',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+              background: searchDisabled ? 'rgba(0, 0, 0, 0.03)' : colors.white,
+              color: searchDisabled ? colors.textTertiary : colors.textPrimary,
+              cursor: searchDisabled ? 'not-allowed' : 'text',
+            }}
+            onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
+            onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              title="Очистить поиск"
               style={{
-                width: '100%',
-                padding: '8px 30px 8px 30px',
-                lineHeight: '16px',
-                borderRadius: radii.md,
-                border: `1px solid ${colors.border}`,
-                fontSize: '13px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.15s',
+                position: 'absolute',
+                right: '9px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '18px',
+                height: '18px',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'none',
+                border: 'none',
+                borderRadius: radii.sm,
+                cursor: 'pointer',
+                color: colors.textTertiary,
               }}
-              onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
-              onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                title="Очистить поиск"
-                style={{
-                  position: 'absolute',
-                  right: '9px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '18px',
-                  height: '18px',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'none',
-                  border: 'none',
-                  borderRadius: radii.sm,
-                  cursor: 'pointer',
-                  color: colors.textTertiary,
-                }}
-              >
-                <CrossIcon size={12} />
-              </button>
-            )}
-          </div>
-        ) : (
-          <div style={{ flex: 1 }} />
-        )}
+            >
+              <CrossIcon size={12} />
+            </button>
+          )}
+        </div>
         <HeaderIconButton
           title="Синхронизировать структуру с Confluence (перенос/добавление страниц)"
           onClick={handleSyncTree}
@@ -525,11 +535,20 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           </div>
         ) : projects.length === 0 ? (
           <div style={{ padding: '20px 4px', textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.3 }}>📄</div>
+            <div style={{
+              display: 'flex', justifyContent: 'center', marginBottom: '8px',
+              color: colors.textTertiary, opacity: 0.55,
+            }}>
+              <DocumentIcon size={26} strokeWidth={1.6} />
+            </div>
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
               Нет проектов. Подключите проект в своём профиле — или попробуйте демо-страницу
             </div>
-            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+            {/* Колонкой: в ряд кнопки упирались друг в друга на узком дереве
+                и переносили текст по слову на строку. */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+            }}>
               <button
                 onClick={() => navigate('/settings')}
                 style={{
@@ -565,7 +584,12 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           </div>
         ) : !hasAnyPages && projects.every(p => !p.no_access) ? (
           <div style={{ padding: '20px 4px', textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.3 }}>📄</div>
+            <div style={{
+              display: 'flex', justifyContent: 'center', marginBottom: '8px',
+              color: colors.textTertiary, opacity: 0.55,
+            }}>
+              <DocumentIcon size={26} strokeWidth={1.6} />
+            </div>
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
               Нет страниц
             </div>

@@ -55,16 +55,23 @@ const artBar = (width: string, background?: string): React.CSSProperties => ({
   background: background ?? 'rgba(0, 0, 0, 0.07)',
 });
 
+// Все три иллюстрации растягиваются на высоту общего бокса (см. рендер):
+// картинки занимают одинаковое пространство в каждой карточке.
+const artRootStyle: React.CSSProperties = {
+  height: '100%',
+  boxSizing: 'border-box',
+  borderRadius: '10px',
+  border: `1px solid ${colors.border}`,
+  display: 'flex',
+  flexDirection: 'column',
+};
+
 // Шаг 1: окно браузера с зелёной шапкой и адресной строкой Confluence.
 const ArtConnect: React.FC = () => (
-  <div style={{
-    borderRadius: '10px',
-    border: `1px solid ${colors.border}`,
-    background: colors.background,
-    overflow: 'hidden',
-  }}>
+  <div style={{ ...artRootStyle, background: colors.background, overflow: 'hidden' }}>
     <div style={{
-      height: '16px',
+      height: '18px',
+      flexShrink: 0,
       background: `linear-gradient(90deg, ${colors.greenAccent}, ${colors.greenDark})`,
       display: 'flex',
       alignItems: 'center',
@@ -78,7 +85,10 @@ const ArtConnect: React.FC = () => (
         }} />
       ))}
     </div>
-    <div style={{ padding: '9px 10px' }}>
+    <div style={{
+      flex: 1, padding: '9px 10px',
+      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px',
+    }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '6px',
         background: colors.white,
@@ -97,6 +107,7 @@ const ArtConnect: React.FC = () => (
           https://confluence.company.ru
         </span>
       </div>
+      <span style={{ ...artBar('52%'), marginLeft: '4px' }} />
     </div>
   </div>
 );
@@ -104,14 +115,12 @@ const ArtConnect: React.FC = () => (
 // Шаг 2: дерево страниц (скелетон) с зелёной кнопкой «+».
 const ArtAddPage: React.FC = () => (
   <div style={{
+    ...artRootStyle,
     position: 'relative',
-    borderRadius: '10px',
-    border: `1px solid ${colors.border}`,
     background: colors.white,
-    padding: '11px 12px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '7px',
+    padding: '12px',
+    justifyContent: 'center',
+    gap: '8px',
   }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <span style={{
@@ -126,13 +135,16 @@ const ArtAddPage: React.FC = () => (
     <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
       <span style={artBar('48%')} />
     </div>
+    <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
+      <span style={artBar('56%')} />
+    </div>
     <span style={{
-      position: 'absolute', top: '9px', right: '10px',
-      width: '22px', height: '22px', borderRadius: '50%',
+      position: 'absolute', top: '10px', right: '10px',
+      width: '24px', height: '24px', borderRadius: '50%',
       background: colors.greenAccent, color: '#fff',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <PlusIcon size={12} strokeWidth={2.6} />
+      <PlusIcon size={13} strokeWidth={2.6} />
     </span>
   </div>
 );
@@ -140,16 +152,15 @@ const ArtAddPage: React.FC = () => (
 // Шаг 3: «требование» с зелёной подсветкой выделения и ключом теста.
 const ArtLinkTest: React.FC = () => (
   <div style={{
-    borderRadius: '10px',
-    border: `1px solid ${colors.border}`,
+    ...artRootStyle,
     background: colors.white,
-    padding: '11px 12px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '7px',
+    padding: '12px',
+    justifyContent: 'center',
+    gap: '8px',
   }}>
     <span style={artBar('82%')} />
     <span style={{ ...artBar('64%', colors.greenLight), height: '8px' }} />
+    <span style={artBar('72%')} />
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
       <span style={{
         padding: '2px 8px', borderRadius: '5px',
@@ -1214,35 +1225,38 @@ export const SettingsPage: React.FC = () => {
                 background: colors.white,
                 border: `1px solid ${colors.border}`,
                 borderRadius: radii.md,
-                padding: '16px 18px 14px',
+                padding: '18px 20px 16px',
                 display: 'flex',
                 flexDirection: 'column',
               }}>
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '8px',
+                  display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '9px',
                 }}>
                   <span style={{
-                    width: '22px', height: '22px', borderRadius: '50%',
+                    width: '24px', height: '24px', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0, background: ICON_TINTS.green.bg,
-                    color: ICON_TINTS.green.fg, fontSize: '12px', fontWeight: 700,
+                    color: ICON_TINTS.green.fg, fontSize: '12.5px', fontWeight: 700,
                   }}>
                     {i + 1}
                   </span>
                   <span style={{
-                    fontSize: '13.5px', fontWeight: 600, color: colors.textPrimary,
+                    fontSize: '14.5px', fontWeight: 600, color: colors.textPrimary,
                     lineHeight: 1.4,
                   }}>
                     {step.title}
                   </span>
                 </div>
-                <div style={{ fontSize: '12.5px', color: colors.textSecondary, lineHeight: 1.5 }}>
+                <div style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.55 }}>
                   {step.text}
                 </div>
-                {/* Иллюстрация прижата к низу: у карточек одной высоты
-                    картинки выравниваются в одну линию. */}
-                <div style={{ marginTop: 'auto', paddingTop: '14px' }}>
-                  {step.art}
+                {/* Иллюстрация прижата к низу, а её бокс фиксированной высоты:
+                    картинки во всех трёх карточках занимают одинаковое
+                    пространство и заканчиваются в одну линию. */}
+                <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+                  <div style={{ height: '96px' }}>
+                    {step.art}
+                  </div>
                 </div>
               </div>
             ))}

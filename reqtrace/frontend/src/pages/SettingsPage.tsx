@@ -1123,7 +1123,7 @@ export const SettingsPage: React.FC = () => {
   return (
     <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
-        Профиль и проекты
+        Профиль
       </h1>
 
       {/* Карточка профиля: экран называется «Профиль и проекты» — профиль
@@ -1137,7 +1137,7 @@ export const SettingsPage: React.FC = () => {
           border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
           padding: '16px 20px',
-          marginBottom: '28px',
+          marginBottom: '32px',
         }}>
           {user.avatar_url ? (
             <img
@@ -1185,21 +1185,16 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Заголовок секции с подводкой слева и действием справа: подводка
-          прижата к своему разделу, а не болтается под заголовком страницы. */}
+      {/* «Мои проекты» — раздел того же ранга, что «Профиль»: заголовок того
+          же кегля, действие в строке заголовка, подводка ниже на всю ширину
+          (в тесной колонке слева от кнопки она рвалась на короткие строки). */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        gap: '16px', marginBottom: '16px',
+        gap: '16px', marginBottom: '8px',
       }}>
-        <div style={{ minWidth: 0 }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
-            Мои проекты
-          </h2>
-          <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '4px 0 0' }}>
-            Проект объединяет страницы одного Confluence. В него вы ходите своими логином
-            и паролем — они хранятся зашифрованными и никому не видны.
-          </p>
-        </div>
+        <h2 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, margin: 0 }}>
+          Мои проекты
+        </h2>
         <button
           onClick={() => setShowConnect(true)}
           style={{
@@ -1219,6 +1214,14 @@ export const SettingsPage: React.FC = () => {
           Подключить проект
         </button>
       </div>
+
+      <p style={{
+        fontSize: '14px', color: colors.textSecondary,
+        margin: '0 0 18px', maxWidth: '72ch',
+      }}>
+        Проект объединяет страницы одного Confluence. В него вы ходите своими логином
+        и паролем — они хранятся зашифрованными и никому не видны.
+      </p>
 
       {joined.length === 0 ? (
         /* Онбординг пустого состояния. Кнопок здесь сознательно нет

@@ -39,6 +39,9 @@ const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
 // панели выделения (SidePanel): заливка 8%, рамка 20%, жирный 13px, иконка
 // StatusAlertIcon. Цвет — hex из tokens, суффиксы 15/33 — hex-альфа.
 const statusPlaqueStyle = (color: string): React.CSSProperties => ({
+  // Заполняет обёртку целиком: у соседних карточек одной высоты плашки
+  // тоже выходят одной высоты, даже если текст в одной из них длиннее.
+  flex: 1,
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
@@ -659,6 +662,11 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         borderRadius: radii.lg,
         padding: '18px 22px',
         boxShadow: shadows.card,
+        // Колонка: грид тянет соседние карточки на одну высоту, а свободное
+        // место внутри забирает статус-плашка (flex: 1 у её обёртки) — плашки
+        // соседних карточек выравниваются по высоте, ряд закрывается ровно.
+        display: 'flex',
+        flexDirection: 'column',
         transition: 'border-color 0.15s, box-shadow 0.15s',
         // Каждая карточка — stacking context (backdrop-filter): без подъёма
         // открытое меню пряталось бы под следующей по DOM карточкой.
@@ -793,7 +801,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       {/* Статус подключения — алерт-плашка, как статус привязки в панели
           выделения: единая стилистика статусов на разных экранах. Плашка
           «нет доступа» кликабельна и ведёт к обновлению кред (шеврон-намёк). */}
-      <div style={{ marginTop: '12px' }}>
+      <div style={{ flex: 1, display: 'flex', marginTop: '12px' }}>
         {status === 'ok' && !unreachable && (
           <div style={statusPlaqueStyle(colors.statusActive)}>
             <StatusAlertIcon kind="ok" />
@@ -818,7 +826,6 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
             title="Открыть обновление кред"
             style={{
               ...statusPlaqueStyle(colors.statusLost),
-              width: '100%',
               cursor: 'pointer',
               fontFamily: 'inherit',
               textAlign: 'left',

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
+import { StatusAlertIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 
@@ -24,31 +25,12 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   lost: { label: 'Утрачено', color: colors.statusLost },
 };
 
-// Иконка алерта статуса: залитый круг цвета статуса с белым знаком —
-// галочка (актуально), «!» (требует проверки), крестик (утрачено).
-const StatusAlertIcon: React.FC<{ status: string }> = ({ status }) => (
-  <svg width={16} height={16} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
-    <circle cx="12" cy="12" r="10" fill="currentColor" />
-    {status === 'active' && (
-      <polyline
-        points="8 12.5 11 15.5 16.5 9.5" fill="none" stroke="#fff"
-        strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
-      />
-    )}
-    {status === 'outdated' && (
-      <>
-        <line x1="12" y1="7" x2="12" y2="13" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
-        <circle cx="12" cy="16.6" r="1.3" fill="#fff" />
-      </>
-    )}
-    {status === 'lost' && (
-      <>
-        <line x1="9" y1="9" x2="15" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
-        <line x1="15" y1="9" x2="9" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
-      </>
-    )}
-  </svg>
-);
+// Знак статуса привязки → вид общего StatusAlertIcon (галочка/«!»/крестик).
+const STATUS_ICON_KIND: Record<string, 'ok' | 'warning' | 'error'> = {
+  active: 'ok',
+  outdated: 'warning',
+  lost: 'error',
+};
 
 // Корзина для карточки подтверждения удаления (feather trash-2).
 const TrashIcon: React.FC = () => (
@@ -435,7 +417,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
           }}
         >
-          <StatusAlertIcon status={statusLabels[highlight.status] ? highlight.status : 'active'} />
+          <StatusAlertIcon kind={STATUS_ICON_KIND[highlight.status] ?? 'ok'} />
           {statusInfo.label}
           {statusNavigable && (
             <span style={{

@@ -188,3 +188,32 @@ export const DropletIcon = makeIcon(
 export const SparkleIcon = makeIcon(
   <path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z" />
 );
+
+/** Залитый круг статуса с белым знаком: галочка (ok), «!» (warning), крестик
+ *  (error). Цвет круга — через `color` родителя. Единая иконка статус-плашек:
+ *  статус привязки в панели выделения, статус подключения на карточке проекта. */
+export const StatusAlertIcon: React.FC<{ kind: 'ok' | 'warning' | 'error'; size?: number }> = ({
+  kind, size = 16,
+}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10" fill="currentColor" />
+    {kind === 'ok' && (
+      <polyline
+        points="8 12.5 11 15.5 16.5 9.5" fill="none" stroke="#fff"
+        strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+      />
+    )}
+    {kind === 'warning' && (
+      <>
+        <line x1="12" y1="7" x2="12" y2="13" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <circle cx="12" cy="16.6" r="1.3" fill="#fff" />
+      </>
+    )}
+    {kind === 'error' && (
+      <>
+        <line x1="9" y1="9" x2="15" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <line x1="15" y1="9" x2="9" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+      </>
+    )}
+  </svg>
+);

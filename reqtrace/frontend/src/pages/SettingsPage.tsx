@@ -7,7 +7,7 @@ import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
-import { PlusIcon } from '../components/icons';
+import { PlusIcon, StatusAlertIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
@@ -34,6 +34,23 @@ const labelStyle: React.CSSProperties = {
 };
 
 const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
+
+// Плашка статуса подключения — один в один со статус-плашкой привязки в
+// панели выделения (SidePanel): заливка 8%, рамка 20%, жирный 13px, иконка
+// StatusAlertIcon. Цвет — hex из tokens, суффиксы 15/33 — hex-альфа.
+const statusPlaqueStyle = (color: string): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '10px 12px',
+  borderRadius: radii.md,
+  background: `${color}15`,
+  border: `1px solid ${color}33`,
+  color,
+  fontSize: '13px',
+  fontWeight: 600,
+  lineHeight: 1.35,
+});
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: '9px 22px',
@@ -773,38 +790,70 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         </div>
       </div>
 
-      {/* Статусная строка */}
-      <div style={{ marginTop: '8px', fontSize: '13px' }}>
-        {status === 'ok' && (
-          unreachable ? (
-            <span style={{ color: colors.statusOutdated }}>
-              ⚠ Confluence был недоступен при проверке
-              {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — проверьте
-              VPN или сеть
+      {/* Статус подключения — алерт-плашка, как статус привязки в панели
+          выделения: единая стилистика статусов на разных экранах. Плашка
+          «нет доступа» кликабельна и ведёт к обновлению кред (шеврон-намёк). */}
+      <div style={{ marginTop: '12px' }}>
+        {status === 'ok' && !unreachable && (
+          <div style={statusPlaqueStyle(colors.statusActive)}>
+            <StatusAlertIcon kind="ok" />
+            <span style={{ minWidth: 0 }}>
+              Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
             </span>
-          ) : (
-            <span style={{ color: colors.statusActive }}>
-              ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
+          </div>
+        )}
+        {status === 'ok' && unreachable && (
+          <div style={statusPlaqueStyle(colors.statusOutdated)}>
+            <StatusAlertIcon kind="warning" />
+            <span style={{ minWidth: 0 }}>
+              Confluence был недоступен
+              {project.last_check_at ? ` при проверке ${formatCheckedAt(project.last_check_at)}` : ''} —
+              проверьте VPN или сеть
             </span>
-          )
+          </div>
         )}
         {status === 'invalid' && (
-          <span style={{ color: colors.statusLost }}>
-            ✖ Нет доступа — Confluence отклонил логин/пароль.{' '}
-            <button
-              onClick={() => setModal('creds')}
-              style={{
-                border: 'none', background: 'transparent', color: colors.statusLost,
-                textDecoration: 'underline', cursor: 'pointer', fontSize: '13px',
-                padding: 0, fontFamily: 'inherit',
-              }}
-            >
+          <button
+            onClick={() => setModal('creds')}
+            title="Открыть обновление кред"
+            style={{
+              ...statusPlaqueStyle(colors.statusLost),
+              width: '100%',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              textAlign: 'left',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${colors.statusLost}26`; }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${colors.statusLost}15`; }}
+            onMouseDown={e => { e.currentTarget.style.background = `${colors.statusLost}33`; }}
+            onMouseUp={e => { e.currentTarget.style.background = `${colors.statusLost}26`; }}
+          >
+            <StatusAlertIcon kind="error" />
+            <span style={{ minWidth: 0 }}>Нет доступа — Confluence отклонил логин/пароль</span>
+            <span style={{
+              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px',
+              fontSize: '12px', fontWeight: 500, opacity: 0.85, flexShrink: 0,
+            }}>
               Обновить креды
-            </button>
-          </span>
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2.2}
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ display: 'block' }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          </button>
         )}
         {status === 'unchecked' && (
-          <span style={{ color: colors.textTertiary }}>○ Подключение не проверено</span>
+          <div style={statusPlaqueStyle(colors.textTertiary)}>
+            <svg width={16} height={16} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth={2} />
+            </svg>
+            Подключение не проверено
+          </div>
         )}
       </div>
 

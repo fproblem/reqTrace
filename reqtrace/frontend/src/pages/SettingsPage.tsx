@@ -353,19 +353,12 @@ function formatCheckedAt(iso: string | null): string {
   });
 }
 
-// Строка-факт о безопасности кред — у полей пароля в модалках: работает в
-// момент ввода, когда пользователь и сомневается, кто увидит его пароль.
+// Строка о безопасности кред — у полей пароля в модалках: работает в момент
+// ввода, когда пользователь и сомневается, кто увидит его пароль. Вид — как у
+// остальных подсказок под полями (12px tertiary, без иконок).
 const CredsSecurityNote: React.FC = () => (
-  <div style={{
-    display: 'flex', alignItems: 'flex-start', gap: '6px',
-    fontSize: '12px', color: colors.textTertiary, lineHeight: 1.5,
-  }}>
-    <span style={{ marginTop: '2px', display: 'flex', flexShrink: 0 }}>
-      <LockIcon size={12} />
-    </span>
-    <span>
-      Логин и пароль личные: хранятся зашифрованными и не видны даже участникам проекта
-    </span>
+  <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px', lineHeight: 1.5 }}>
+    Логин и пароль личные: хранятся зашифрованными и не видны даже участникам проекта
   </div>
 );
 
@@ -498,9 +491,7 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
                 <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
                   Подключение проверяется сразу — присоединиться без работающих кред нельзя
                 </div>
-                <div style={{ marginTop: '6px' }}>
-                  <CredsSecurityNote />
-                </div>
+                <CredsSecurityNote />
               </div>
             </>
           )
@@ -545,7 +536,7 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
                        placeholder="password" style={inputStyle} />
               </div>
             </div>
-            <div style={{ margin: '-6px 0 14px' }}>
+            <div style={{ margin: '-10px 0 14px' }}>
               <CredsSecurityNote />
             </div>
           </>
@@ -628,9 +619,7 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
           <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
             Оставьте пустым, чтобы сохранить текущий пароль
           </div>
-          <div style={{ marginTop: '6px' }}>
-            <CredsSecurityNote />
-          </div>
+          <CredsSecurityNote />
         </div>
 
         {error && (

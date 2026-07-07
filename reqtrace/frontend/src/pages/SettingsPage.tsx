@@ -1136,8 +1136,10 @@ export const SettingsPage: React.FC = () => {
           background: colors.cardBg,
           border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
+          // Разделы равные, но неразрывные: большой зазор между профилем и
+          // проектами читался пустотой, а не структурой.
           padding: '16px 20px',
-          marginBottom: '32px',
+          marginBottom: '20px',
         }}>
           {user.avatar_url ? (
             <img
@@ -1216,11 +1218,13 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       <p style={{
-        fontSize: '14px', color: colors.textSecondary,
-        margin: '0 0 18px', maxWidth: '72ch',
+        fontSize: '14px', color: colors.textSecondary, lineHeight: 1.6,
+        margin: '0 0 20px', maxWidth: '640px',
       }}>
-        Проект объединяет страницы одного Confluence. В него вы ходите своими логином
-        и паролем — они хранятся зашифрованными и никому не видны.
+        Проект объединяет страницы одного Confluence: команда видит общее дерево,
+        привязки и статусы покрытия. Подключение при этом личное — в Confluence вы
+        ходите своими логином и паролем, они хранятся зашифрованными и не видны
+        никому, даже участникам проекта.
       </p>
 
       {joined.length === 0 ? (

@@ -161,14 +161,19 @@ const ArtAddPage: React.FC = () => (
       {artTreeRow(artLeafSquare, '66%')}
       {artTreeRow(artLeafSquare, '44%')}
     </div>
+    {/* Мини-копия настоящей кнопки «Добавить страницу» из шапки дерева
+        (HeaderIconButton 34×34, radii.md): белый квадрат с рамкой и серым
+        плюсом, уменьшенный пропорционально. */}
     <span style={{
       position: 'absolute', top: '14px', right: '16px',
-      width: '26px', height: '26px', borderRadius: '50%',
-      background: colors.greenAccent, color: '#fff',
+      width: '26px', height: '26px', borderRadius: '10px',
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      color: colors.textSecondary,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 2px 6px rgba(77, 184, 48, 0.35)',
+      boxShadow: shadows.card,
     }}>
-      <PlusIcon size={13} strokeWidth={2.6} />
+      <PlusIcon size={13} />
     </span>
   </div>
 );

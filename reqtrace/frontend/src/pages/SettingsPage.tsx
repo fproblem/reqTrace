@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
@@ -14,6 +13,7 @@ import {
   ICON_TINTS,
   PencilIcon as PencilIconLib,
   PlusIcon,
+  SparkleIcon,
   StatusAlertIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -928,22 +928,6 @@ export const SettingsPage: React.FC = () => {
   const { showToast } = useToast();
   const { refreshTree } = useTreeRefresh();
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [demoBusy, setDemoBusy] = useState(false);
-
-  // Запасной путь онбординга: попробовать инструмент без Confluence — личная
-  // демо-страница (как в пустом состоянии дерева).
-  const handleAddDemo = async () => {
-    setDemoBusy(true);
-    try {
-      const page = await api.addDemoPage();
-      refreshTree();
-      navigate(`/pages/${page.id}`);
-    } catch (e: any) {
-      showToast('error', 'Не удалось добавить демо-страницу', e.message);
-      setDemoBusy(false);
-    }
-  };
 
   const load = async () => {
     try {
@@ -1090,21 +1074,31 @@ export const SettingsPage: React.FC = () => {
           <div style={{ fontSize: '15px', fontWeight: 700, color: colors.textPrimary, marginBottom: '4px' }}>
             С чего начать
           </div>
-          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '22px' }}>
-            Вы пока не подключены ни к одному проекту. Три шага — и покрытие требований под контролем.
+          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '18px' }}>
+            Три простых шага, чтобы начать отслеживать покрытие требований тестами.
           </div>
 
+          {/* Каждый шаг — отдельная карточка: визуально это три этапа, а не
+              один абзац. Кнопок здесь сознательно нет: «Подключить проект»
+              уже над разделом, демо-страница — в пустом дереве слева. */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-            gap: '20px',
-            marginBottom: '24px',
+            gap: '14px',
           }}>
             {ONBOARDING_STEPS.map((step, i) => (
-              <div key={step.title} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+              <div key={step.title} style={{
+                background: colors.white,
+                border: `1px solid ${colors.border}`,
+                borderRadius: radii.md,
+                padding: '16px 18px',
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'flex-start',
+              }}>
                 <div style={{
-                  width: '34px',
-                  height: '34px',
+                  width: '36px',
+                  height: '36px',
                   borderRadius: radii.md,
                   background: step.tint.bg,
                   border: `1px solid ${step.tint.border}`,
@@ -1118,10 +1112,22 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{
-                    fontSize: '13.5px', fontWeight: 600, color: colors.textPrimary,
-                    marginBottom: '4px', lineHeight: 1.4,
+                    display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px',
                   }}>
-                    {i + 1}. {step.title}
+                    <span style={{
+                      width: '20px', height: '20px', borderRadius: '6px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, background: step.tint.bg,
+                      color: step.tint.fg, fontSize: '11.5px', fontWeight: 700,
+                    }}>
+                      {i + 1}
+                    </span>
+                    <span style={{
+                      fontSize: '13.5px', fontWeight: 600, color: colors.textPrimary,
+                      lineHeight: 1.4,
+                    }}>
+                      {step.title}
+                    </span>
                   </div>
                   <div style={{ fontSize: '12.5px', color: colors.textSecondary, lineHeight: 1.5 }}>
                     {step.text}
@@ -1131,49 +1137,17 @@ export const SettingsPage: React.FC = () => {
             ))}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setShowConnect(true)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '9px 20px', borderRadius: radii.pill, border: 'none',
-                background: colors.greenAccent, color: '#fff',
-                fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-                fontFamily: 'inherit', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
-              onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
-              onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
-              onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
-            >
-              <PlusIcon size={15} strokeWidth={2.4} />
-              Подключить проект
-            </button>
-            <button
-              onClick={handleAddDemo}
-              disabled={demoBusy}
-              title="Личная демо-страница с примером требований — Confluence не нужен"
-              style={{
-                padding: '9px 18px', borderRadius: radii.pill,
-                border: `1px solid ${colors.border}`, background: 'transparent',
-                color: colors.textSecondary, fontSize: '14px', fontWeight: 500,
-                cursor: demoBusy ? 'default' : 'pointer', fontFamily: 'inherit',
-                opacity: demoBusy ? 0.6 : 1, transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => {
-                if (demoBusy) return;
-                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                e.currentTarget.style.borderColor = colors.borderHover;
-                e.currentTarget.style.color = colors.textPrimary;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = colors.border;
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
-            >
-              {demoBusy ? 'Добавляем демо…' : 'Попробовать на демо-странице'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '18px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '7px 14px', borderRadius: radii.pill,
+              background: ICON_TINTS.green.bg,
+              border: `1px solid ${ICON_TINTS.green.border}`,
+              color: colors.greenDark, fontSize: '12.5px', fontWeight: 500,
+            }}>
+              <SparkleIcon size={14} />
+              Готово! Дальше ReqTrace сам следит за изменениями страниц и актуальностью покрытия.
+            </div>
           </div>
         </div>
       ) : (

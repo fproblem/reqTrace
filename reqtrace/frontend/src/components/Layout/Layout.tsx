@@ -245,35 +245,59 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         position: 'relative',
         zIndex: 2,
       }}>
-        {/* Left: brand + version */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+        {/* Left: brand */}
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <img
             src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
             alt="ReqTrace"
             onClick={() => navigate('/')}
             style={{ height: '42px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
           />
-
-          {currentVersion && (
-            <button
-              onClick={() => setChangelogOpen(true)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                padding: '2px 8px', borderRadius: radii.pill,
-                border: `1px solid ${colors.border}`,
-                background: 'rgba(122, 224, 90, 0.08)',
-                color: colors.textSecondary, fontSize: '11px', fontWeight: 500,
-                cursor: 'pointer', flexShrink: 0,
-                fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = colors.greenAccent; e.currentTarget.style.color = colors.greenDark; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.textSecondary; }}
-            >
-              v{currentVersion}
-            </button>
-          )}
         </div>
+
+        {/* Чип версии — кнопка в общем стиле баров (34px, radii.md, тот же
+            ховер и пресс). Позиция абсолютная: левый край совпадает с левым
+            краем кнопки синхронизации дерева (width − 10px паддинга −
+            34px «+» − 6px гэпа − 34px синка = width − 84); на узком дереве
+            (или свёрнутой рельсе) прижимается к логотипу (187 ≈ 16px отступа +
+            161px ширины лого при высоте 42 + 10px зазора), чтобы не наезжать. */}
+        {currentVersion && (
+          <button
+            onClick={() => setChangelogOpen(true)}
+            title="История изменений"
+            style={{
+              position: 'absolute',
+              left: `${Math.max((showRail ? 0 : width) - 84, 187)}px`,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              height: '34px',
+              padding: '0 14px',
+              borderRadius: radii.md,
+              border: `1px solid ${colors.border}`,
+              background: colors.white,
+              color: colors.textSecondary,
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = colors.white;
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+          >
+            v{currentVersion}
+          </button>
+        )}
 
         {/* Right: профиль и выход. Аватар, имя и экран настроек «склеены» в
             один профиль-чип: настройки в ReqTrace — это ЛИЧНЫЕ подключения

@@ -10,6 +10,8 @@ import { useAuth } from '../auth/AuthContext';
 import {
   DocumentIcon,
   GearIcon,
+  IconBadge,
+  IconTint,
   ICON_TINTS,
   PencilIcon as PencilIconLib,
   PlusIcon,
@@ -50,25 +52,25 @@ const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
 
 const ONBOARDING_STEPS: {
   icon: React.ReactNode;
-  tint: { bg: string; border: string; fg: string };
+  tint: IconTint;
   title: string;
   text: string;
 }[] = [
   {
     icon: <GearIcon size={16} />,
-    tint: ICON_TINTS.green,
+    tint: 'green',
     title: 'Подключите проект',
     text: 'Адрес Confluence и ваши рабочие логин/пароль: присоединитесь к существующему проекту команды или создайте новый.',
   },
   {
     icon: <DocumentIcon size={16} />,
-    tint: ICON_TINTS.gray,
+    tint: 'gray',
     title: 'Добавьте страницу',
     text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
   },
   {
     icon: <PencilIconLib size={16} />,
-    tint: ICON_TINTS.amber,
+    tint: 'amber',
     title: 'Привяжите тесты',
     text: 'Выделите фрагмент требования и укажите ключ теста из Jira. ReqTrace проследит, чтобы покрытие не устаревало.',
   },
@@ -1096,20 +1098,9 @@ export const SettingsPage: React.FC = () => {
                 gap: '12px',
                 alignItems: 'flex-start',
               }}>
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: radii.md,
-                  background: step.tint.bg,
-                  border: `1px solid ${step.tint.border}`,
-                  color: step.tint.fg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
+                <IconBadge tint={step.tint} size={36}>
                   {step.icon}
-                </div>
+                </IconBadge>
                 <div style={{ minWidth: 0 }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px',
@@ -1117,8 +1108,8 @@ export const SettingsPage: React.FC = () => {
                     <span style={{
                       width: '20px', height: '20px', borderRadius: '6px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, background: step.tint.bg,
-                      color: step.tint.fg, fontSize: '11.5px', fontWeight: 700,
+                      flexShrink: 0, background: ICON_TINTS[step.tint].bg,
+                      color: ICON_TINTS[step.tint].fg, fontSize: '11.5px', fontWeight: 700,
                     }}>
                       {i + 1}
                     </span>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { colors, radii } from '../styles/tokens';
 import {
-  IconProps, IconTint, ICON_TINTS,
+  IconProps, IconTint, IconBadge,
   BellIcon, BranchIcon, ChevronsVerticalIcon, ClockIcon, DocumentIcon,
   DropletIcon, FlagIcon, GearIcon, ImageIcon, KeyboardIcon, LayoutIcon, LinkIcon,
   LockIcon, PanelIcon, PencilIcon, PlusIcon, SearchIcon, ShieldIcon, SparkleIcon,
@@ -78,26 +78,14 @@ const CHANGE_ICONS: Record<string, { tint: IconTint; Icon: React.FC<IconProps> }
 // Соединительная линия рисуется между значками, у последней записи её нет.
 const ChangeRow: React.FC<{ item: ChangeItem; isLast: boolean }> = ({ item, isLast }) => {
   const iconDef = item.icon ? CHANGE_ICONS[item.icon] : undefined;
-  const tint = iconDef ? ICON_TINTS[iconDef.tint] : undefined;
 
   return (
     <div style={{ display: 'flex', gap: '14px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '30px' }}>
-        {iconDef && tint ? (
-          <div style={{
-            width: '30px',
-            height: '30px',
-            borderRadius: radii.md,
-            background: tint.bg,
-            border: `1px solid ${tint.border}`,
-            color: tint.fg,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}>
+        {iconDef ? (
+          <IconBadge tint={iconDef.tint} size={30}>
             <iconDef.Icon size={15} />
-          </div>
+          </IconBadge>
         ) : (
           <div style={{
             width: '7px',

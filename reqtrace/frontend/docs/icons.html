@@ -164,12 +164,25 @@
 
   <div id="sections"></div>
 
+  <section>
+    <div class="group-label">Оттенки плашек — любой значок в любом из четырёх</div>
+    <div id="tints-demo" style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;"></div>
+    <p class="lede" style="margin-top: 10px;">
+      Оттенок не «прибит» к иконке: в карточках выше показан цвет, назначенный записям
+      «Истории изменений», но через <code>IconBadge</code> любую иконку можно взять в любом
+      фирменном оттенке — для модалок, тостов и новых экранов.
+    </p>
+  </section>
+
   <div class="usage">
     <h2>Как пользоваться</h2>
-    <pre>import { TrashIcon, SearchIcon } from '../components/icons';
+    <pre>import { TrashIcon, SearchIcon, IconBadge, ClockIcon } from '../components/icons';
 
 &lt;TrashIcon size={14} /&gt;
-&lt;SearchIcon size={13} strokeWidth={1.8} style={{ color: colors.textTertiary }} /&gt;</pre>
+&lt;SearchIcon size={13} strokeWidth={1.8} style={{ color: colors.textTertiary }} /&gt;
+
+// Значок в пастельной плашке — любой оттенок из ICON_TINTS (green/amber/red/gray)
+&lt;IconBadge tint="amber" size={34}&gt;&lt;ClockIcon size={15} /&gt;&lt;/IconBadge&gt;</pre>
     <p class="import-note">
       Цвет наследуется от <code>color</code> родителя; у всех по умолчанию
       <code>display: block</code> и <code>flexShrink: 0</code>. Иконки с поведением живут отдельно:
@@ -278,6 +291,15 @@
         `).join('')}
       </div>
     </section>
+  `).join('');
+
+  // Демо оттенков: один и тот же значок (флажок) во всех четырёх плашках.
+  const flagSvg = ICONS.find(i => i.name === 'FlagIcon').svg;
+  document.getElementById('tints-demo').innerHTML = ['green', 'amber', 'red', 'gray'].map(tint => `
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="bubble ${tint}">${iconSvg(flagSvg, 18)}</div>
+      <span class="chip-key">${tint}</span>
+    </div>
   `).join('');
 </script>
 </body>

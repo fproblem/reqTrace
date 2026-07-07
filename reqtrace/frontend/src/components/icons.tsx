@@ -35,6 +35,44 @@ export const ICON_TINTS = {
 
 export type IconTint = keyof typeof ICON_TINTS;
 
+/** Иконка в пастельной плашке фирменного оттенка. Любая иконка библиотеки
+ * может быть ЛЮБОГО из четырёх оттенков — цвет не «прибит» к иконке, а
+ * задаётся по месту использования:
+ *
+ *   <IconBadge tint="amber"><ClockIcon size={16} /></IconBadge>
+ *
+ * Используется в «Истории изменений» и онбординге профиля; подойдёт для
+ * будущих модалок, тостов и пустых состояний. Иконка внутри наследует цвет
+ * оттенка через currentColor. */
+export const IconBadge: React.FC<{
+  tint: IconTint;
+  /** Сторона плашки; иконке внутри задавайте size отдельно (обычно ~44%). */
+  size?: number;
+  radius?: number;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}> = ({ tint, size = 34, radius = 14, style, children }) => {
+  const t = ICON_TINTS[tint];
+  return (
+    <span style={{
+      width: `${size}px`,
+      height: `${size}px`,
+      borderRadius: `${radius}px`,
+      background: t.bg,
+      border: `1px solid ${t.border}`,
+      color: t.fg,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      boxSizing: 'border-box',
+      ...style,
+    }}>
+      {children}
+    </span>
+  );
+};
+
 function makeIcon(content: React.ReactNode): React.FC<IconProps> {
   return ({ size = 16, strokeWidth = 2, style }) => (
     <svg

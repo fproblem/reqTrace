@@ -629,7 +629,7 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
   const isExpanded = isSearching || expandState[projectKey] === true;
 
   if (project.no_access) {
-    // Замок: креды невалидны — содержимое закрыто, клик ведёт в настройки.
+    // Замок: креды невалидны — содержимое закрыто, клик ведёт в профиль.
     return (
       <div style={{ marginBottom: '4px' }}>
         <button

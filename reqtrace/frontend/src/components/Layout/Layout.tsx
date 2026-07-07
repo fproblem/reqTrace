@@ -279,13 +279,24 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               title={`Профиль и проекты${user.email ? `\n${user.email}` : ''}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '4px 12px 4px 5px', borderRadius: radii.pill,
-                border: 'none',
-                background: isSettings ? colors.greenLight : 'transparent',
+                height: '34px', boxSizing: 'border-box',
+                padding: '0 12px 0 4px', borderRadius: radii.pill,
+                // Рамка и белый фон — как у остальных кнопок баров: без них
+                // чип читался просто как имя, а не как кнопка.
+                border: `1px solid ${isSettings ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
+                background: isSettings ? colors.greenLight : colors.white,
                 cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { if (!isSettings) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-              onMouseLeave={e => { if (!isSettings) e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => {
+                if (isSettings) return;
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+              }}
+              onMouseLeave={e => {
+                if (isSettings) return;
+                e.currentTarget.style.background = colors.white;
+                e.currentTarget.style.borderColor = colors.border;
+              }}
             >
               {user.avatar_url ? (
                 <img

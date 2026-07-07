@@ -637,7 +637,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     </a>
                   ) : (
                     <span
-                      title="Укажите адрес Jira в настройках проекта, чтобы ключи тестов стали ссылками"
+                      title="Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками"
                       style={{
                         color: colors.textPrimary,
                         fontWeight: 500,

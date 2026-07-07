@@ -58,7 +58,7 @@ function humanizeError(status: number, detail: string): string {
     return 'Связь с тестом не найдена. Возможно, она была удалена';
   }
   if (status === 502 && detailLower.includes('failed to fetch')) {
-    return 'Не удалось подключиться к Confluence. Проверьте адрес сервера и креды проекта в настройках';
+    return 'Не удалось подключиться к Confluence. Проверьте адрес сервера и креды проекта в профиле';
   }
 
   // Generic fallbacks by status code

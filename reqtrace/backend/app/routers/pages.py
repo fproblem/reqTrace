@@ -195,7 +195,7 @@ async def add_page(
     elif not candidates:
         raise HTTPException(
             status_code=400,
-            detail="Не найден проект с этим Confluence-сервером. Подключите проект в настройках",
+            detail="Не найден проект с этим Confluence-сервером. Подключите проект в профиле",
         )
     else:
         raise HTTPException(
@@ -206,7 +206,7 @@ async def add_page(
     if cred.status != "ok":
         raise HTTPException(
             status_code=403,
-            detail=f"Нет доступа к проекту «{project.name}». Проверьте креды в настройках",
+            detail=f"Нет доступа к проекту «{project.name}». Проверьте креды в профиле",
         )
 
     existing_result = await db.execute(

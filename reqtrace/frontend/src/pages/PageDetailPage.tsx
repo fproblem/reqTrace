@@ -10,6 +10,8 @@ import { DiffView } from '../components/PageView/DiffView';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
+import { useTreeRefresh } from '../hooks/useTreeRefresh';
+import { computeStatusSync } from '../components/PageView/statusSync';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -49,6 +51,11 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
   const { showToast, showUndoToast, dismissToast } = useToast();
+  // Точки статусов в дереве считаются по привязкам страницы. Само дерево
+  // перечитывается только при навигации — после действий, меняющих статусы
+  // или состав привязок (актуализация, удаление, авто-«Утрачено»), его нужно
+  // попросить обновиться явно, иначе индикатор врёт до следующего перехода.
+  const { refreshTree } = useTreeRefresh();
 
   const [page, setPage] = useState<PageDetail | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -115,6 +122,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setSelectedHighlight(null);
     setShowSelectionPopup(false);
     setRenderReport(null);
+    // Контейнер контента прошлой страницы больше не годится: если по пути
+    // ContentRenderer размонтировался (виртуальная страница, «Изменения»),
+    // в состоянии остаётся оторванный div со старым контентом, и слой успевал
+    // прогнать по нему привязки НОВОЙ страницы — «ничего не отрисовалось» →
+    // массовое ложное «Утрачено» → возврат в «Требует проверки» (см. журнал
+    // бэка: пачки mark-lost/unmark-lost). Новый контейнер придёт из
+    // onContentReady, когда контент реально окажется в DOM.
+    setContentContainer(null);
   }, [pageId]);
 
   // Меню действий (троеточие) закрывается по клику вне него и по Escape.
@@ -147,6 +162,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     try {
       const refreshed = await api.refreshPage(pageId);
       const newHighlights = (await loadPage()) ?? [];
+      refreshTree();
 
       const changed = (refreshed.current_snapshot?.id ?? null) !== prevSnapshotId;
       if (!changed) {
@@ -318,6 +334,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         const refreshed = await api.listHighlights(pageId);
         setHighlights(refreshed);
         setSelectedHighlight(refreshed.find(h => h.id === highlightId) || null);
+        refreshTree();
         // Автоперехода к следующему «Требует проверки» здесь сознательно НЕТ:
         // пробовали (c21b3dfc) — на тесте прыжок панели дезориентировал.
         // Обход по статусу остаётся ручным (плашка статуса/чипы), а завершение
@@ -360,10 +377,12 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
     const commit = () => {
       pendingDeleteRef.current = null;
-      api.deleteHighlight(highlightId).catch((e: any) => {
-        showToast('error', 'Не удалось удалить привязку', e.message);
-        void restore();
-      });
+      api.deleteHighlight(highlightId)
+        .then(() => refreshTree())
+        .catch((e: any) => {
+          showToast('error', 'Не удалось удалить привязку', e.message);
+          void restore();
+        });
     };
 
     // Без message: про удаление связей с тестами уже предупредила карточка
@@ -521,6 +540,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         startCharOffset: null, endCharOffset: null,
       };
       await loadPage();
+      refreshTree();
       // Сразу открываем боковую панель на созданной привязке: кнопка обещает
       // «Привязать тесты», поэтому пользователь должен сразу получить форму
       // привязки, а не искать бледную метку «Требует проверки» на странице.
@@ -544,16 +564,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // Статус пишем в БД best-effort (эндпоинты идемпотентны), локально — сразу.
   useEffect(() => {
     if (!renderReport) return;
-    const { rendered, considered } = renderReport;
-
-    const toLose: string[] = [];
-    const toRecover: string[] = [];
-    highlights.forEach(h => {
-      if (!considered.has(h.id)) return;
-      const isRendered = rendered.has(h.id);
-      if (!isRendered && h.status !== 'lost') toLose.push(h.id);
-      else if (isRendered && h.status === 'lost') toRecover.push(h.id);
-    });
+    const { toLose, toRecover } = computeStatusSync(highlights, renderReport);
     if (toLose.length === 0 && toRecover.length === 0) return;
 
     const apply = (h: Highlight): Highlight => {
@@ -564,9 +575,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setHighlights(prev => prev.map(apply));
     setSelectedHighlight(prev => (prev ? apply(prev) : prev));
 
-    toLose.forEach(id => { api.markHighlightLost(id).catch(() => {}); });
-    toRecover.forEach(id => { api.unmarkHighlightLost(id).catch(() => {}); });
-  }, [renderReport, highlights]);
+    const ops = [
+      ...toLose.map(id => api.markHighlightLost(id).catch(() => {})),
+      ...toRecover.map(id => api.unmarkHighlightLost(id).catch(() => {})),
+    ];
+    // Дерево перечитываем после того, как сервер записал новые статусы, —
+    // иначе оно перечитает старые.
+    void Promise.all(ops).then(() => refreshTree());
+  }, [renderReport, highlights, refreshTree]);
 
   if (loading) {
     return (

@@ -144,7 +144,7 @@ async def create_project(
     if dup_project:
         raise HTTPException(
             status_code=409,
-            detail=f"Этот Confluence уже подключён в проекте «{dup_project.name}» — присоединитесь к нему в настройках",
+            detail=f"Этот Confluence уже подключён в проекте «{dup_project.name}» — присоединитесь к нему в профиле",
         )
 
     await _check_live(ConfluenceConnection(
@@ -196,7 +196,7 @@ async def update_project(
     if cred is None:
         raise HTTPException(
             status_code=403,
-            detail=f"Нет доступа к проекту «{project.name}». Подключитесь к нему в настройках",
+            detail=f"Нет доступа к проекту «{project.name}». Подключитесь к нему в профиле",
         )
 
     if data.name is not None:
@@ -348,7 +348,7 @@ async def delete_project(
     if cred is None:
         raise HTTPException(
             status_code=403,
-            detail=f"Нет доступа к проекту «{project.name}». Подключитесь к нему в настройках",
+            detail=f"Нет доступа к проекту «{project.name}». Подключитесь к нему в профиле",
         )
 
     page_ids_q = select(Page.id).where(Page.project_id == project.id)

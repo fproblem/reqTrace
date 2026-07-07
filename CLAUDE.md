@@ -102,22 +102,27 @@ cd reqtrace && docker compose run --rm --no-deps backend python -m unittest disc
 «прыгающей» подсветкой (привязка переезжала на похожий чужой текст) и неверным
 переходом в «Утрачено».
 
-Чистая логика сопоставления вынесена в
-`reqtrace/frontend/src/components/PageView/highlightMatching.ts` (без DOM/React) и
-покрыта юнит-тестами `highlightMatching.test.ts`.
+Хрупкая логика вынесена в тестируемые модули (`frontend/src/components/PageView/`):
+- `highlightMatching.ts` — чистое сопоставление текста (без DOM/React),
+  тесты `highlightMatching.test.ts`;
+- `HighlightLayer.tsx` → экспорт `applyHighlightsToContainer` — полный прогон
+  размещения по DOM, тесты `highlightPlacement.test.ts` (jsdom; в т.ч.
+  регрессия v1.5.7: оторванный контейнер не даёт отчёта);
+- `statusSync.ts` — решение о переходах в/из «Утрачено» по отчёту слоя,
+  тесты `statusSync.test.ts`.
 
 ⚠ **Обязательно прогоняй эти тесты после ЛЮБЫХ правок, затрагивающих размещение
-подсветок** — `highlightMatching.ts`, `HighlightLayer.tsx`, а также логику
-статусов/«Утрачено» в `pages/PageDetailPage.tsx`. Если меняешь поведение
-осознанно — обнови и тесты: они фиксируют правило, что привязка показывается
-только при точном совпадении текста (различия в пробелах/вёрстке и одна вставка
-внутрь выделения допускаются), а правка/удаление текста → «Утрачено».
+подсветок** — `highlightMatching.ts`, `HighlightLayer.tsx`, `statusSync.ts`, а
+также логику статусов/«Утрачено» в `pages/PageDetailPage.tsx`. Если меняешь
+поведение осознанно — обнови и тесты: они фиксируют правило, что привязка
+показывается только при точном совпадении текста (различия в пробелах/вёрстке и
+одна вставка внутрь выделения допускаются), а правка/удаление текста → «Утрачено».
 
 ```bash
 cd reqtrace/frontend
-CI=true npx react-scripts test --watchAll=false src/components/PageView/highlightMatching.test.ts
-# все тесты:   CI=true npm test
-# типизация:   npx tsc --noEmit
+CI=true npm test          # все фронтовые тесты (matching, placement, statusSync, baseUrl)
+# точечно:    CI=true npx react-scripts test --watchAll=false src/components/PageView
+# типизация:  npx tsc --noEmit
 ```
 
 Серверная половина этой же логики — `backend/app/services/highlight_projection.py`

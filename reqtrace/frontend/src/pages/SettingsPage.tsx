@@ -6,6 +6,14 @@ import { RefreshIcon } from '../components/RefreshIcon';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
+import { useAuth } from '../auth/AuthContext';
+import {
+  ICON_TINTS,
+  LockIcon,
+  PlusIcon,
+  SparkleIcon,
+  StatusAlertIcon,
+} from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
@@ -32,6 +40,217 @@ const labelStyle: React.CSSProperties = {
 };
 
 const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
+
+// --- Онбординг пустого состояния: три шага до первого покрытого требования ---
+// Показывается только пока пользователь не подключён ни к одному проекту.
+// У каждого шага — мини-иллюстрация сути действия (чистый CSS/SVG, фирменные
+// зелёный и серый): окно браузера с адресом Confluence, список страниц с «+»,
+// выделенное «требование» с ключом теста.
+
+// Серая скелетон-полоска «текста».
+const artBar = (width: string, background?: string): React.CSSProperties => ({
+  height: '6px',
+  width,
+  borderRadius: '4px',
+  background: background ?? 'rgba(0, 0, 0, 0.07)',
+});
+
+// Все три иллюстрации растягиваются на высоту общего бокса (см. рендер):
+// картинки занимают одинаковое пространство в каждой карточке.
+const artRootStyle: React.CSSProperties = {
+  height: '100%',
+  boxSizing: 'border-box',
+  borderRadius: '10px',
+  border: `1px solid ${colors.border}`,
+  display: 'flex',
+  flexDirection: 'column',
+};
+
+// Шаг 1: окно браузера с зелёной шапкой и адресной строкой Confluence.
+const ArtConnect: React.FC = () => (
+  <div style={{ ...artRootStyle, background: colors.background, overflow: 'hidden' }}>
+    <div style={{
+      height: '18px',
+      flexShrink: 0,
+      background: `linear-gradient(90deg, ${colors.greenAccent}, ${colors.greenDark})`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '0 8px',
+    }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          width: '5px', height: '5px', borderRadius: '50%',
+          background: 'rgba(255, 255, 255, 0.65)',
+        }} />
+      ))}
+    </div>
+    <div style={{
+      flex: 1, padding: '9px 10px',
+      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        background: colors.white,
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.pill,
+        padding: '5px 10px',
+        color: colors.textTertiary,
+      }}>
+        <LockIcon size={11} />
+        <span style={{
+          fontSize: '10.5px',
+          color: colors.textSecondary,
+          fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          https://confluence.company.ru
+        </span>
+      </div>
+      <span style={{ ...artBar('52%'), marginLeft: '4px' }} />
+    </div>
+  </div>
+);
+
+// Шаг 2: белый «лист» дерева страниц на бледно-зелёной подложке, обрезанный
+// нижним краем (как будто список продолжается), с зелёной кнопкой «+» поверх.
+// Строка дерева: маркер (точка статуса у первой, квадратики-листы у прочих) + текст.
+const artTreeRow = (marker: React.ReactNode, width: string) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+    {marker}
+    <span style={artBar(width)} />
+  </div>
+);
+
+const artLeafSquare = (
+  <span style={{
+    width: '8px', height: '8px', borderRadius: '2.5px',
+    background: 'rgba(0, 0, 0, 0.08)', flexShrink: 0,
+  }} />
+);
+
+const ArtAddPage: React.FC = () => (
+  <div style={{
+    ...artRootStyle,
+    position: 'relative',
+    background: ICON_TINTS.green.bg,
+    border: `1px solid ${ICON_TINTS.green.border}`,
+    padding: '10px 12px 0',
+    overflow: 'hidden',
+  }}>
+    <div style={{
+      flex: 1,
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderBottom: 'none',
+      borderRadius: '8px 8px 0 0',
+      padding: '10px 12px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+    }}>
+      {artTreeRow(
+        <span style={{
+          width: '7px', height: '7px', borderRadius: '50%',
+          background: colors.statusOutdated, flexShrink: 0,
+        }} />,
+        '46%',
+      )}
+      {artTreeRow(artLeafSquare, '62%')}
+      {artTreeRow(artLeafSquare, '54%')}
+      {artTreeRow(artLeafSquare, '66%')}
+      {artTreeRow(artLeafSquare, '44%')}
+    </div>
+    {/* Мини-копия настоящей кнопки «Добавить страницу» из шапки дерева
+        (HeaderIconButton 34×34, radii.md): белый квадрат с рамкой и серым
+        плюсом, уменьшенный пропорционально. */}
+    <span style={{
+      position: 'absolute', top: '14px', right: '16px',
+      width: '26px', height: '26px', borderRadius: '10px',
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      color: colors.textSecondary,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: shadows.card,
+    }}>
+      <PlusIcon size={13} />
+    </span>
+  </div>
+);
+
+// Шаг 3: «требование» с зелёной подсветкой выделения и ключом теста.
+const ArtLinkTest: React.FC = () => (
+  <div style={{
+    ...artRootStyle,
+    background: colors.white,
+    padding: '12px',
+    justifyContent: 'center',
+    gap: '8px',
+  }}>
+    <span style={artBar('82%')} />
+    <span style={{ ...artBar('64%', colors.greenLight), height: '8px' }} />
+    <span style={artBar('72%')} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+      <span style={{
+        padding: '2px 8px', borderRadius: '5px',
+        background: ICON_TINTS.green.bg,
+        border: `1px solid ${ICON_TINTS.green.border}`,
+        color: ICON_TINTS.green.fg,
+        fontSize: '10.5px', fontWeight: 600,
+        fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      }}>
+        PROJECT-123
+      </span>
+      <span style={{ color: colors.statusActive, display: 'flex' }}>
+        <StatusAlertIcon kind="ok" size={14} />
+      </span>
+    </div>
+  </div>
+);
+
+const ONBOARDING_STEPS: {
+  title: string;
+  text: string;
+  art: React.ReactNode;
+}[] = [
+  {
+    title: 'Подключите проект',
+    // Адрес Confluence упоминается только для создания: при присоединении к
+    // существующему проекту нужны лишь свои логин и пароль.
+    text: 'Присоединитесь к проекту команды своими логином и паролем — или создайте новый, указав адрес Confluence.',
+    art: <ArtConnect />,
+  },
+  {
+    title: 'Добавьте страницу',
+    text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
+    art: <ArtAddPage />,
+  },
+  {
+    title: 'Привяжите тесты',
+    text: 'Выделите фрагмент требования, нажмите «Привязать тесты» и укажите ключ теста из Jira. Дальше ReqTrace проследит, чтобы покрытие не устаревало.',
+    art: <ArtLinkTest />,
+  },
+];
+
+// Плашка статуса подключения — один в один со статус-плашкой привязки в
+// панели выделения (SidePanel): заливка 8%, рамка 20%, жирный 13px, иконка
+// StatusAlertIcon. Цвет — hex из tokens, суффиксы 15/33 — hex-альфа.
+const statusPlaqueStyle = (color: string): React.CSSProperties => ({
+  // Заполняет обёртку целиком: у соседних карточек одной высоты плашки
+  // тоже выходят одной высоты, даже если текст в одной из них длиннее.
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '10px 12px',
+  borderRadius: radii.md,
+  background: `${color}15`,
+  border: `1px solid ${color}33`,
+  color,
+  fontSize: '13px',
+  fontWeight: 600,
+  lineHeight: 1.35,
+});
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: '9px 22px',
@@ -133,6 +352,26 @@ function formatCheckedAt(iso: string | null): string {
     hour: '2-digit', minute: '2-digit',
   });
 }
+
+// Строка о безопасности кред — у полей пароля в модалках: работает в момент
+// ввода, когда пользователь и сомневается, кто увидит его пароль. Типографика —
+// один в один с остальными подсказками под полями (12px tertiary, дефолтный
+// межстрочный); замок из библиотеки центрован по высоте всего текста.
+const CredsSecurityNote: React.FC = () => (
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '12px',
+    color: colors.textTertiary,
+    marginTop: '4px',
+  }}>
+    <LockIcon size={12} />
+    <span>
+      Логин и пароль личные: хранятся зашифрованными и не видны даже участникам проекта
+    </span>
+  </div>
+);
 
 // --- Модал «Подключить проект»: присоединиться / создать новый ---
 
@@ -263,6 +502,7 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
                 <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
                   Подключение проверяется сразу — присоединиться без работающих кред нельзя
                 </div>
+                <CredsSecurityNote />
               </div>
             </>
           )
@@ -277,6 +517,10 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
               <label style={labelStyle}>Confluence URL</label>
               <input type="text" value={confUrl} onChange={e => setConfUrl(e.target.value)}
                      placeholder="https://confluence.company.com" style={inputStyle} />
+              <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px', lineHeight: 1.5 }}>
+                Проект объединяет страницы одного Confluence — команда увидит общее дерево,
+                привязки и статусы покрытия
+              </div>
               {sameServer.length > 0 && (
                 <div style={{ fontSize: '12px', color: colors.statusLost, marginTop: '4px', lineHeight: 1.5 }}>
                   Этот Confluence уже подключён: {sameServer.map(p => `«${p.name}»`).join(', ')}.
@@ -302,6 +546,9 @@ const ConnectProjectModal: React.FC<ConnectModalProps> = ({ available, existing,
                 <input type="password" value={createPass} onChange={e => setCreatePass(e.target.value)}
                        placeholder="password" style={inputStyle} />
               </div>
+            </div>
+            <div style={{ margin: '-10px 0 14px' }}>
+              <CredsSecurityNote />
             </div>
           </>
         )}
@@ -383,6 +630,7 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
           <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
             Оставьте пустым, чтобы сохранить текущий пароль
           </div>
+          <CredsSecurityNote />
         </div>
 
         {error && (
@@ -640,6 +888,11 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         borderRadius: radii.lg,
         padding: '18px 22px',
         boxShadow: shadows.card,
+        // Колонка: грид тянет соседние карточки на одну высоту, а свободное
+        // место внутри забирает статус-плашка (flex: 1 у её обёртки) — плашки
+        // соседних карточек выравниваются по высоте, ряд закрывается ровно.
+        display: 'flex',
+        flexDirection: 'column',
         transition: 'border-color 0.15s, box-shadow 0.15s',
         // Каждая карточка — stacking context (backdrop-filter): без подъёма
         // открытое меню пряталось бы под следующей по DOM карточкой.
@@ -771,38 +1024,69 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         </div>
       </div>
 
-      {/* Статусная строка */}
-      <div style={{ marginTop: '8px', fontSize: '13px' }}>
-        {status === 'ok' && (
-          unreachable ? (
-            <span style={{ color: colors.statusOutdated }}>
-              ⚠ Confluence был недоступен при проверке
-              {project.last_check_at ? ` ${formatCheckedAt(project.last_check_at)}` : ''} — проверьте
-              VPN или сеть
+      {/* Статус подключения — алерт-плашка, как статус привязки в панели
+          выделения: единая стилистика статусов на разных экранах. Плашка
+          «нет доступа» кликабельна и ведёт к обновлению кред (шеврон-намёк). */}
+      <div style={{ flex: 1, display: 'flex', marginTop: '12px' }}>
+        {status === 'ok' && !unreachable && (
+          <div style={statusPlaqueStyle(colors.statusActive)}>
+            <StatusAlertIcon kind="ok" />
+            <span style={{ minWidth: 0 }}>
+              Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
             </span>
-          ) : (
-            <span style={{ color: colors.statusActive }}>
-              ● Подключено{project.last_check_at ? ` · проверено ${formatCheckedAt(project.last_check_at)}` : ''}
+          </div>
+        )}
+        {status === 'ok' && unreachable && (
+          <div style={statusPlaqueStyle(colors.statusOutdated)}>
+            <StatusAlertIcon kind="warning" />
+            <span style={{ minWidth: 0 }}>
+              Confluence был недоступен
+              {project.last_check_at ? ` при проверке ${formatCheckedAt(project.last_check_at)}` : ''} —
+              проверьте VPN или сеть
             </span>
-          )
+          </div>
         )}
         {status === 'invalid' && (
-          <span style={{ color: colors.statusLost }}>
-            ✖ Нет доступа — Confluence отклонил логин/пароль.{' '}
-            <button
-              onClick={() => setModal('creds')}
-              style={{
-                border: 'none', background: 'transparent', color: colors.statusLost,
-                textDecoration: 'underline', cursor: 'pointer', fontSize: '13px',
-                padding: 0, fontFamily: 'inherit',
-              }}
-            >
+          <button
+            onClick={() => setModal('creds')}
+            title="Открыть обновление кред"
+            style={{
+              ...statusPlaqueStyle(colors.statusLost),
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              textAlign: 'left',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${colors.statusLost}26`; }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${colors.statusLost}15`; }}
+            onMouseDown={e => { e.currentTarget.style.background = `${colors.statusLost}33`; }}
+            onMouseUp={e => { e.currentTarget.style.background = `${colors.statusLost}26`; }}
+          >
+            <StatusAlertIcon kind="error" />
+            <span style={{ minWidth: 0 }}>Нет доступа — Confluence отклонил логин/пароль</span>
+            <span style={{
+              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px',
+              fontSize: '12px', fontWeight: 500, opacity: 0.85, flexShrink: 0,
+            }}>
               Обновить креды
-            </button>
-          </span>
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2.2}
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ display: 'block' }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          </button>
         )}
         {status === 'unchecked' && (
-          <span style={{ color: colors.textTertiary }}>○ Подключение не проверено</span>
+          <div style={statusPlaqueStyle(colors.textTertiary)}>
+            <svg width={16} height={16} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth={2} />
+            </svg>
+            Подключение не проверено
+          </div>
         )}
       </div>
 
@@ -830,6 +1114,7 @@ export const SettingsPage: React.FC = () => {
   const [showConnect, setShowConnect] = useState(false);
   const { showToast } = useToast();
   const { refreshTree } = useTreeRefresh();
+  const { user } = useAuth();
 
   const load = async () => {
     try {
@@ -866,42 +1151,183 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
-        Настройки
+      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
+        Профиль
       </h1>
-      <p style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '28px' }}>
-        Проекты объединяют страницы одного Confluence. Каждый участник ходит в Confluence
-        своими логином и паролем — они хранятся зашифрованными и никому не видны.
-      </p>
 
+      {/* Карточка профиля: экран называется «Профиль и проекты» — профиль
+          должен быть виден первым. Данные сессии Google (имя, почта, аватар). */}
+      {user && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          background: colors.cardBg,
+          border: `1px solid ${colors.border}`,
+          borderRadius: radii.lg,
+          // Разделы равные, но неразрывные: большой зазор между профилем и
+          // проектами читался пустотой, а не структурой.
+          padding: '16px 20px',
+          marginBottom: '20px',
+        }}>
+          {user.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              alt=""
+              referrerPolicy="no-referrer"
+              style={{
+                width: '44px', height: '44px', borderRadius: '50%',
+                display: 'block', flexShrink: 0,
+                border: `1px solid ${colors.border}`,
+              }}
+            />
+          ) : (
+            <span style={{
+              width: '44px', height: '44px', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, background: colors.greenLight,
+              color: colors.greenDark, fontSize: '18px', fontWeight: 700,
+            }}>
+              {(user.name || '?').charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontSize: '15px', fontWeight: 700, color: colors.textPrimary,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {user.name}
+            </div>
+            {user.email && (
+              <div style={{
+                fontSize: '13px', color: colors.textSecondary, marginTop: '2px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {user.email}
+              </div>
+            )}
+          </div>
+          <span style={{
+            marginLeft: 'auto', flexShrink: 0,
+            fontSize: '12px', color: colors.textTertiary,
+          }}>
+            Вход через Google
+          </span>
+        </div>
+      )}
+
+      {/* «Мои проекты» — раздел того же ранга, что «Профиль»: заголовок того
+          же кегля, действие в строке заголовка. Пояснения про проект и
+          безопасность кред живут в модалке подключения — у самих полей,
+          в момент ввода, а не абзацем-сиротой на странице. */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: '16px', marginBottom: '16px',
       }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
+        <h2 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, margin: 0 }}>
           Мои проекты
         </h2>
-        <button onClick={() => setShowConnect(true)} style={{ ...primaryButtonStyle, padding: '8px 18px' }}>
-          + Подключить проект
+        <button
+          onClick={() => setShowConnect(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '9px 20px', borderRadius: radii.pill, border: 'none',
+            background: colors.greenAccent, color: '#fff',
+            fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit', flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+          onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
+          onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
+          onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
+        >
+          <PlusIcon size={15} strokeWidth={2.4} />
+          Подключить проект
         </button>
       </div>
 
       {joined.length === 0 ? (
+        /* Онбординг пустого состояния. Кнопок здесь сознательно нет
+           («Подключить проект» уже над разделом, демо — в пустом дереве);
+           крестика-закрытия тоже: блок и есть пустое состояние раздела,
+           прятать его некуда. */
         <div style={{
           background: 'rgba(255,255,255,0.85)',
-          border: `1px dashed ${colors.borderHover}`,
+          backdropFilter: 'blur(20px)',
+          border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
-          padding: '32px 24px',
-          textAlign: 'center',
+          boxShadow: shadows.card,
+          padding: '24px 26px',
         }}>
-          <div style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '4px' }}>
-            Вы пока не подключены ни к одному проекту
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            marginBottom: '4px', color: colors.greenDark,
+          }}>
+            <SparkleIcon size={18} />
+            <span style={{ fontSize: '16px', fontWeight: 700, color: colors.textPrimary }}>
+              Начните за 3 простых шага
+            </span>
           </div>
-          <div style={{ fontSize: '13px', color: colors.textTertiary }}>
-            Подключите существующий проект своими кредами или создайте новый
+          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '18px' }}>
+            Три шага — и покрытие требований под контролем.
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '14px',
+          }}>
+            {ONBOARDING_STEPS.map((step, i) => (
+              <div key={step.title} style={{
+                background: colors.white,
+                border: `1px solid ${colors.border}`,
+                borderRadius: radii.md,
+                padding: '18px 20px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '9px',
+                }}>
+                  <span style={{
+                    width: '24px', height: '24px', borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, background: ICON_TINTS.green.bg,
+                    color: ICON_TINTS.green.fg, fontSize: '12.5px', fontWeight: 700,
+                  }}>
+                    {i + 1}
+                  </span>
+                  <span style={{
+                    fontSize: '14.5px', fontWeight: 600, color: colors.textPrimary,
+                    lineHeight: 1.4,
+                  }}>
+                    {step.title}
+                  </span>
+                </div>
+                <div style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.55 }}>
+                  {step.text}
+                </div>
+                {/* Иллюстрация прижата к низу, а её бокс фиксированной высоты:
+                    картинки во всех трёх карточках занимают одинаковое
+                    пространство и заканчиваются в одну линию. */}
+                <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+                  <div style={{ height: '96px' }}>
+                    {step.art}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        <div style={{
+          display: 'grid',
+          // auto-fill вместо жёстких двух колонок: на узком окне карточки
+          // складываются в одну колонку, не сжимаясь до нечитаемых.
+          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+          gap: '14px',
+        }}>
           {joined.map(project => (
             <ProjectCard key={project.id} project={project} onChanged={handleProjectsChanged} />
           ))}

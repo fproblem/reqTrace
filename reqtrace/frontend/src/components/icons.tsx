@@ -21,6 +21,58 @@ export interface IconProps {
   style?: React.CSSProperties;
 }
 
+/** Оттенки цветных плашек под иконки (таймлайн «Истории изменений», шаги
+ * онбординга и т.п.) — ТОЛЬКО фирменные цвета ReqTrace:
+ * зелёный (акцент/позитив), янтарный (внимание), красный (редко — деструктив
+ * и потери), серый (нейтраль). Синих и фиолетовых в палитре приложения НЕТ —
+ * новые оттенки сюда не добавлять, чтобы экраны не расползались по цветам. */
+export const ICON_TINTS = {
+  green: { bg: 'rgba(122, 224, 90, 0.10)', border: 'rgba(122, 224, 90, 0.45)', fg: '#4DB830' },
+  amber: { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.40)', fg: '#B45309' },
+  red: { bg: 'rgba(239, 68, 68, 0.07)', border: 'rgba(239, 68, 68, 0.30)', fg: '#DC2626' },
+  gray: { bg: 'rgba(0, 0, 0, 0.04)', border: 'rgba(0, 0, 0, 0.12)', fg: '#6B7280' },
+} as const;
+
+export type IconTint = keyof typeof ICON_TINTS;
+
+/** Иконка в пастельной плашке фирменного оттенка. Любая иконка библиотеки
+ * может быть ЛЮБОГО из четырёх оттенков — цвет не «прибит» к иконке, а
+ * задаётся по месту использования:
+ *
+ *   <IconBadge tint="amber"><ClockIcon size={16} /></IconBadge>
+ *
+ * Используется в «Истории изменений» и онбординге профиля; подойдёт для
+ * будущих модалок, тостов и пустых состояний. Иконка внутри наследует цвет
+ * оттенка через currentColor. */
+export const IconBadge: React.FC<{
+  tint: IconTint;
+  /** Сторона плашки; иконке внутри задавайте size отдельно (обычно ~44%). */
+  size?: number;
+  radius?: number;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}> = ({ tint, size = 34, radius = 14, style, children }) => {
+  const t = ICON_TINTS[tint];
+  return (
+    <span style={{
+      width: `${size}px`,
+      height: `${size}px`,
+      borderRadius: `${radius}px`,
+      background: t.bg,
+      border: `1px solid ${t.border}`,
+      color: t.fg,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      boxSizing: 'border-box',
+      ...style,
+    }}>
+      {children}
+    </span>
+  );
+};
+
 function makeIcon(content: React.ReactNode): React.FC<IconProps> {
   return ({ size = 16, strokeWidth = 2, style }) => (
     <svg
@@ -71,6 +123,12 @@ export const SyncIcon = makeIcon(<>
   <path d="M23 4v6h-6" />
   <path d="M1 20v-6h6" />
   <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+</>);
+
+export const LogoutIcon = makeIcon(<>
+  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+  <polyline points="16 17 21 12 16 7" />
+  <line x1="21" y1="12" x2="9" y2="12" />
 </>);
 
 // --- Навигация ---
@@ -181,4 +239,33 @@ export const DropletIcon = makeIcon(
 
 export const SparkleIcon = makeIcon(
   <path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z" />
+);
+
+/** Залитый круг статуса с белым знаком: галочка (ok), «!» (warning), крестик
+ *  (error). Цвет круга — через `color` родителя. Единая иконка статус-плашек:
+ *  статус привязки в панели выделения, статус подключения на карточке проекта. */
+export const StatusAlertIcon: React.FC<{ kind: 'ok' | 'warning' | 'error'; size?: number }> = ({
+  kind, size = 16,
+}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10" fill="currentColor" />
+    {kind === 'ok' && (
+      <polyline
+        points="8 12.5 11 15.5 16.5 9.5" fill="none" stroke="#fff"
+        strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+      />
+    )}
+    {kind === 'warning' && (
+      <>
+        <line x1="12" y1="7" x2="12" y2="13" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <circle cx="12" cy="16.6" r="1.3" fill="#fff" />
+      </>
+    )}
+    {kind === 'error' && (
+      <>
+        <line x1="9" y1="9" x2="15" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+        <line x1="15" y1="9" x2="9" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+      </>
+    )}
+  </svg>
 );

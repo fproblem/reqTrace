@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { colors, radii } from '../styles/tokens';
 import {
-  IconProps,
+  IconProps, IconTint, IconBadge,
   BellIcon, BranchIcon, ChevronsVerticalIcon, ClockIcon, DocumentIcon,
   DropletIcon, FlagIcon, GearIcon, ImageIcon, KeyboardIcon, LayoutIcon, LinkIcon,
   LockIcon, PanelIcon, PencilIcon, PlusIcon, SearchIcon, ShieldIcon, SparkleIcon,
@@ -43,42 +43,34 @@ function formatDate(iso: string): string {
 }
 
 // --- Значки изменений: пастельная плашка + цветная иконка ---
-
-const ICON_TINTS = {
-  green: { bg: 'rgba(122, 224, 90, 0.10)', border: 'rgba(122, 224, 90, 0.45)', fg: colors.greenDark },
-  blue: { bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.35)', fg: '#2563EB' },
-  purple: { bg: 'rgba(147, 102, 255, 0.08)', border: 'rgba(147, 102, 255, 0.35)', fg: '#7C3AED' },
-  amber: { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.40)', fg: '#B45309' },
-  red: { bg: 'rgba(239, 68, 68, 0.07)', border: 'rgba(239, 68, 68, 0.30)', fg: '#DC2626' },
-} as const;
-
-// Ключ иконки из changelog.json → визуал: сама иконка (общая библиотека
-// components/icons.tsx) и оттенок плашки.
-const CHANGE_ICONS: Record<string, { tint: keyof typeof ICON_TINTS; Icon: React.FC<IconProps> }> = {
+// Оттенки — общий реестр ICON_TINTS (только фирменные цвета ReqTrace):
+// зелёный — фичи и позитив, янтарный — внимание/статусы, красный — удаления,
+// серый — нейтральные и структурные изменения.
+const CHANGE_ICONS: Record<string, { tint: IconTint; Icon: React.FC<IconProps> }> = {
   highlight: { tint: 'green', Icon: PencilIcon },
-  link: { tint: 'blue', Icon: LinkIcon },
-  tree: { tint: 'purple', Icon: BranchIcon },
+  link: { tint: 'gray', Icon: LinkIcon },
+  tree: { tint: 'gray', Icon: BranchIcon },
   layout: { tint: 'amber', Icon: LayoutIcon },
-  search: { tint: 'blue', Icon: SearchIcon },
+  search: { tint: 'gray', Icon: SearchIcon },
   plus: { tint: 'green', Icon: PlusIcon },
-  paint: { tint: 'purple', Icon: DropletIcon },
+  paint: { tint: 'gray', Icon: DropletIcon },
   timer: { tint: 'amber', Icon: ClockIcon },
   sparkle: { tint: 'green', Icon: SparkleIcon },
-  panel: { tint: 'blue', Icon: PanelIcon },
+  panel: { tint: 'gray', Icon: PanelIcon },
   table: { tint: 'amber', Icon: TableIcon },
-  keyboard: { tint: 'purple', Icon: KeyboardIcon },
+  keyboard: { tint: 'gray', Icon: KeyboardIcon },
   bell: { tint: 'amber', Icon: BellIcon },
   trash: { tint: 'red', Icon: TrashIcon },
-  gear: { tint: 'purple', Icon: GearIcon },
+  gear: { tint: 'gray', Icon: GearIcon },
   lock: { tint: 'amber', Icon: LockIcon },
   user: { tint: 'green', Icon: UserIcon },
-  doc: { tint: 'blue', Icon: DocumentIcon },
+  doc: { tint: 'gray', Icon: DocumentIcon },
   flag: { tint: 'green', Icon: FlagIcon },
-  image: { tint: 'purple', Icon: ImageIcon },
+  image: { tint: 'gray', Icon: ImageIcon },
   shield: { tint: 'green', Icon: ShieldIcon },
-  sync: { tint: 'blue', Icon: SyncIcon },
+  sync: { tint: 'green', Icon: SyncIcon },
   target: { tint: 'green', Icon: TargetIcon },
-  nav: { tint: 'purple', Icon: ChevronsVerticalIcon },
+  nav: { tint: 'gray', Icon: ChevronsVerticalIcon },
 };
 
 // Одна запись на линии времени. Записи с иконкой/заголовком получают цветной
@@ -86,26 +78,14 @@ const CHANGE_ICONS: Record<string, { tint: keyof typeof ICON_TINTS; Icon: React.
 // Соединительная линия рисуется между значками, у последней записи её нет.
 const ChangeRow: React.FC<{ item: ChangeItem; isLast: boolean }> = ({ item, isLast }) => {
   const iconDef = item.icon ? CHANGE_ICONS[item.icon] : undefined;
-  const tint = iconDef ? ICON_TINTS[iconDef.tint] : undefined;
 
   return (
     <div style={{ display: 'flex', gap: '14px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '30px' }}>
-        {iconDef && tint ? (
-          <div style={{
-            width: '30px',
-            height: '30px',
-            borderRadius: radii.md,
-            background: tint.bg,
-            border: `1px solid ${tint.border}`,
-            color: tint.fg,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}>
+        {iconDef ? (
+          <IconBadge tint={iconDef.tint} size={30}>
             <iconDef.Icon size={15} />
-          </div>
+          </IconBadge>
         ) : (
           <div style={{
             width: '7px',

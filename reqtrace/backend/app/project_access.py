@@ -73,9 +73,9 @@ def url_belongs_to_base(page_url: str, base_url: str) -> bool:
 
 def _no_access(project: Project, has_creds: bool) -> HTTPException:
     if has_creds:
-        detail = f"Нет доступа к проекту «{project.name}». Проверьте креды в настройках"
+        detail = f"Нет доступа к проекту «{project.name}». Проверьте креды в профиле"
     else:
-        detail = f"Нет доступа к проекту «{project.name}». Подключитесь к нему в настройках"
+        detail = f"Нет доступа к проекту «{project.name}». Подключитесь к нему в профиле"
     return HTTPException(status_code=403, detail=detail)
 
 
@@ -131,7 +131,7 @@ def connection_for(project: Project, cred: ProjectCredential) -> ConfluenceConne
         raise HTTPException(
             status_code=403,
             detail=f"Сохранённый пароль для проекта «{project.name}» не читается "
-                   "(сменился ключ шифрования). Обновите креды в настройках",
+                   "(сменился ключ шифрования). Обновите креды в профиле",
         )
     return ConfluenceConnection(
         base_url=project.confluence_base_url,
@@ -165,7 +165,7 @@ async def run_confluence(
         raise HTTPException(
             status_code=403,
             detail=f"Confluence отклонил ваши логин/пароль в проекте «{project.name}» "
-                   f"(HTTP {e.status_code}). Обновите креды в настройках",
+                   f"(HTTP {e.status_code}). Обновите креды в профиле",
         )
 
 

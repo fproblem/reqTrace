@@ -4,13 +4,19 @@ import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { PageTree } from './PageTree';
+import { LogoutIcon } from '../icons';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 const SIDEBAR_KEY = 'reqtrace_sidebar';
-const MIN_WIDTH = 150;  // tree appears at / collapses below this drag width
+// Порог появления/сворачивания дерева при перетаскивании. 220 — минимум, при
+// котором в шапке панели уживаются поиск и две кнопки 34px (у́же — поле
+// поиска сжималось в щель и налезало на кнопки), а тексты пустых состояний
+// не рвутся по слову на строку. Сохранённая ширина у́же порога подтянется
+// при загрузке (см. loadSidebarState).
+const MIN_WIDTH = 220;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 240;
 const RAIL_WIDTH = 48;
@@ -227,7 +233,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         justifyContent: 'space-between',
         height: '64px',
         flexShrink: 0,
-        padding: '0 16px',
+        // Правый отступ 24px — как у верхнего бара страницы и шапки панели
+        // выделения: кнопка выхода встаёт в одну вертикаль с «Ещё действия»
+        // и крестиком закрытия панели (гэп между кнопками у всех баров 10px).
+        padding: '0 24px 0 16px',
         ...glassmorphism,
         // glassmorphism несёт рамку со всех сторон — шапке нужна только нижняя,
         // остальные рисовали лишние линии по краям окна.
@@ -236,60 +245,92 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         position: 'relative',
         zIndex: 2,
       }}>
-        {/* Left: brand + version */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+        {/* Left: brand */}
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <img
             src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
             alt="ReqTrace"
             onClick={() => navigate('/')}
             style={{ height: '42px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
           />
-
-          {currentVersion && (
-            <button
-              onClick={() => setChangelogOpen(true)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                padding: '2px 8px', borderRadius: radii.pill,
-                border: `1px solid ${colors.border}`,
-                background: 'rgba(122, 224, 90, 0.08)',
-                color: colors.textSecondary, fontSize: '11px', fontWeight: 500,
-                cursor: 'pointer', flexShrink: 0,
-                fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = colors.greenAccent; e.currentTarget.style.color = colors.greenDark; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.textSecondary; }}
-            >
-              v{currentVersion}
-            </button>
-          )}
         </div>
 
-        {/* Right: settings + user */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        {/* Чип версии — кнопка в общем стиле баров (34px, radii.md, тот же
+            ховер и пресс). Позиция абсолютная: левый край совпадает с левым
+            краем кнопки синхронизации дерева (width − 10px паддинга −
+            34px «+» − 6px гэпа − 34px синка = width − 84); на узком дереве
+            (или свёрнутой рельсе) прижимается к логотипу (187 ≈ 16px отступа +
+            161px ширины лого при высоте 42 + 10px зазора), чтобы не наезжать. */}
+        {currentVersion && (
           <button
-            onClick={() => navigate('/settings')}
+            onClick={() => setChangelogOpen(true)}
+            title="История изменений"
             style={{
-              padding: '6px 12px', borderRadius: radii.md, border: 'none',
-              background: isSettings ? colors.greenLight : 'transparent',
-              color: isSettings ? colors.greenDark : colors.textSecondary,
-              fontWeight: isSettings ? 600 : 500, fontSize: '13px',
-              cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+              position: 'absolute',
+              left: `${Math.max((showRail ? 0 : width) - 84, 187)}px`,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              height: '34px',
+              padding: '0 14px',
+              borderRadius: radii.md,
+              border: `1px solid ${colors.border}`,
+              background: colors.white,
+              color: colors.textSecondary,
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { if (!isSettings) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-            onMouseLeave={e => { if (!isSettings) e.currentTarget.style.background = 'transparent'; }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = colors.white;
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
           >
-            Настройки
+            v{currentVersion}
           </button>
+        )}
 
+        {/* Right: профиль и выход. Аватар, имя и экран настроек «склеены» в
+            один профиль-чип: настройки в ReqTrace — это ЛИЧНЫЕ подключения
+            пользователя («Профиль и проекты»), а не свойства приложения,
+            поэтому вход туда живёт под лицом пользователя, а не отдельной
+            кнопкой. «Выйти» — кнопка-иконка в общем стиле кнопок баров. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {user && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              paddingLeft: '12px', marginLeft: '4px',
-              borderLeft: `1px solid ${colors.border}`,
-            }}>
-              {user.avatar_url && (
+            <button
+              onClick={() => navigate('/settings')}
+              title={`Профиль и проекты${user.email ? `\n${user.email}` : ''}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                height: '34px', boxSizing: 'border-box',
+                padding: '0 12px 0 4px', borderRadius: radii.pill,
+                // Рамка и белый фон — как у остальных кнопок баров: без них
+                // чип читался просто как имя, а не как кнопка.
+                border: `1px solid ${isSettings ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
+                background: isSettings ? colors.greenLight : colors.white,
+                cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                if (isSettings) return;
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+              }}
+              onMouseLeave={e => {
+                if (isSettings) return;
+                e.currentTarget.style.background = colors.white;
+                e.currentTarget.style.borderColor = colors.border;
+              }}
+            >
+              {user.avatar_url ? (
                 <img
                   src={user.avatar_url}
                   alt=""
@@ -300,24 +341,52 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     border: `1px solid ${colors.border}`,
                   }}
                 />
+              ) : (
+                <span style={{
+                  width: '26px', height: '26px', borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, background: colors.greenLight,
+                  color: colors.greenDark, fontSize: '13px', fontWeight: 700,
+                }}>
+                  {(user.name || '?').charAt(0).toUpperCase()}
+                </span>
               )}
-              <span
-                title={user.email ?? undefined}
-                style={{ fontSize: '13px', fontWeight: 600, color: colors.textPrimary }}
-              >
+              <span style={{
+                fontSize: '13px', fontWeight: 600,
+                color: isSettings ? colors.greenDark : colors.textPrimary,
+              }}>
                 {user.name}
               </span>
-              <button
-                onClick={() => { void logout(); }}
-                style={{
-                  background: 'none', border: 'none', color: colors.textSecondary,
-                  cursor: 'pointer', fontSize: '12px', padding: 0,
-                  textDecoration: 'underline', fontFamily: 'inherit',
-                }}
-              >
-                Выйти
-              </button>
-            </div>
+            </button>
+          )}
+
+          {user && (
+            <button
+              onClick={() => { void logout(); }}
+              title="Выйти из ReqTrace"
+              style={{
+                width: '34px', height: '34px', padding: 0,
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                background: colors.white,
+                color: colors.textSecondary,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = colors.white;
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+            >
+              <LogoutIcon size={16} />
+            </button>
           )}
         </div>
       </header>

@@ -11,6 +11,7 @@ import { useAuth } from '../auth/AuthContext';
 import {
   DocumentIcon,
   GearIcon,
+  ICON_TINTS,
   PencilIcon as PencilIconLib,
   PlusIcon,
   StatusAlertIcon,
@@ -44,7 +45,8 @@ const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
 
 // --- Онбординг пустого состояния: три шага до первого покрытого требования ---
 // Показывается только пока пользователь не подключён ни к одному проекту.
-// Значки в пастельных плашках — в стилистике «Истории изменений».
+// Значки в пастельных плашках — стилистика «Истории изменений», оттенки —
+// общий реестр ICON_TINTS (только фирменные цвета ReqTrace).
 
 const ONBOARDING_STEPS: {
   icon: React.ReactNode;
@@ -54,19 +56,19 @@ const ONBOARDING_STEPS: {
 }[] = [
   {
     icon: <GearIcon size={16} />,
-    tint: { bg: 'rgba(122, 224, 90, 0.10)', border: 'rgba(122, 224, 90, 0.45)', fg: colors.greenDark },
+    tint: ICON_TINTS.green,
     title: 'Подключите проект',
     text: 'Адрес Confluence и ваши рабочие логин/пароль: присоединитесь к существующему проекту команды или создайте новый.',
   },
   {
     icon: <DocumentIcon size={16} />,
-    tint: { bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.35)', fg: '#2563EB' },
+    tint: ICON_TINTS.gray,
     title: 'Добавьте страницу',
     text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
   },
   {
     icon: <PencilIconLib size={16} />,
-    tint: { bg: 'rgba(147, 102, 255, 0.08)', border: 'rgba(147, 102, 255, 0.35)', fg: '#7C3AED' },
+    tint: ICON_TINTS.amber,
     title: 'Привяжите тесты',
     text: 'Выделите фрагмент требования и укажите ключ теста из Jira. ReqTrace проследит, чтобы покрытие не устаревало.',
   },

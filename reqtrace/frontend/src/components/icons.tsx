@@ -21,6 +21,20 @@ export interface IconProps {
   style?: React.CSSProperties;
 }
 
+/** Оттенки цветных плашек под иконки (таймлайн «Истории изменений», шаги
+ * онбординга и т.п.) — ТОЛЬКО фирменные цвета ReqTrace:
+ * зелёный (акцент/позитив), янтарный (внимание), красный (редко — деструктив
+ * и потери), серый (нейтраль). Синих и фиолетовых в палитре приложения НЕТ —
+ * новые оттенки сюда не добавлять, чтобы экраны не расползались по цветам. */
+export const ICON_TINTS = {
+  green: { bg: 'rgba(122, 224, 90, 0.10)', border: 'rgba(122, 224, 90, 0.45)', fg: '#4DB830' },
+  amber: { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.40)', fg: '#B45309' },
+  red: { bg: 'rgba(239, 68, 68, 0.07)', border: 'rgba(239, 68, 68, 0.30)', fg: '#DC2626' },
+  gray: { bg: 'rgba(0, 0, 0, 0.04)', border: 'rgba(0, 0, 0, 0.12)', fg: '#6B7280' },
+} as const;
+
+export type IconTint = keyof typeof ICON_TINTS;
+
 function makeIcon(content: React.ReactNode): React.FC<IconProps> {
   return ({ size = 16, strokeWidth = 2, style }) => (
     <svg

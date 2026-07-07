@@ -355,20 +355,18 @@ function formatCheckedAt(iso: string | null): string {
 
 // Строка о безопасности кред — у полей пароля в модалках: работает в момент
 // ввода, когда пользователь и сомневается, кто увидит его пароль. Типографика —
-// как у остальных подсказок под полями (12px tertiary, межстрочный 1.5),
-// слева замок из библиотеки, отцентрованный по первой строке текста.
+// один в один с остальными подсказками под полями (12px tertiary, дефолтный
+// межстрочный); замок из библиотеки центрован по высоте всего текста.
 const CredsSecurityNote: React.FC = () => (
   <div style={{
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: '6px',
     fontSize: '12px',
     color: colors.textTertiary,
-    lineHeight: 1.5,
     marginTop: '4px',
   }}>
-    {/* (18px line box − 12px иконки) / 2 = 3px */}
-    <LockIcon size={12} style={{ marginTop: '3px' }} />
+    <LockIcon size={12} />
     <span>
       Логин и пароль личные: хранятся зашифрованными и не видны даже участникам проекта
     </span>

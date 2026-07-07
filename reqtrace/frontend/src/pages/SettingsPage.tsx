@@ -867,10 +867,10 @@ export const SettingsPage: React.FC = () => {
   return (
     <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
-        Настройки
+        Профиль и проекты
       </h1>
       <p style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '28px' }}>
-        Проекты объединяют страницы одного Confluence. Каждый участник ходит в Confluence
+        Здесь всё ваше: проекты объединяют страницы одного Confluence, а ходите вы в него
         своими логином и паролем — они хранятся зашифрованными и никому не видны.
       </p>
 

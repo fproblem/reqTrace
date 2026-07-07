@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { PageTree } from './PageTree';
+import { LogoutIcon } from '../icons';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -266,30 +267,27 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
         </div>
 
-        {/* Right: settings + user */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          <button
-            onClick={() => navigate('/settings')}
-            style={{
-              padding: '6px 12px', borderRadius: radii.md, border: 'none',
-              background: isSettings ? colors.greenLight : 'transparent',
-              color: isSettings ? colors.greenDark : colors.textSecondary,
-              fontWeight: isSettings ? 600 : 500, fontSize: '13px',
-              cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { if (!isSettings) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-            onMouseLeave={e => { if (!isSettings) e.currentTarget.style.background = 'transparent'; }}
-          >
-            Настройки
-          </button>
-
+        {/* Right: профиль и выход. Аватар, имя и экран настроек «склеены» в
+            один профиль-чип: настройки в ReqTrace — это ЛИЧНЫЕ подключения
+            пользователя («Профиль и проекты»), а не свойства приложения,
+            поэтому вход туда живёт под лицом пользователя, а не отдельной
+            кнопкой. «Выйти» — кнопка-иконка в общем стиле кнопок баров. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {user && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              paddingLeft: '12px', marginLeft: '4px',
-              borderLeft: `1px solid ${colors.border}`,
-            }}>
-              {user.avatar_url && (
+            <button
+              onClick={() => navigate('/settings')}
+              title={`Профиль и проекты${user.email ? `\n${user.email}` : ''}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '4px 12px 4px 5px', borderRadius: radii.pill,
+                border: 'none',
+                background: isSettings ? colors.greenLight : 'transparent',
+                cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { if (!isSettings) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+              onMouseLeave={e => { if (!isSettings) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {user.avatar_url ? (
                 <img
                   src={user.avatar_url}
                   alt=""
@@ -300,24 +298,52 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     border: `1px solid ${colors.border}`,
                   }}
                 />
+              ) : (
+                <span style={{
+                  width: '26px', height: '26px', borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, background: colors.greenLight,
+                  color: colors.greenDark, fontSize: '13px', fontWeight: 700,
+                }}>
+                  {(user.name || '?').charAt(0).toUpperCase()}
+                </span>
               )}
-              <span
-                title={user.email ?? undefined}
-                style={{ fontSize: '13px', fontWeight: 600, color: colors.textPrimary }}
-              >
+              <span style={{
+                fontSize: '13px', fontWeight: 600,
+                color: isSettings ? colors.greenDark : colors.textPrimary,
+              }}>
                 {user.name}
               </span>
-              <button
-                onClick={() => { void logout(); }}
-                style={{
-                  background: 'none', border: 'none', color: colors.textSecondary,
-                  cursor: 'pointer', fontSize: '12px', padding: 0,
-                  textDecoration: 'underline', fontFamily: 'inherit',
-                }}
-              >
-                Выйти
-              </button>
-            </div>
+            </button>
+          )}
+
+          {user && (
+            <button
+              onClick={() => { void logout(); }}
+              title="Выйти из ReqTrace"
+              style={{
+                width: '34px', height: '34px', padding: 0,
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                background: colors.white,
+                color: colors.textSecondary,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = colors.white;
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+            >
+              <LogoutIcon size={16} />
+            </button>
           )}
         </div>
       </header>

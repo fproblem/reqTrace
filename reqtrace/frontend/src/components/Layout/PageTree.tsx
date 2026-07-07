@@ -527,7 +527,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           <div style={{ padding: '20px 4px', textAlign: 'center' }}>
             <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.3 }}>📄</div>
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
-              Нет проектов. Подключите проект в настройках — или попробуйте демо-страницу
+              Нет проектов. Подключите проект в своём профиле — или попробуйте демо-страницу
             </div>
             <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
               <button
@@ -544,7 +544,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
                   fontFamily: 'inherit',
                 }}
               >
-                В настройки
+                Профиль и проекты
               </button>
               <button
                 onClick={handleAddDemo}
@@ -634,7 +634,7 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
       <div style={{ marginBottom: '4px' }}>
         <button
           onClick={() => navigate('/settings')}
-          title={`Нет доступа к проекту «${project.project_name}» — Confluence отклонил ваши логин/пароль. Нажмите, чтобы обновить креды в настройках`}
+          title={`Нет доступа к проекту «${project.project_name}» — Confluence отклонил ваши логин/пароль. Нажмите, чтобы обновить креды в профиле`}
           style={{
             display: 'flex',
             alignItems: 'center',

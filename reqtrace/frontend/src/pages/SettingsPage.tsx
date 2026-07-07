@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
@@ -7,7 +8,13 @@ import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
-import { PlusIcon, StatusAlertIcon } from '../components/icons';
+import {
+  DocumentIcon,
+  GearIcon,
+  PencilIcon as PencilIconLib,
+  PlusIcon,
+  StatusAlertIcon,
+} from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
@@ -34,6 +41,36 @@ const labelStyle: React.CSSProperties = {
 };
 
 const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
+
+// --- Онбординг пустого состояния: три шага до первого покрытого требования ---
+// Показывается только пока пользователь не подключён ни к одному проекту.
+// Значки в пастельных плашках — в стилистике «Истории изменений».
+
+const ONBOARDING_STEPS: {
+  icon: React.ReactNode;
+  tint: { bg: string; border: string; fg: string };
+  title: string;
+  text: string;
+}[] = [
+  {
+    icon: <GearIcon size={16} />,
+    tint: { bg: 'rgba(122, 224, 90, 0.10)', border: 'rgba(122, 224, 90, 0.45)', fg: colors.greenDark },
+    title: 'Подключите проект',
+    text: 'Адрес Confluence и ваши рабочие логин/пароль: присоединитесь к существующему проекту команды или создайте новый.',
+  },
+  {
+    icon: <DocumentIcon size={16} />,
+    tint: { bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.35)', fg: '#2563EB' },
+    title: 'Добавьте страницу',
+    text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
+  },
+  {
+    icon: <PencilIconLib size={16} />,
+    tint: { bg: 'rgba(147, 102, 255, 0.08)', border: 'rgba(147, 102, 255, 0.35)', fg: '#7C3AED' },
+    title: 'Привяжите тесты',
+    text: 'Выделите фрагмент требования и укажите ключ теста из Jira. ReqTrace проследит, чтобы покрытие не устаревало.',
+  },
+];
 
 // Плашка статуса подключения — один в один со статус-плашкой привязки в
 // панели выделения (SidePanel): заливка 8%, рамка 20%, жирный 13px, иконка
@@ -889,6 +926,22 @@ export const SettingsPage: React.FC = () => {
   const { showToast } = useToast();
   const { refreshTree } = useTreeRefresh();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  // Запасной путь онбординга: попробовать инструмент без Confluence — личная
+  // демо-страница (как в пустом состоянии дерева).
+  const handleAddDemo = async () => {
+    setDemoBusy(true);
+    try {
+      const page = await api.addDemoPage();
+      refreshTree();
+      navigate(`/pages/${page.id}`);
+    } catch (e: any) {
+      showToast('error', 'Не удалось добавить демо-страницу', e.message);
+      setDemoBusy(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -1026,16 +1079,99 @@ export const SettingsPage: React.FC = () => {
       {joined.length === 0 ? (
         <div style={{
           background: 'rgba(255,255,255,0.85)',
-          border: `1px dashed ${colors.borderHover}`,
+          backdropFilter: 'blur(20px)',
+          border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
-          padding: '32px 24px',
-          textAlign: 'center',
+          boxShadow: shadows.card,
+          padding: '26px 28px 24px',
         }}>
-          <div style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '4px' }}>
-            Вы пока не подключены ни к одному проекту
+          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.textPrimary, marginBottom: '4px' }}>
+            С чего начать
           </div>
-          <div style={{ fontSize: '13px', color: colors.textTertiary }}>
-            Подключите существующий проект своими кредами или создайте новый
+          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '22px' }}>
+            Вы пока не подключены ни к одному проекту. Три шага — и покрытие требований под контролем.
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+            gap: '20px',
+            marginBottom: '24px',
+          }}>
+            {ONBOARDING_STEPS.map((step, i) => (
+              <div key={step.title} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                <div style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: radii.md,
+                  background: step.tint.bg,
+                  border: `1px solid ${step.tint.border}`,
+                  color: step.tint.fg,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  {step.icon}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontSize: '13.5px', fontWeight: 600, color: colors.textPrimary,
+                    marginBottom: '4px', lineHeight: 1.4,
+                  }}>
+                    {i + 1}. {step.title}
+                  </div>
+                  <div style={{ fontSize: '12.5px', color: colors.textSecondary, lineHeight: 1.5 }}>
+                    {step.text}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowConnect(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '9px 20px', borderRadius: radii.pill, border: 'none',
+                background: colors.greenAccent, color: '#fff',
+                fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'inherit', transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+              onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
+              onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
+              onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
+            >
+              <PlusIcon size={15} strokeWidth={2.4} />
+              Подключить проект
+            </button>
+            <button
+              onClick={handleAddDemo}
+              disabled={demoBusy}
+              title="Личная демо-страница с примером требований — Confluence не нужен"
+              style={{
+                padding: '9px 18px', borderRadius: radii.pill,
+                border: `1px solid ${colors.border}`, background: 'transparent',
+                color: colors.textSecondary, fontSize: '14px', fontWeight: 500,
+                cursor: demoBusy ? 'default' : 'pointer', fontFamily: 'inherit',
+                opacity: demoBusy ? 0.6 : 1, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                if (demoBusy) return;
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+            >
+              {demoBusy ? 'Добавляем демо…' : 'Попробовать на демо-странице'}
+            </button>
           </div>
         </div>
       ) : (

@@ -395,11 +395,11 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
         >
           <span style={{
             position: 'absolute',
-            left: '11px',
+            left: '10px',
             top: '50%',
             transform: 'translateY(-50%)',
             color: colors.textTertiary,
-            opacity: searchDisabled ? 0.55 : 1,
+            opacity: searchDisabled ? 0.45 : 1,
             display: 'flex',
             pointerEvents: 'none',
           }}>
@@ -409,11 +409,16 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Найти страницу..."
+            // В дизейбле поле само говорит о состоянии — тултип объясняет
+            // причину; в рабочем состоянии — компактное «Поиск страниц…»
+            // (длинный плейсхолдер обрезался на узком дереве).
+            placeholder={searchDisabled ? 'Поиск недоступен' : 'Поиск страниц…'}
             disabled={searchDisabled}
             style={{
               width: '100%',
-              padding: '8px 30px 8px 30px',
+              // Правый резерв — только под реально существующий крестик
+              // очистки: пустующие 30px обрезали плейсхолдер «невидимкой».
+              padding: `8px ${searchQuery ? 30 : 12}px 8px 28px`,
               lineHeight: '16px',
               borderRadius: radii.md,
               border: `1px solid ${colors.border}`,
@@ -422,7 +427,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               outline: 'none',
               boxSizing: 'border-box',
               transition: 'border-color 0.15s',
-              background: searchDisabled ? 'rgba(0, 0, 0, 0.03)' : colors.white,
+              background: searchDisabled ? 'rgba(0, 0, 0, 0.05)' : colors.white,
               color: searchDisabled ? colors.textTertiary : colors.textPrimary,
               cursor: searchDisabled ? 'not-allowed' : 'text',
             }}

@@ -112,39 +112,61 @@ const ArtConnect: React.FC = () => (
   </div>
 );
 
-// Шаг 2: дерево страниц (скелетон) с зелёной кнопкой «+».
+// Шаг 2: белый «лист» дерева страниц на бледно-зелёной подложке, обрезанный
+// нижним краем (как будто список продолжается), с зелёной кнопкой «+» поверх.
+// Строка дерева: маркер (точка статуса у первой, квадратики-листы у прочих) + текст.
+const artTreeRow = (marker: React.ReactNode, width: string) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+    {marker}
+    <span style={artBar(width)} />
+  </div>
+);
+
+const artLeafSquare = (
+  <span style={{
+    width: '8px', height: '8px', borderRadius: '2.5px',
+    background: 'rgba(0, 0, 0, 0.08)', flexShrink: 0,
+  }} />
+);
+
 const ArtAddPage: React.FC = () => (
   <div style={{
     ...artRootStyle,
     position: 'relative',
-    background: colors.white,
-    padding: '12px',
-    justifyContent: 'center',
-    gap: '8px',
+    background: ICON_TINTS.green.bg,
+    border: `1px solid ${ICON_TINTS.green.border}`,
+    padding: '10px 12px 0',
+    overflow: 'hidden',
   }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      {/* Точка нейтральная: цветные точки в реальном дереве — статусы
-          привязок, у свежедобавленных страниц их ещё нет. */}
-      <span style={{
-        width: '6px', height: '6px', borderRadius: '50%',
-        background: 'rgba(0, 0, 0, 0.18)', flexShrink: 0,
-      }} />
-      <span style={artBar('58%')} />
-    </div>
-    <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
-      <span style={artBar('64%')} />
-    </div>
-    <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
-      <span style={artBar('48%')} />
-    </div>
-    <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
-      <span style={artBar('56%')} />
+    <div style={{
+      flex: 1,
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderBottom: 'none',
+      borderRadius: '8px 8px 0 0',
+      padding: '10px 12px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+    }}>
+      {artTreeRow(
+        <span style={{
+          width: '7px', height: '7px', borderRadius: '50%',
+          background: colors.statusOutdated, flexShrink: 0,
+        }} />,
+        '46%',
+      )}
+      {artTreeRow(artLeafSquare, '62%')}
+      {artTreeRow(artLeafSquare, '54%')}
+      {artTreeRow(artLeafSquare, '66%')}
+      {artTreeRow(artLeafSquare, '44%')}
     </div>
     <span style={{
-      position: 'absolute', top: '10px', right: '10px',
-      width: '24px', height: '24px', borderRadius: '50%',
+      position: 'absolute', top: '14px', right: '16px',
+      width: '26px', height: '26px', borderRadius: '50%',
       background: colors.greenAccent, color: '#fff',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 2px 6px rgba(77, 184, 48, 0.35)',
     }}>
       <PlusIcon size={13} strokeWidth={2.6} />
     </span>

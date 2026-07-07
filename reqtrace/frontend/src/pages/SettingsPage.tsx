@@ -8,12 +8,10 @@ import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
 import {
-  DocumentIcon,
-  GearIcon,
-  IconBadge,
   ICON_TINTS,
-  PencilIcon as PencilIconLib,
+  LockIcon,
   PlusIcon,
+  SparkleIcon,
   StatusAlertIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -45,28 +43,150 @@ const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
 
 // --- Онбординг пустого состояния: три шага до первого покрытого требования ---
 // Показывается только пока пользователь не подключён ни к одному проекту.
-// Оттенок значков единый (зелёный, задаётся при рендере) — чтобы карточки
-// поддерживали общую стилистику страницы, а не пестрили.
+// У каждого шага — мини-иллюстрация сути действия (чистый CSS/SVG, фирменные
+// зелёный и серый): окно браузера с адресом Confluence, список страниц с «+»,
+// выделенное «требование» с ключом теста.
+
+// Серая скелетон-полоска «текста».
+const artBar = (width: string, background?: string): React.CSSProperties => ({
+  height: '6px',
+  width,
+  borderRadius: '4px',
+  background: background ?? 'rgba(0, 0, 0, 0.07)',
+});
+
+// Шаг 1: окно браузера с зелёной шапкой и адресной строкой Confluence.
+const ArtConnect: React.FC = () => (
+  <div style={{
+    borderRadius: '10px',
+    border: `1px solid ${colors.border}`,
+    background: colors.background,
+    overflow: 'hidden',
+  }}>
+    <div style={{
+      height: '16px',
+      background: `linear-gradient(90deg, ${colors.greenAccent}, ${colors.greenDark})`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '0 8px',
+    }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          width: '5px', height: '5px', borderRadius: '50%',
+          background: 'rgba(255, 255, 255, 0.65)',
+        }} />
+      ))}
+    </div>
+    <div style={{ padding: '9px 10px' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        background: colors.white,
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.pill,
+        padding: '5px 10px',
+        color: colors.textTertiary,
+      }}>
+        <LockIcon size={11} />
+        <span style={{
+          fontSize: '10.5px',
+          color: colors.textSecondary,
+          fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          https://confluence.company.ru
+        </span>
+      </div>
+    </div>
+  </div>
+);
+
+// Шаг 2: дерево страниц (скелетон) с зелёной кнопкой «+».
+const ArtAddPage: React.FC = () => (
+  <div style={{
+    position: 'relative',
+    borderRadius: '10px',
+    border: `1px solid ${colors.border}`,
+    background: colors.white,
+    padding: '11px 12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '7px',
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <span style={{
+        width: '6px', height: '6px', borderRadius: '50%',
+        background: colors.greenAccent, flexShrink: 0,
+      }} />
+      <span style={artBar('58%')} />
+    </div>
+    <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
+      <span style={artBar('64%')} />
+    </div>
+    <div style={{ display: 'flex', gap: '6px', paddingLeft: '12px' }}>
+      <span style={artBar('48%')} />
+    </div>
+    <span style={{
+      position: 'absolute', top: '9px', right: '10px',
+      width: '22px', height: '22px', borderRadius: '50%',
+      background: colors.greenAccent, color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <PlusIcon size={12} strokeWidth={2.6} />
+    </span>
+  </div>
+);
+
+// Шаг 3: «требование» с зелёной подсветкой выделения и ключом теста.
+const ArtLinkTest: React.FC = () => (
+  <div style={{
+    borderRadius: '10px',
+    border: `1px solid ${colors.border}`,
+    background: colors.white,
+    padding: '11px 12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '7px',
+  }}>
+    <span style={artBar('82%')} />
+    <span style={{ ...artBar('64%', colors.greenLight), height: '8px' }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+      <span style={{
+        padding: '2px 8px', borderRadius: '5px',
+        background: ICON_TINTS.green.bg,
+        border: `1px solid ${ICON_TINTS.green.border}`,
+        color: ICON_TINTS.green.fg,
+        fontSize: '10.5px', fontWeight: 600,
+        fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      }}>
+        SI-1284
+      </span>
+      <span style={{ color: colors.statusActive, display: 'flex' }}>
+        <StatusAlertIcon kind="ok" size={14} />
+      </span>
+    </div>
+  </div>
+);
 
 const ONBOARDING_STEPS: {
-  icon: React.ReactNode;
   title: string;
   text: string;
+  art: React.ReactNode;
 }[] = [
   {
-    icon: <GearIcon size={16} />,
     title: 'Подключите проект',
     text: 'Адрес Confluence и ваши рабочие логин/пароль: присоединитесь к существующему проекту команды или создайте новый.',
+    art: <ArtConnect />,
   },
   {
-    icon: <DocumentIcon size={16} />,
     title: 'Добавьте страницу',
     text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
+    art: <ArtAddPage />,
   },
   {
-    icon: <PencilIconLib size={16} />,
     title: 'Привяжите тесты',
     text: 'Выделите фрагмент требования и укажите ключ теста из Jira. ReqTrace проследит, чтобы покрытие не устаревало.',
+    art: <ArtLinkTest />,
   },
 ];
 
@@ -1059,39 +1179,53 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {joined.length === 0 ? (
-        /* Онбординг пустого состояния: три самостоятельные карточки-шага в
-           стиле карточек проектов — без общего блока-обёртки и без кнопок
-           («Подключить проект» уже над разделом, демо — в пустом дереве).
-           Значки в едином зелёном — фирменный акцент страницы. */
+        /* Онбординг пустого состояния. Кнопок здесь сознательно нет
+           («Подключить проект» уже над разделом, демо — в пустом дереве);
+           крестика-закрытия тоже: блок и есть пустое состояние раздела,
+           прятать его некуда. */
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '14px',
+          background: 'rgba(255,255,255,0.85)',
+          backdropFilter: 'blur(20px)',
+          border: `1px solid ${colors.border}`,
+          borderRadius: radii.lg,
+          boxShadow: shadows.card,
+          padding: '24px 26px',
         }}>
-          {ONBOARDING_STEPS.map((step, i) => (
-            <div key={step.title} style={{
-              background: 'rgba(255,255,255,0.85)',
-              backdropFilter: 'blur(20px)',
-              border: `1px solid ${colors.border}`,
-              borderRadius: radii.lg,
-              boxShadow: shadows.card,
-              padding: '18px 20px',
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'flex-start',
-            }}>
-              <IconBadge tint="green" size={36}>
-                {step.icon}
-              </IconBadge>
-              <div style={{ minWidth: 0 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            marginBottom: '4px', color: colors.greenDark,
+          }}>
+            <SparkleIcon size={18} />
+            <span style={{ fontSize: '16px', fontWeight: 700, color: colors.textPrimary }}>
+              Начните за 3 простых шага
+            </span>
+          </div>
+          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '18px' }}>
+            Мы поможем быстро настроить отслеживание покрытия требований тестами.
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '14px',
+          }}>
+            {ONBOARDING_STEPS.map((step, i) => (
+              <div key={step.title} style={{
+                background: colors.white,
+                border: `1px solid ${colors.border}`,
+                borderRadius: radii.md,
+                padding: '16px 18px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+              }}>
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px',
+                  display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '8px',
                 }}>
                   <span style={{
-                    width: '20px', height: '20px', borderRadius: '6px',
+                    width: '22px', height: '22px', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0, background: ICON_TINTS.green.bg,
-                    color: ICON_TINTS.green.fg, fontSize: '11.5px', fontWeight: 700,
+                    color: ICON_TINTS.green.fg, fontSize: '12px', fontWeight: 700,
                   }}>
                     {i + 1}
                   </span>
@@ -1105,9 +1239,14 @@ export const SettingsPage: React.FC = () => {
                 <div style={{ fontSize: '12.5px', color: colors.textSecondary, lineHeight: 1.5 }}>
                   {step.text}
                 </div>
+                {/* Иллюстрация прижата к низу: у карточек одной высоты
+                    картинки выравниваются в одну линию. */}
+                <div style={{ marginTop: 'auto', paddingTop: '14px' }}>
+                  {step.art}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       ) : (
         <div style={{

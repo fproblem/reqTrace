@@ -6,6 +6,8 @@ import { RefreshIcon } from '../components/RefreshIcon';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
+import { useAuth } from '../auth/AuthContext';
+import { PlusIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
@@ -830,6 +832,7 @@ export const SettingsPage: React.FC = () => {
   const [showConnect, setShowConnect] = useState(false);
   const { showToast } = useToast();
   const { refreshTree } = useTreeRefresh();
+  const { user } = useAuth();
 
   const load = async () => {
     try {
@@ -866,22 +869,101 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '8px' }}>
+      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
         Профиль и проекты
       </h1>
-      <p style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '28px' }}>
-        Здесь всё ваше: проекты объединяют страницы одного Confluence, а ходите вы в него
-        своими логином и паролем — они хранятся зашифрованными и никому не видны.
-      </p>
 
+      {/* Карточка профиля: экран называется «Профиль и проекты» — профиль
+          должен быть виден первым. Данные сессии Google (имя, почта, аватар). */}
+      {user && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          background: colors.cardBg,
+          border: `1px solid ${colors.border}`,
+          borderRadius: radii.lg,
+          padding: '16px 20px',
+          marginBottom: '28px',
+        }}>
+          {user.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              alt=""
+              referrerPolicy="no-referrer"
+              style={{
+                width: '44px', height: '44px', borderRadius: '50%',
+                display: 'block', flexShrink: 0,
+                border: `1px solid ${colors.border}`,
+              }}
+            />
+          ) : (
+            <span style={{
+              width: '44px', height: '44px', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, background: colors.greenLight,
+              color: colors.greenDark, fontSize: '18px', fontWeight: 700,
+            }}>
+              {(user.name || '?').charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontSize: '15px', fontWeight: 700, color: colors.textPrimary,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {user.name}
+            </div>
+            {user.email && (
+              <div style={{
+                fontSize: '13px', color: colors.textSecondary, marginTop: '2px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {user.email}
+              </div>
+            )}
+          </div>
+          <span style={{
+            marginLeft: 'auto', flexShrink: 0,
+            fontSize: '12px', color: colors.textTertiary,
+          }}>
+            Вход через Google
+          </span>
+        </div>
+      )}
+
+      {/* Заголовок секции с подводкой слева и действием справа: подводка
+          прижата к своему разделу, а не болтается под заголовком страницы. */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: '16px', marginBottom: '16px',
       }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
-          Мои проекты
-        </h2>
-        <button onClick={() => setShowConnect(true)} style={{ ...primaryButtonStyle, padding: '8px 18px' }}>
-          + Подключить проект
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 600, color: colors.textPrimary, margin: 0 }}>
+            Мои проекты
+          </h2>
+          <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '4px 0 0' }}>
+            Проект объединяет страницы одного Confluence. В него вы ходите своими логином
+            и паролем — они хранятся зашифрованными и никому не видны.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowConnect(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '9px 20px', borderRadius: radii.pill, border: 'none',
+            background: colors.greenAccent, color: '#fff',
+            fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit', flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+          onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
+          onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
+          onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
+        >
+          <PlusIcon size={15} strokeWidth={2.4} />
+          Подключить проект
         </button>
       </div>
 
@@ -901,7 +983,13 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        <div style={{
+          display: 'grid',
+          // auto-fill вместо жёстких двух колонок: на узком окне карточки
+          // складываются в одну колонку, не сжимаясь до нечитаемых.
+          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+          gap: '14px',
+        }}>
           {joined.map(project => (
             <ProjectCard key={project.id} project={project} onChanged={handleProjectsChanged} />
           ))}

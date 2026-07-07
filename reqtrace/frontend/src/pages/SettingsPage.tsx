@@ -11,11 +11,9 @@ import {
   DocumentIcon,
   GearIcon,
   IconBadge,
-  IconTint,
   ICON_TINTS,
   PencilIcon as PencilIconLib,
   PlusIcon,
-  SparkleIcon,
   StatusAlertIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -47,30 +45,26 @@ const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
 
 // --- Онбординг пустого состояния: три шага до первого покрытого требования ---
 // Показывается только пока пользователь не подключён ни к одному проекту.
-// Значки в пастельных плашках — стилистика «Истории изменений», оттенки —
-// общий реестр ICON_TINTS (только фирменные цвета ReqTrace).
+// Оттенок значков единый (зелёный, задаётся при рендере) — чтобы карточки
+// поддерживали общую стилистику страницы, а не пестрили.
 
 const ONBOARDING_STEPS: {
   icon: React.ReactNode;
-  tint: IconTint;
   title: string;
   text: string;
 }[] = [
   {
     icon: <GearIcon size={16} />,
-    tint: 'green',
     title: 'Подключите проект',
     text: 'Адрес Confluence и ваши рабочие логин/пароль: присоединитесь к существующему проекту команды или создайте новый.',
   },
   {
     icon: <DocumentIcon size={16} />,
-    tint: 'gray',
     title: 'Добавьте страницу',
     text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
   },
   {
     icon: <PencilIconLib size={16} />,
-    tint: 'amber',
     title: 'Привяжите тесты',
     text: 'Выделите фрагмент требования и укажите ключ теста из Jira. ReqTrace проследит, чтобы покрытие не устаревало.',
   },
@@ -1065,81 +1059,55 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {joined.length === 0 ? (
+        /* Онбординг пустого состояния: три самостоятельные карточки-шага в
+           стиле карточек проектов — без общего блока-обёртки и без кнопок
+           («Подключить проект» уже над разделом, демо — в пустом дереве).
+           Значки в едином зелёном — фирменный акцент страницы. */
         <div style={{
-          background: 'rgba(255,255,255,0.85)',
-          backdropFilter: 'blur(20px)',
-          border: `1px solid ${colors.border}`,
-          borderRadius: radii.lg,
-          boxShadow: shadows.card,
-          padding: '26px 28px 24px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '14px',
         }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.textPrimary, marginBottom: '4px' }}>
-            С чего начать
-          </div>
-          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '18px' }}>
-            Три простых шага, чтобы начать отслеживать покрытие требований тестами.
-          </div>
-
-          {/* Каждый шаг — отдельная карточка: визуально это три этапа, а не
-              один абзац. Кнопок здесь сознательно нет: «Подключить проект»
-              уже над разделом, демо-страница — в пустом дереве слева. */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-            gap: '14px',
-          }}>
-            {ONBOARDING_STEPS.map((step, i) => (
-              <div key={step.title} style={{
-                background: colors.white,
-                border: `1px solid ${colors.border}`,
-                borderRadius: radii.md,
-                padding: '16px 18px',
-                display: 'flex',
-                gap: '12px',
-                alignItems: 'flex-start',
-              }}>
-                <IconBadge tint={step.tint} size={36}>
-                  {step.icon}
-                </IconBadge>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px',
+          {ONBOARDING_STEPS.map((step, i) => (
+            <div key={step.title} style={{
+              background: 'rgba(255,255,255,0.85)',
+              backdropFilter: 'blur(20px)',
+              border: `1px solid ${colors.border}`,
+              borderRadius: radii.lg,
+              boxShadow: shadows.card,
+              padding: '18px 20px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'flex-start',
+            }}>
+              <IconBadge tint="green" size={36}>
+                {step.icon}
+              </IconBadge>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px',
+                }}>
+                  <span style={{
+                    width: '20px', height: '20px', borderRadius: '6px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, background: ICON_TINTS.green.bg,
+                    color: ICON_TINTS.green.fg, fontSize: '11.5px', fontWeight: 700,
                   }}>
-                    <span style={{
-                      width: '20px', height: '20px', borderRadius: '6px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, background: ICON_TINTS[step.tint].bg,
-                      color: ICON_TINTS[step.tint].fg, fontSize: '11.5px', fontWeight: 700,
-                    }}>
-                      {i + 1}
-                    </span>
-                    <span style={{
-                      fontSize: '13.5px', fontWeight: 600, color: colors.textPrimary,
-                      lineHeight: 1.4,
-                    }}>
-                      {step.title}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '12.5px', color: colors.textSecondary, lineHeight: 1.5 }}>
-                    {step.text}
-                  </div>
+                    {i + 1}
+                  </span>
+                  <span style={{
+                    fontSize: '13.5px', fontWeight: 600, color: colors.textPrimary,
+                    lineHeight: 1.4,
+                  }}>
+                    {step.title}
+                  </span>
+                </div>
+                <div style={{ fontSize: '12.5px', color: colors.textSecondary, lineHeight: 1.5 }}>
+                  {step.text}
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '18px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '7px 14px', borderRadius: radii.pill,
-              background: ICON_TINTS.green.bg,
-              border: `1px solid ${ICON_TINTS.green.border}`,
-              color: colors.greenDark, fontSize: '12.5px', fontWeight: 500,
-            }}>
-              <SparkleIcon size={14} />
-              Готово! Дальше ReqTrace сам следит за изменениями страниц и актуальностью покрытия.
             </div>
-          </div>
+          ))}
         </div>
       ) : (
         <div style={{

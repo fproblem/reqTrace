@@ -273,13 +273,15 @@ export const LoginPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Иллюстрация прижата к нижнему краю панели и обрезается им */}
+              {/* Иллюстрация прижата к нижнему краю панели и обрезается им.
+                  Тени запечены в широкие поля SVG — держим ширину 100%, чтобы
+                  они не резались краями картинки. */}
               <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
                 <img
                   src={`${process.env.PUBLIC_URL}/authChecklists1.svg`}
                   alt=""
                   aria-hidden="true"
-                  style={{ display: 'block', width: '82%', maxWidth: '400px', margin: '0 auto' }}
+                  style={{ display: 'block', width: '100%', margin: '0 auto' }}
                 />
               </div>
             </div>

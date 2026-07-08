@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
-import { HighlightLayer, getContentBlocks, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
+import { HighlightLayer, highlightDomOrder, compareByDomThenAnchor } from '../components/PageView/HighlightLayer';
 import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
@@ -12,6 +12,7 @@ import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { computeStatusSync } from '../components/PageView/statusSync';
+import { useTextSelection } from '../components/PageView/selection/useTextSelection';
 import { colors, radii, shadows } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -19,22 +20,6 @@ interface PageDetailPageProps {
 }
 
 type ViewMode = 'coverage' | 'changes';
-
-// Длина «сырого» текста (textContent), как его считает HighlightLayer при
-// отрисовке, от начала root до точки (node, offset). Берём
-// cloneContents().textContent, а НЕ Range.toString(): toString отдаёт
-// «отрендеренный» текст (<br> → \n, схлопывание пробелов), из-за чего смещения
-// захвата расходились со смещениями отрисовки — подсветка уезжала или вовсе не
-// появлялась. cloneContents().textContent совпадает с обходом текстовых узлов
-// в wrapTextNodesInRange.
-function measureTextOffset(root: Node, node: Node, offset: number): number {
-  const r = document.createRange();
-  r.selectNodeContents(root);
-  r.setEnd(node, offset);
-  const len = r.cloneContents().textContent?.length ?? 0;
-  r.detach();
-  return len;
-}
 
 function sameIdSet(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
@@ -70,22 +55,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const [contentContainer, setContentContainer] = useState<HTMLDivElement | null>(null);
   const [jiraBaseUrl, setJiraBaseUrl] = useState('');
 
-  const [selectionText, setSelectionText] = useState('');
-  const [showSelectionPopup, setShowSelectionPopup] = useState(false);
-  const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const contentContainerRef = useRef<HTMLDivElement | null>(null);
-  const selectionContextRef = useRef<{
-    textBefore: string;
-    textAfter: string;
-    anchorBlockStart: number | null;
-    anchorBlockEnd: number | null;
-    startCharOffset: number | null;
-    endCharOffset: number | null;
-  }>({
-    textBefore: '', textAfter: '',
-    anchorBlockStart: null, anchorBlockEnd: null,
-    startCharOffset: null, endCharOffset: null,
+  // Захват выделения и попап «Привязать тесты» — в хуке (v1.5.9):
+  // якоря считает selection/selectionAnchors, сервер верифицирует при создании.
+  const { selection, anchorsRef, dismiss: dismissSelection } = useTextSelection({
+    contentAreaRef,
+    getContainer: () => contentContainerRef.current,
   });
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -123,7 +99,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // анимацией); заодно гасим попап «Привязать тесты» и устаревший отчёт слоя.
   useEffect(() => {
     setSelectedHighlight(null);
-    setShowSelectionPopup(false);
+    dismissSelection();
     setRenderReport(null);
     // Контейнер контента прошлой страницы больше не годится: если по пути
     // ContentRenderer размонтировался (виртуальная страница, «Изменения»),
@@ -415,133 +391,22 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     contentContainerRef.current = contentContainer;
   }, [contentContainer]);
 
-  const handleMouseUp = useCallback(() => {
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) {
-      setShowSelectionPopup(false);
-      return;
-    }
-
-    const rawText = selection.toString();
-    const text = rawText.trim();
-    if (!text || text.length < 2) {
-      setShowSelectionPopup(false);
-      return;
-    }
-
-    if (contentAreaRef.current && !contentAreaRef.current.contains(selection.anchorNode)) {
-      setShowSelectionPopup(false);
-      return;
-    }
-
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-
-    const container = contentContainerRef.current;
-    if (container) {
-      // Обе границы выделения должны лежать ВНУТРИ контейнера с контентом.
-      // Ранняя проверка выше валидирует contentAreaRef (внешнюю обёртку, куда
-      // попадает и секция «Утраченные привязки», и заголовок), а смещения
-      // считаются по contentContainerRef. Без этой проверки measureTextOffset
-      // (Range.setEnd) бросил бы InvalidNodeTypeError и весь обработчик
-      // оборвался бы без появления кнопки «Привязать тесты».
-      if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) {
-        setShowSelectionPopup(false);
-        return;
-      }
-
-      const fullText = container.textContent || '';
-      const leadingTrimmed = rawText.length - rawText.trimStart().length;
-
-      const offsetInContainer =
-        measureTextOffset(container, range.startContainer, range.startOffset) + leadingTrimmed;
-
-      const textBefore = fullText.substring(Math.max(0, offsetInContainer - 100), offsetInContainer);
-      const textAfter = fullText.substring(
-        offsetInContainer + text.length,
-        offsetInContainer + text.length + 100,
-      );
-
-      const blocks = getContentBlocks(container);
-      let anchorBlockStart = -1;
-      let anchorBlockEnd = -1;
-      let startCharOffset = 0;
-      let endCharOffset = 0;
-
-      for (let i = 0; i < blocks.length; i++) {
-        if (anchorBlockStart === -1 && blocks[i].contains(range.startContainer)) {
-          anchorBlockStart = i;
-          startCharOffset = measureTextOffset(blocks[i], range.startContainer, range.startOffset);
-          const trimDelta = rawText.length - rawText.trimStart().length;
-          startCharOffset += trimDelta;
-        }
-        if (blocks[i].contains(range.endContainer)) {
-          anchorBlockEnd = i;
-          let rawEndOffset = measureTextOffset(blocks[i], range.endContainer, range.endOffset);
-          const trailingTrimmed = rawText.length - rawText.trimEnd().length;
-          rawEndOffset -= trailingTrimmed;
-          endCharOffset = Math.max(0, rawEndOffset);
-          break;
-        }
-      }
-
-      // Если хотя бы одна граница выделения не попала в листовой блок
-      // (текст лежит в нелистовом <li>/<td>/<blockquote> либо граница пришлась
-      // на контейнерный <ul>/<ol> или пробельный узел) — НЕ привязываем
-      // подсветку к блоку 0. Раньше именно этот фолбэк «улетал» в начало
-      // страницы. Вместо этого сохраняем без блочных якорей: подсветку
-      // корректно разместит текстовый поиск (applyLegacyTextSearch) по
-      // text_content и контексту text_before/text_after.
-      const blockAnchored = anchorBlockStart !== -1 && anchorBlockEnd !== -1;
-
-      selectionContextRef.current = {
-        textBefore,
-        textAfter,
-        anchorBlockStart: blockAnchored ? anchorBlockStart : null,
-        anchorBlockEnd: blockAnchored ? anchorBlockEnd : null,
-        startCharOffset: blockAnchored ? startCharOffset : null,
-        endCharOffset: blockAnchored ? endCharOffset : null,
-      };
-    } else {
-      selectionContextRef.current = {
-        textBefore: '', textAfter: '',
-        anchorBlockStart: null, anchorBlockEnd: null,
-        startCharOffset: null, endCharOffset: null,
-      };
-    }
-
-    setSelectionText(text);
-    setPopupPos({
-      x: rect.left + rect.width / 2,
-      y: rect.top - 10,
-    });
-    setShowSelectionPopup(true);
-  }, []);
-
   const handleCreateHighlight = async () => {
-    if (!pageId || !selectionText) return;
-
-    const { textBefore, textAfter, anchorBlockStart, anchorBlockEnd, startCharOffset, endCharOffset } =
-      selectionContextRef.current;
+    const anchors = anchorsRef.current;
+    if (!pageId || !selection || !anchors) return;
 
     try {
       const created = await api.createHighlight(pageId, {
-        text_content: selectionText,
-        text_before: textBefore,
-        text_after: textAfter,
-        anchor_block_start: anchorBlockStart,
-        anchor_block_end: anchorBlockEnd,
-        start_char_offset: startCharOffset,
-        end_char_offset: endCharOffset,
+        text_content: selection.text,
+        text_before: anchors.textBefore,
+        text_after: anchors.textAfter,
+        anchor_block_start: anchors.anchorBlockStart,
+        anchor_block_end: anchors.anchorBlockEnd,
+        start_char_offset: anchors.startCharOffset,
+        end_char_offset: anchors.endCharOffset,
       });
       window.getSelection()?.removeAllRanges();
-      setShowSelectionPopup(false);
-      setSelectionText('');
-      selectionContextRef.current = {
-        textBefore: '', textAfter: '',
-        anchorBlockStart: null, anchorBlockEnd: null,
-        startCharOffset: null, endCharOffset: null,
-      };
+      dismissSelection();
       await loadPage();
       refreshTree();
       // Сразу открываем боковую панель на созданной привязке: кнопка обещает
@@ -553,11 +418,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       showToast('error', 'Не удалось создать привязку', e.message);
     }
   };
-
-  useEffect(() => {
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [handleMouseUp]);
 
   // Синхронизируем статусы с фактической отрисовкой:
   //  • привязку обработали, но ни одной <mark> не появилось → «Утрачено»
@@ -1228,11 +1088,11 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       </div>
 
       {/* Selection popup */}
-      {showSelectionPopup && viewMode === 'coverage' && (
+      {selection && viewMode === 'coverage' && (
         <div style={{
           position: 'fixed',
-          left: popupPos.x,
-          top: popupPos.y,
+          left: selection.x,
+          top: selection.y,
           transform: 'translate(-50%, -100%)',
           zIndex: 1000,
         }}>

@@ -154,6 +154,86 @@ describe('applyHighlightsToContainer: отчёт и фолбэки', () => {
   });
 });
 
+describe('applyHighlightsToContainer: частичное размещение в якорном блоке (v1.5.8)', () => {
+  const quote = 'Текст под подзаголовок четвертого уровня.';
+
+  it('слово удалили из цитаты → уцелевшие куски подсвечены, отчёт partial', () => {
+    const c = mount('<p>Шапка раздела.</p><p>Текст под четвертого уровня.</p>');
+    const h = makeHighlight({
+      text_content: quote,
+      anchor_block_start: 1, anchor_block_end: 1,
+      start_char_offset: 0, end_char_offset: quote.length,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(true);
+    expect(report!.partial.has(h.id)).toBe(true);
+    const texts = marksOf(c, h.id).map(m => m.textContent);
+    expect(texts).toEqual(['Текст под', 'четвертого уровня.']);
+  });
+
+  it('точное совпадение остаётся точным: partial в отчёте пуст', () => {
+    const c = mount(`<p>${quote}</p>`);
+    const h = makeHighlight({
+      text_content: quote,
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: quote.length,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(true);
+    expect(report!.partial.has(h.id)).toBe(false);
+  });
+
+  it('блок переписан почти целиком → меток нет, привязка не отрисована', () => {
+    const c = mount('<p>Шапка.</p><p>Совершенно другое содержимое раздела.</p>');
+    const h = makeHighlight({
+      text_content: quote,
+      anchor_block_start: 1, anchor_block_end: 1,
+      start_char_offset: 0, end_char_offset: quote.length,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(false);
+    expect(report!.partial.has(h.id)).toBe(false);
+    expect(marksOf(c, h.id)).toHaveLength(0);
+  });
+
+  it('ЗАЩИТА §6: похожий текст в ЧУЖОМ блоке частично не подсвечивается', () => {
+    // Якорь смотрит на переписанный блок; в соседнем — похожий шаблонный пункт.
+    // Частичное размещение работает строго в якорном блоке — прыжка нет.
+    const c = mount('<p>Уровень 3.1 — пункт один.</p><p>Совсем новое содержимое.</p>');
+    const h = makeHighlight({
+      text_content: 'Уровень 3 — пункт два.',
+      anchor_block_start: 1, anchor_block_end: 1,
+      start_char_offset: 0, end_char_offset: 22,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(false);
+    expect(marksOf(c, h.id)).toHaveLength(0);
+    expect(c.querySelectorAll('mark')).toHaveLength(0);
+  });
+
+  it('привязка без якоря (legacy) частично не размещается', () => {
+    // Без якорного блока «уцелевшие куски» искать негде: частичный поиск по
+    // всей странице — путь к переезду подсветки на чужой текст.
+    const c = mount('<p>Текст под четвертого уровня.</p>');
+    const h = makeHighlight({ text_content: quote });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(false);
+    expect(marksOf(c, h.id)).toHaveLength(0);
+  });
+
+  it('утраченная привязка с частичным совпадением снова отрисовывается (для возврата статуса)', () => {
+    const c = mount('<p>Текст под четвертого уровня.</p>');
+    const h = makeHighlight({
+      text_content: quote, status: 'lost',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: quote.length,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(true);
+    expect(report!.partial.has(h.id)).toBe(true);
+  });
+});
+
 describe('applyHighlightsToContainer: выбор и клик', () => {
   it('выбранная привязка получает класс --selected', () => {
     const c = mount('<p>Правило работы.</p>');

@@ -724,9 +724,13 @@ async def refresh_page(
 
     page.title = page_data.title
 
+    # Проецируем ВСЕ привязки, включая «утраченные»: у них тоже должны
+    # обновляться якоря (замороженные якоря протухали, и вернувшийся текст
+    # размещался «разрывом» по устаревшим координатам), а вернувшаяся цитата —
+    # восстанавливать привязку в «Требует проверки» прямо на refresh.
     hl_result = await db.execute(
         select(Highlight)
-        .where(Highlight.page_id == page.id, Highlight.status != "lost")
+        .where(Highlight.page_id == page.id)
     )
     highlights = hl_result.scalars().all()
 
@@ -760,9 +764,10 @@ async def refresh_page(
             for h in highlights:
                 if h.id == proj["id"]:
                     projected_status = proj["projected_status"]
-                    # Only a human action (reanchor) can resolve outdated → active.
-                    # Refresh must not silently clear an outdated status.
-                    if h.status == "outdated" and projected_status == "active":
+                    # Refresh никогда сам не «повышает» до «актуально» — это
+                    # делает только человек («Актуализировать»). Вернувшаяся
+                    # цитата у outdated/lost-привязки → «Требует проверки».
+                    if projected_status == "active" and h.status != "active":
                         projected_status = "outdated"
                     h.status = projected_status
                     if "new_anchor_block_start" in proj:

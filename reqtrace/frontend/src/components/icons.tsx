@@ -147,6 +147,12 @@ export const TargetIcon = makeIcon(<>
   <circle cx="12" cy="12" r="3.5" />
 </>);
 
+export const ChartIcon = makeIcon(<>
+  <line x1="5" y1="20" x2="5" y2="13" />
+  <line x1="12" y1="20" x2="12" y2="6" />
+  <line x1="19" y1="20" x2="19" y2="10" />
+</>);
+
 // --- Объекты интерфейса ---
 
 export const PanelIcon = makeIcon(<>

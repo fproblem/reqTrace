@@ -11,8 +11,12 @@ function h(id: string, status: Highlight['status']): Highlight {
   return { id, status } as Highlight;
 }
 
-function report(considered: string[], rendered: string[]) {
-  return { considered: new Set(considered), rendered: new Set(rendered) };
+function report(considered: string[], rendered: string[], partial: string[] = []) {
+  return {
+    considered: new Set(considered),
+    rendered: new Set(rendered),
+    partial: new Set(partial),
+  };
 }
 
 describe('computeStatusSync', () => {
@@ -63,5 +67,39 @@ describe('computeStatusSync', () => {
     const plan = computeStatusSync([h('a', 'active')], report([], []));
     expect(plan.toLose).toEqual([]);
     expect(plan.toRecover).toEqual([]);
+  });
+});
+
+describe('computeStatusSync: частичная отрисовка (v1.5.8)', () => {
+  it('актуальная отрисована частично (цитату правили) → понижение в «Требует проверки»', () => {
+    const plan = computeStatusSync([h('a', 'active')], report(['a'], ['a'], ['a']));
+    expect(plan.toReview).toEqual(['a']);
+    expect(plan.toLose).toEqual([]);
+    expect(plan.toRecover).toEqual([]);
+  });
+
+  it('частично отрисованная «Требует проверки» не трогается (ждёт человека)', () => {
+    const plan = computeStatusSync([h('a', 'outdated')], report(['a'], ['a'], ['a']));
+    expect(plan.toReview).toEqual([]);
+    expect(plan.toLose).toEqual([]);
+    expect(plan.toRecover).toEqual([]);
+  });
+
+  it('утраченная отрисовалась частично → возврат в «Требует проверки» (toRecover, не toReview)', () => {
+    const plan = computeStatusSync([h('a', 'lost')], report(['a'], ['a'], ['a']));
+    expect(plan.toRecover).toEqual(['a']);
+    expect(plan.toReview).toEqual([]);
+  });
+
+  it('полная отрисовка актуальной ничего не меняет', () => {
+    const plan = computeStatusSync([h('a', 'active')], report(['a'], ['a']));
+    expect(plan.toReview).toEqual([]);
+    expect(plan.toLose).toEqual([]);
+    expect(plan.toRecover).toEqual([]);
+  });
+
+  it('partial чужой привязки (не из considered) игнорируется', () => {
+    const plan = computeStatusSync([h('new', 'active')], report(['old'], ['old'], ['old']));
+    expect(plan.toReview).toEqual([]);
   });
 });

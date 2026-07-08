@@ -5,6 +5,7 @@ import {
   strippedEquals,
   findBestMatchIndex,
   findSplitRangesIgnoringWhitespace,
+  findPartialRanges,
 } from './highlightMatching';
 
 const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
@@ -46,10 +47,12 @@ export function compareByDomThenAnchor(order: Map<string, number>) {
 
 // Отчёт об отрисовке: considered — все привязки, которые слой пытался показать
 // (не «утраченные»); rendered — те, у которых реально появилась хотя бы одна
-// <mark>. Разница (considered − rendered) = привязки, не отобразившиеся на
-// странице (например, выделенный текст не нашёлся в текущем содержимом).
+// <mark>; partial ⊆ rendered — размещённые ЧАСТИЧНО (точного совпадения нет,
+// подсвечены уцелевшие куски цитаты в якорном блоке — текст цитаты изменился).
+// Разница (considered − rendered) = привязки, не отобразившиеся на странице.
 export interface HighlightRenderReport {
   rendered: Set<string>;
+  partial: Set<string>;
   considered: Set<string>;
 }
 
@@ -94,6 +97,7 @@ export function applyHighlightsToContainer(
   const blocks = getContentBlocks(container);
 
   const rendered = new Set<string>();
+  const partial = new Set<string>();
   const considered = new Set<string>();
 
   for (const highlight of highlights) {
@@ -117,13 +121,21 @@ export function applyHighlightsToContainer(
       if (!ok) {
         ok = applyLegacyTextSearch(container, highlight, selectedId, onClick);
       }
+      // Последний ярус: точного совпадения нигде нет — цитату правили. Ищем
+      // уцелевшие куски В ПРЕДЕЛАХ якорного блока (как Confluence оставляет
+      // комментарий на оставшемся тексте); статус такой привязки вызывающий
+      // код понизит до «Требует проверки» (statusSync).
+      if (!ok && applyPartialAtAnchor(blocks, highlight, selectedId, onClick)) {
+        ok = true;
+        partial.add(highlight.id);
+      }
       if (ok) rendered.add(highlight.id);
     } catch (err) {
       console.warn('Failed to apply highlight:', highlight.id, err);
     }
   }
 
-  return { rendered, considered };
+  return { rendered, partial, considered };
 }
 
 export const HighlightLayer: React.FC<HighlightLayerProps> = ({
@@ -279,6 +291,50 @@ function applyLegacyTextSearch(
   let wrapped = 0;
   for (const r of ranges) {
     wrapped += wrapTextNodesInRange(container, r.start, r.end, highlight, selectedId, onClick);
+  }
+  return wrapped > 0;
+}
+
+// Частичное размещение: цитату правили (точного совпадения нет) — подсвечиваем
+// её уцелевшие куски строго в пределах якорных блоков (findPartialRanges, с
+// порогом «уцелело ≥ половины»). Возвращает true, если появилась хотя бы одна
+// метка. Для legacy-привязок без якоря частичного размещения нет — искать
+// «похожий» текст по всей странице запрещено (переезд подсветки на чужой текст).
+function applyPartialAtAnchor(
+  blocks: HTMLElement[],
+  highlight: Highlight,
+  selectedId: string | null,
+  onClick: (h: Highlight) => void,
+): boolean {
+  if (highlight.anchor_block_start == null || !highlight.text_content) return false;
+  const startIdx = highlight.anchor_block_start;
+  if (startIdx >= blocks.length) return false;
+  const endIdx = Math.min(highlight.anchor_block_end ?? startIdx, blocks.length - 1);
+
+  // Текст якорных блоков целиком (цитата могла сместиться внутри блока) и
+  // границы блоков в конкатенации — чтобы разложить найденные куски обратно.
+  const texts: string[] = [];
+  for (let bi = startIdx; bi <= endIdx; bi++) {
+    texts.push(blocks[bi].textContent || '');
+  }
+  const ranges = findPartialRanges(texts.join(''), highlight.text_content);
+  if (ranges.length === 0) return false;
+
+  const bounds = [0];
+  for (const t of texts) bounds.push(bounds[bounds.length - 1] + t.length);
+
+  let wrapped = 0;
+  for (const r of ranges) {
+    for (let k = 0; k < texts.length; k++) {
+      const from = Math.max(r.start, bounds[k]);
+      const to = Math.min(r.end, bounds[k + 1]);
+      if (from < to) {
+        wrapped += wrapTextNodesInRange(
+          blocks[startIdx + k], from - bounds[k], to - bounds[k],
+          highlight, selectedId, onClick,
+        );
+      }
+    }
   }
   return wrapped > 0;
 }

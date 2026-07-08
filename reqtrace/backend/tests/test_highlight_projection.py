@@ -28,6 +28,7 @@ from app.services.confluence import process_confluence_html
 from app.services.highlight_projection import (
     extract_blocks,
     extract_text_at_anchor,
+    project_highlights,
     resolve_reanchor,
 )
 
@@ -150,6 +151,80 @@ class ResolveReanchorSplit(unittest.TestCase):
         self.assertEqual(r["anchor_block_end"], 1)
         self.assertEqual(r["start_char_offset"], len("Один "))
         self.assertEqual(r["end_char_offset"], len("три"))
+
+
+class ResolveReanchorPartial(unittest.TestCase):
+    """Частичное совпадение (v1.5.8): цитату правили — реанкор сжимает её до
+    уцелевшего текста в якорном блоке, как Confluence сжимает inline-комментарий
+    до оставшегося текста."""
+
+    QUOTE = "Текст под подзаголовок четвертого уровня."
+
+    def test_deleted_word_shrinks_quote_to_surviving_text(self):
+        html = "<p>Шапка</p><p>Текст под четвертого уровня.</p>"
+        r = resolve_reanchor(html, self.QUOTE, "", "", 1, 1, 0, len(self.QUOTE))
+        self.assertIsNotNone(r)
+        self.assertEqual(r["text_content"], "Текст под четвертого уровня.")
+        self.assertEqual(r["anchor_block_start"], 1)
+        self.assertEqual(r["anchor_block_end"], 1)
+
+    def test_rewritten_block_still_returns_none(self):
+        # Уцелело меньше половины цитаты — не перепривязываем.
+        html = "<p>Шапка</p><p>Совершенно другое содержимое раздела.</p>"
+        r = resolve_reanchor(html, self.QUOTE, "", "", 1, 1, 0, len(self.QUOTE))
+        self.assertIsNone(r)
+
+    def test_partial_is_confined_to_anchor_block(self):
+        # Похожий шаблонный пункт в ЧУЖОМ блоке не должен стать цитатой
+        # (историческая регрессия §6 — «прыгающая» подсветка).
+        html = "<p>Уровень 3.1 — пункт один.</p><p>Совсем новое содержимое.</p>"
+        r = resolve_reanchor(html, "Уровень 3 — пункт два.", "", "", 1, 1, 0, 22)
+        self.assertIsNone(r)
+
+
+class ProjectHighlightsPartialSurvival(unittest.TestCase):
+    """Проекция при refresh (v1.5.8): правка цитаты → «Требует проверки»,
+    переписанный блок → «Утрачено», удалённый блок → «Утрачено» с обнулением
+    якорей (иначе съехавший индекс указывал бы на соседний текст и частичная
+    подсветка «прыгала» бы на чужой пункт)."""
+
+    QUOTE = "Текст под подзаголовок четвертого уровня."
+    OLD = "<p>Шапка</p><p>Текст под подзаголовок четвертого уровня.</p>"
+
+    def _project(self, new_html):
+        h = {
+            "id": "h1",
+            "text_content": self.QUOTE,
+            "text_before": "Шапка",
+            "text_after": "",
+            "anchor_block_start": 1,
+            "anchor_block_end": 1,
+            "start_char_offset": 0,
+            "end_char_offset": len(self.QUOTE),
+        }
+        return project_highlights([h], new_html, self.OLD)[0]
+
+    def test_untouched_block_projects_active(self):
+        proj = self._project(self.OLD)
+        self.assertEqual(proj["projected_status"], "active")
+
+    def test_deleted_word_projects_outdated(self):
+        proj = self._project("<p>Шапка</p><p>Текст под четвертого уровня.</p>")
+        self.assertEqual(proj["projected_status"], "outdated")
+
+    def test_rewritten_block_projects_lost(self):
+        proj = self._project(
+            "<p>Шапка</p><p>Совершенно другое содержимое раздела.</p>"
+        )
+        self.assertEqual(proj["projected_status"], "lost")
+
+    def test_deleted_block_projects_lost_and_clears_anchor(self):
+        proj = self._project("<p>Шапка</p>")
+        self.assertEqual(proj["projected_status"], "lost")
+        self.assertIsNone(proj["new_anchor_block_start"])
+        self.assertIsNone(proj["new_anchor_block_end"])
+        self.assertIsNone(proj["new_start_char_offset"])
+        self.assertIsNone(proj["new_end_char_offset"])
 
 
 class ResolveReanchorRefusesToCorrupt(unittest.TestCase):

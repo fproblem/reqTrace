@@ -1,24 +1,35 @@
 // Чистая логика сопоставления текста привязки с содержимым страницы — без DOM и
 // React, чтобы её можно было покрыть юнит-тестами (highlightMatching.test.ts).
 //
-// Правило размещения (решение по продукту): привязка показывается ТОЛЬКО если её
-// точный текст всё ещё на странице. Различия в пробелах/переносах правкой не
-// считаются; вставка текста ВНУТРЬ выделения («разрыв») допускается. Любая
-// правка/удаление символов выделенного текста → привязка не размещается, и далее
-// получает статус «Утрачено». Никаких «процентов похожести».
+// Правило размещения (решение по продукту, смягчено в v1.5.8 — ближе к
+// inline-комментариям Confluence): привязка показывается точным совпадением
+// (различия в пробелах/вёрстке и одна вставка ВНУТРЬ выделения правкой не
+// считаются), а при правке/удалении части выделенного текста — частичным
+// совпадением В ПРЕДЕЛАХ ЯКОРНОГО БЛОКА: подсвечиваются уцелевшие куски цитаты,
+// и привязка получает статус «Требует проверки». «Утрачено» — только когда от
+// цитаты в её блоке осталось меньше половины (PARTIAL_MIN_SURVIVAL). Поиска
+// «похожего» текста по всей странице по-прежнему нет — это защита от
+// исторического бага с переездом подсветки на чужой текст.
 
 export interface TextRange {
   start: number;
   end: number;
 }
 
-// Удаляет все пробельные символы и строит карту map: map[i] = индекс в исходной
-// строке для i-го непробельного символа.
+// Пробельные И невидимые символы (zero-width space, soft hyphen, BOM):
+// Confluence-редактор вставляет невидимые символы при перенаборе текста —
+// глазом они неотличимы, поэтому для сопоставления их не существует.
+// Из-за них же «вернувшийся» текст мог считаться изменённым и подсветка
+// рвалась на части.
+const IGNORED_CHAR = /[\s\u200B\u200C\u200D\uFEFF\u00AD]/;
+
+// Удаляет все пробельные/невидимые символы и строит карту map: map[i] = индекс
+// в исходной строке для i-го значащего символа.
 export function stripWhitespaceWithMap(s: string): { stripped: string; map: number[] } {
   let stripped = '';
   const map: number[] = [];
   for (let i = 0; i < s.length; i++) {
-    if (!/\s/.test(s[i])) {
+    if (!IGNORED_CHAR.test(s[i])) {
       stripped += s[i];
       map.push(i);
     }
@@ -155,4 +166,71 @@ export function findBestMatchIndex(
   }
 
   return bestIdx;
+}
+
+// --- Частичное совпадение (v1.5.8) ---------------------------------------
+//
+// Эмуляция поведения inline-комментариев Confluence: при правке/удалении части
+// закомментированного текста комментарий остаётся на уцелевшей части. У нас
+// якорь — цитата, поэтому «уцелевшую часть» ищем диффом цитаты против текста
+// её ЯКОРНОГО БЛОКА (и только его — по всей странице частичный поиск запрещён,
+// см. шапку файла).
+
+/** Кусок короче этого — не «след цитаты», а случайное совпадение букв. */
+const PARTIAL_MIN_RUN = 4;
+/** Уцелело меньше этой доли значащих символов цитаты → «Утрачено». */
+export const PARTIAL_MIN_SURVIVAL = 0.5;
+
+// Общие куски needle и haystack в порядке следования (разложение по самой
+// длинной общей подстроке, рекурсивно слева и справа от неё — как в
+// diff-алгоритмах). Куски не пересекаются и не «перекрещиваются», короче
+// minRun — отбрасываются вместе со своей веткой рекурсии.
+function commonRuns(
+  a: string,
+  b: string,
+  minRun: number,
+): Array<{ ai: number; bi: number; len: number }> {
+  if (a.length < minRun || b.length < minRun) return [];
+
+  // Самая длинная общая подстрока: DP по строкам, память O(|b|).
+  let bestLen = 0;
+  let bestAi = 0;
+  let bestBi = 0;
+  let prev = new Array<number>(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = new Array<number>(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        cur[j] = prev[j - 1] + 1;
+        if (cur[j] > bestLen) {
+          bestLen = cur[j];
+          bestAi = i - cur[j];
+          bestBi = j - cur[j];
+        }
+      }
+    }
+    prev = cur;
+  }
+  if (bestLen < minRun) return [];
+
+  const left = commonRuns(a.slice(0, bestAi), b.slice(0, bestBi), minRun);
+  const right = commonRuns(a.slice(bestAi + bestLen), b.slice(bestBi + bestLen), minRun)
+    .map(r => ({ ai: r.ai + bestAi + bestLen, bi: r.bi + bestBi + bestLen, len: r.len }));
+  return [...left, { ai: bestAi, bi: bestBi, len: bestLen }, ...right];
+}
+
+// Уцелевшие куски needle в blockText (текст якорного блока привязки).
+// Возвращает «сырые» диапазоны [start, end) в blockText, если суммарно уцелело
+// ≥ PARTIAL_MIN_SURVIVAL значащих символов цитаты; иначе пустой массив —
+// вызывающий код отправляет привязку в «Утрачено».
+export function findPartialRanges(blockText: string, needle: string): TextRange[] {
+  const { stripped: haystack, map } = stripWhitespaceWithMap(blockText);
+  const sNeedle = stripWhitespaceWithMap(needle).stripped;
+  if (!sNeedle || !haystack) return [];
+
+  const runs = commonRuns(sNeedle, haystack, PARTIAL_MIN_RUN);
+  const survived = runs.reduce((n, r) => n + r.len, 0);
+  if (survived < sNeedle.length * PARTIAL_MIN_SURVIVAL) return [];
+
+  return runs.map(r => ({ start: map[r.bi], end: map[r.bi + r.len - 1] + 1 }));
 }

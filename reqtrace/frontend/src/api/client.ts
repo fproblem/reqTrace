@@ -210,6 +210,9 @@ export const api = {
   unmarkHighlightLost: (highlightId: string) =>
     request<Highlight>(`/highlights/${highlightId}/unmark-lost`, { method: 'POST' }),
 
+  markHighlightOutdated: (highlightId: string) =>
+    request<Highlight>(`/highlights/${highlightId}/mark-outdated`, { method: 'POST' }),
+
   // Test links
   addTestLink: (highlightId: string, test_key: string) =>
     request<TestLink>(`/highlights/${highlightId}/tests`, {

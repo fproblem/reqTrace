@@ -28,6 +28,16 @@ BLOCK_TAGS = frozenset(
 CONTEXT_MATCH_THRESHOLD = 0.6
 TEXT_MATCH_THRESHOLD = 0.7
 
+# Частичное совпадение (v1.5.8, зеркало highlightMatching.ts): кусок короче
+# PARTIAL_MIN_RUN значащих символов — случайное совпадение букв, а не «след
+# цитаты»; уцелело меньше PARTIAL_MIN_SURVIVAL доли цитаты → «Утрачено».
+PARTIAL_MIN_RUN = 4
+PARTIAL_MIN_SURVIVAL = 0.5
+
+# Невидимые символы (zero-width space и т.п.) — Confluence-редактор вставляет
+# их при перенаборе текста; для сопоставления их не существует, как и пробелов.
+_INVISIBLE_CHARS = frozenset("\u200b\u200c\u200d\ufeff\u00ad")
+
 
 def extract_blocks(html: str) -> list[str]:
     """Extract leaf-level block texts from HTML in document order."""
@@ -204,15 +214,43 @@ def _extract_at_anchor(
 
 
 def _strip_with_map(s: str) -> tuple[str, list[int]]:
-    """Текст без пробельных символов + карта: map[i] = индекс i-го непробельного
-    символа в исходной строке. Зеркало stripWhitespaceWithMap на фронте."""
+    """Текст без пробельных/невидимых символов + карта: map[i] = индекс i-го
+    значащего символа в исходной строке. Зеркало stripWhitespaceWithMap на фронте."""
     chars: list[str] = []
     mapping: list[int] = []
     for i, ch in enumerate(s):
-        if not ch.isspace():
+        if not ch.isspace() and ch not in _INVISIBLE_CHARS:
             chars.append(ch)
             mapping.append(i)
     return "".join(chars), mapping
+
+
+def _common_runs(a: str, b: str, min_run: int) -> list[tuple[int, int, int]]:
+    """Общие куски a и b в порядке следования: разложение по самой длинной
+    общей подстроке, рекурсивно слева и справа от неё (зеркало commonRuns на
+    фронте). Возвращает [(ai, bi, len)]; ветки с куском короче min_run
+    отбрасываются целиком — короткие совпадения букв не «след цитаты»."""
+    if len(a) < min_run or len(b) < min_run:
+        return []
+    m = SequenceMatcher(None, a, b, autojunk=False).find_longest_match(
+        0, len(a), 0, len(b)
+    )
+    if m.size < min_run:
+        return []
+    left = _common_runs(a[: m.a], b[: m.b], min_run)
+    right = [
+        (ai + m.a + m.size, bi + m.b + m.size, ln)
+        for ai, bi, ln in _common_runs(a[m.a + m.size :], b[m.b + m.size :], min_run)
+    ]
+    return [*left, (m.a, m.b, m.size), *right]
+
+
+def _surviving_share(needle_stripped: str, region_stripped: str) -> float:
+    """Доля значащих символов цитаты, уцелевших в тексте её блоков."""
+    if not needle_stripped:
+        return 0.0
+    runs = _common_runs(needle_stripped, region_stripped, PARTIAL_MIN_RUN)
+    return sum(r[2] for r in runs) / len(needle_stripped)
 
 
 def _find_stripped_occurrence(
@@ -377,6 +415,31 @@ def resolve_reanchor(
             **_block_coords(blocks, orig_start, orig_end),
         }
 
+    # 4) Частичное совпадение в якорных блоках (v1.5.8): цитату правили, но
+    #    уцелело ≥ половины — цитатой становится текст от первого до последнего
+    #    уцелевшего куска (как Confluence сжимает inline-комментарий до
+    #    оставшегося текста). Строго в якорных блоках: «похожий» текст в другом
+    #    месте страницы цитатой становиться не должен.
+    if anchor_block_start is not None and 0 <= anchor_block_start < len(blocks):
+        a_end = anchor_block_end if anchor_block_end is not None else anchor_block_start
+        a_end = min(max(a_end, anchor_block_start), len(blocks) - 1)
+        prefix_len = sum(len(blocks[i]) for i in range(anchor_block_start))
+        region = "".join(blocks[anchor_block_start : a_end + 1])
+        region_stripped, region_map = _strip_with_map(region)
+        runs = _common_runs(stored_stripped, region_stripped, PARTIAL_MIN_RUN)
+        survived = sum(r[2] for r in runs)
+        if runs and survived >= len(stored_stripped) * PARTIAL_MIN_SURVIVAL:
+            first_b = runs[0][1]
+            last_b = runs[-1][1] + runs[-1][2] - 1
+            orig_start = prefix_len + region_map[first_b]
+            orig_end = prefix_len + region_map[last_b] + 1
+            return {
+                "text_content": full_text[orig_start:orig_end],
+                "text_before": full_text[max(0, orig_start - 100):orig_start],
+                "text_after": full_text[orig_end:orig_end + 100],
+                **_block_coords(blocks, orig_start, orig_end),
+            }
+
     return None
 
 
@@ -444,7 +507,20 @@ def _project_block_anchored(
     end_mapping = block_mapping.get(anchor_end)
 
     if start_mapping is None:
-        return {**h, "projected_status": "lost", "confidence": 0.0}
+        # Блок с цитатой удалён целиком. Якорь больше ничего не значит: после
+        # сдвига блоков его индекс указывает на СОСЕДНИЙ текст, и частичное
+        # размещение (v1.5.8) подсвечивало бы похожий чужой пункт — регрессия
+        # «прыгающей» подсветки (§6). Обнуляем якоря; вернуть привязку можно
+        # точным текстовым поиском (текст вернули) или «Актуализировать».
+        return {
+            **h,
+            "projected_status": "lost",
+            "confidence": 0.0,
+            "new_anchor_block_start": None,
+            "new_anchor_block_end": None,
+            "new_start_char_offset": None,
+            "new_end_char_offset": None,
+        }
 
     start_type, new_start_idx = start_mapping
 
@@ -470,17 +546,22 @@ def _project_block_anchored(
     else:
         text_content = h.get("text_content", "")
         if new_start_idx < len(new_blocks):
-            new_block_text = new_blocks[new_start_idx]
-            sim = _similarity(text_content, new_block_text)
-            if text_content in new_block_text:
+            new_end_clamped = min(new_end_idx, len(new_blocks) - 1)
+            region = "".join(new_blocks[new_start_idx : new_end_clamped + 1])
+            if text_content and text_content in region:
                 status = "active"
                 confidence = 0.95
-            elif sim >= TEXT_MATCH_THRESHOLD:
-                status = "outdated"
-                confidence = sim
             else:
-                status = "outdated"
-                confidence = max(sim, 0.5)
+                # Блок изменился, цитаты целиком нет. Решаем по доле уцелевших
+                # значащих символов цитаты в её блоках — тем же правилом, по
+                # которому фронт показывает частичную подсветку
+                # (findPartialRanges): уцелело ≥ половины → «Требует проверки»,
+                # меньше → «Утрачено».
+                needle, _ = _strip_with_map(text_content)
+                region_stripped, _ = _strip_with_map(region)
+                share = _surviving_share(needle, region_stripped)
+                status = "outdated" if share >= PARTIAL_MIN_SURVIVAL else "lost"
+                confidence = share
         else:
             status = "outdated"
             confidence = 0.5

@@ -17,10 +17,11 @@
 storage-XML даёт другую разбивку на блоки: текст ссылок/кода сидит в CDATA и
 невидим HTML-парсеру (баг v1.5.6 — порча цитат при актуализации).
 
-Границы диапазона ведут себя как annotation-mark ProseMirror (inclusive=false):
-вставка СТРОГО ВНУТРИ диапазона расширяет его, вставка вплотную к границе — нет.
-Это следует из правила переноса «образ диапазона = от образа первого до образа
-последнего УЦЕЛЕВШЕГО символа»: только 'equal'-символы диффа переживают правку.
+Границы диапазона ведут себя как annotation-mark редактора: вставка СТРОГО
+ВНУТРИ диапазона расширяет его, вставка вплотную к границе — нет
+(inclusive=false); замена текста внутри маркера — включая первое/последнее
+слово выделения — наследует маркер (как перенабор слова внутри выделения).
+Правила переноса и гейт выживания — в docstring map_range.
 
 Известные ограничения (документированные) — неустранимые неоднозначности
 сравнения двух снимков, когда дифф восстанавливает НЕ ту последовательность
@@ -56,8 +57,12 @@ CHAR_DIFF_CAP = 4_000_000
 # Посимвольный дифф между НЕсвязанными текстами находит «шумовые» совпадения из
 # отдельных букв и знаков препинания. Маркер на таком мусоре — ложное выживание:
 # полностью перенабранный абзац обязан давать «Утрачено», как у эталона
-# (select-all + перенабор уничтожает маркер). Равные куски короче этого числа
-# ЗНАЧАЩИХ символов (norm_key) считаются частью замены.
+# (select-all + перенабор уничтожает маркер). Поэтому диапазон считается ЖИВЫМ,
+# только если его пересекает хотя бы один equal-кусок с ≥ MIN_EQUAL_RUN
+# значащих символов. Это ГЕЙТ ВЫЖИВАНИЯ, а не фильтр геометрии: короткие
+# честные совпадения («Шаг», союзы, номера) участвуют в границах диапазона
+# наравне с длинными — иначе слова короче порога у краёв правки отрезались бы
+# от выделения при каждом обновлении.
 MIN_EQUAL_RUN = 4
 
 
@@ -165,33 +170,58 @@ def char_opcodes(old: Doc, new: Doc) -> list[tuple[str, int, int, int, int]]:
                 continue
             inner = SequenceMatcher(None, a, b, autojunk=False)
             for t, a1, a2, b1, b2 in inner.get_opcodes():
-                if t == "equal" and len(norm_key(a[a1:a2])) < MIN_EQUAL_RUN:
-                    t = "replace"  # шумовое совпадение — см. MIN_EQUAL_RUN
                 ops.append((t, o1 + a1, o1 + a2, n1 + b1, n1 + b2))
     return ops
 
 
 def map_range(ops: list[tuple[str, int, int, int, int]],
-              start: int, end: int) -> tuple[int, int] | None:
-    """Переносит [start, end) через опкоды: образ диапазона — от образа первого
-    до образа последнего уцелевшего ('equal') символа.
+              start: int, end: int, old_text: str) -> tuple[int, int] | None:
+    """Переносит [start, end) через опкоды (семантика маркера редактора).
 
-    Следствия (семантика маркера):
-      • правка/вставка/замена СТРОГО ВНУТРИ — диапазон накрывает её;
-      • вставка на границе — не входит (inclusive=false);
-      • не уцелел ни один символ — None (→ «Утрачено», как dangling).
+    Образ диапазона складывается из:
+      • пересечений с equal-кусками (включая короткие: слово «Шаг» у края
+        правки не должно отрезаться от выделения);
+      • ЦЕЛЫХ новых кусков replace, чей старый диапазон лежит внутри
+        [start, end) (включая края): замена слова внутри маркера — в том
+        числе первого/последнего — наследует маркер, как набор текста внутри
+        выделения в редакторе;
+      • новых кусков insert СТРОГО внутри; вставка ровно на границе не
+        наследует маркер (inclusive=false у annotation-марок).
+
+    Гейт выживания: диапазон жив, только если его пересекает хотя бы один
+    equal-кусок с ≥ MIN_EQUAL_RUN значащих символов — иначе полностью
+    перенабранный текст «воскресал» бы на россыпи случайно совпавших букв.
+    Не жив → None (→ «Утрачено», как dangling).
     """
     new_start: int | None = None
     new_end: int | None = None
+    alive = False
+
+    def contribute(ns: int, ne: int) -> None:
+        nonlocal new_start, new_end
+        if new_start is None or ns < new_start:
+            new_start = ns
+        if new_end is None or ne > new_end:
+            new_end = ne
+
     for tag, o1, o2, n1, n2 in ops:
-        if tag != "equal" or o2 <= start or o1 >= end:
-            continue
-        s = max(start, o1)
-        e = min(end, o2)
-        if new_start is None:
-            new_start = n1 + (s - o1)
-        new_end = n1 + (e - o1)
-    if new_start is None or new_end is None or new_end <= new_start:
+        if tag == "equal":
+            if o2 <= start or o1 >= end:
+                continue
+            s = max(start, o1)
+            e = min(end, o2)
+            contribute(n1 + (s - o1), n1 + (e - o1))
+            if not alive and len(norm_key(old_text[o1:o2])) >= MIN_EQUAL_RUN:
+                alive = True
+        elif tag == "insert":
+            if start < o1 < end and n2 > n1:
+                contribute(n1, n2)
+        elif tag == "replace":
+            if o1 >= start and o2 <= end and n2 > n1:
+                contribute(n1, n2)
+        # delete: старые символы исчезли — вклада в образ нет.
+
+    if not alive or new_start is None or new_end is None or new_end <= new_start:
         return None
     return (new_start, new_end)
 
@@ -235,7 +265,7 @@ def project(old_html: str, new_html: str, highlights: list[dict]) -> list[dict]:
                 h.get("start_char_offset") or 0, h.get("end_char_offset") or 0,
             )
             if src is not None:
-                rng = map_range(ops, *src)
+                rng = map_range(ops, *src, old_doc.text)
 
         if rng is None:
             results.append({**h, "projected_status": "lost"})

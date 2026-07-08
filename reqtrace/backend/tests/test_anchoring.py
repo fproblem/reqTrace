@@ -35,7 +35,7 @@ def rng_of(html: str, needle: str) -> tuple[int, int]:
 
 def transfer(old_html: str, new_html: str, start: int, end: int):
     old, new = doc_from_html(old_html), doc_from_html(new_html)
-    return map_range(char_opcodes(old, new), start, end)
+    return map_range(char_opcodes(old, new), start, end, old.text)
 
 
 def transferred_text(old_html: str, new_html: str, needle: str) -> str | None:
@@ -161,6 +161,41 @@ class Transfer(unittest.TestCase):
         new = html.replace("Первое правило", "Первое правило!!")
         self.assertEqual(transferred_text(html, new, "правило"), "правило")
 
+    def test_short_word_before_deletion_stays_in_range(self):
+        # РЕГРЕССИЯ (ручной тест пользователя, v1.5.9): удалили слово «десятый»,
+        # а короткое соседнее «Шаг» (3 значащих символа < MIN_EQUAL_RUN)
+        # отрезалось от выделения — гейт выживания не должен влиять на границы.
+        old = "<p>Шапка</p><p>Шаг десятый: открыть экран каталога.</p>"
+        new = "<p>Шапка</p><p>Шаг: открыть экран каталога.</p>"
+        self.assertEqual(
+            transferred_text(old, new, "Шаг десятый: открыть экран каталога."),
+            "Шаг: открыть экран каталога.",
+        )
+
+    def test_short_word_after_deletion_stays_in_range(self):
+        old = "<p>Открыть экран каталога десятый раз.</p>"
+        new = "<p>Открыть экран каталога раз.</p>"
+        self.assertEqual(
+            transferred_text(old, new, "Открыть экран каталога десятый раз."),
+            "Открыть экран каталога раз.",
+        )
+
+    def test_first_word_replaced_is_covered(self):
+        # Замена крайнего слова выделения наследует маркер (перенабор внутри
+        # выделения), а не отрезается от него.
+        new = PAGE.replace("Текст под", "Абзац под")
+        self.assertEqual(
+            transferred_text(PAGE, new, QUOTE),
+            "Абзац под подзаголовок четвертого уровня.",
+        )
+
+    def test_last_word_replaced_is_covered(self):
+        new = PAGE.replace("уровня.", "разряда.")
+        self.assertEqual(
+            transferred_text(PAGE, new, QUOTE),
+            "Текст под подзаголовок четвертого разряда.",
+        )
+
     def test_whole_range_deleted_is_lost(self):
         new = PAGE.replace(QUOTE, "")
         self.assertIsNone(transferred_text(PAGE, new, QUOTE))
@@ -203,11 +238,11 @@ class Transfer(unittest.TestCase):
         new_doc = doc_from_html(new)
         ops = char_opcodes(doc, new_doc)
 
-        r1 = map_range(ops, *first)
+        r1 = map_range(ops, *first, doc.text)
         self.assertEqual(new_doc.text[r1[0]:r1[1]], "Цена: 10 руб.")
         self.assertEqual(block_coords(new_doc, *r1)["anchor_block_start"], 0)
 
-        r2 = map_range(ops, *second)
+        r2 = map_range(ops, *second, doc.text)
         self.assertEqual(new_doc.text[r2[0]:r2[1]], "Цена: 12 руб.")
         self.assertEqual(block_coords(new_doc, *r2)["anchor_block_start"], 2)
 

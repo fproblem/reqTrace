@@ -5,6 +5,42 @@ import { XIcon } from '../Modal';
 import { StatusAlertIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
+import { strippedEquals } from './highlightMatching';
+import { quoteDiff } from './quoteDiff';
+
+/** Дифф цитаты для «Требует проверки»: что изменилось в тексте под маркером
+ * относительно замороженной цитаты. Удалённое — зачёркнуто красным,
+ * добавленное — на зелёной подложке (фирменные оттенки ICON_TINTS). */
+const QuoteDiffView: React.FC<{ before: string; after: string }> = ({ before, after }) => (
+  <>
+    {quoteDiff(before, after).map((part, i) => {
+      if (part.kind === 'removed') {
+        return (
+          <span key={i} style={{
+            color: '#DC2626',
+            textDecoration: 'line-through',
+            background: 'rgba(239, 68, 68, 0.07)',
+            borderRadius: '3px',
+          }}>
+            {part.text}
+          </span>
+        );
+      }
+      if (part.kind === 'added') {
+        return (
+          <span key={i} style={{
+            color: '#3A9E20',
+            background: 'rgba(122, 224, 90, 0.18)',
+            borderRadius: '3px',
+          }}>
+            {part.text}
+          </span>
+        );
+      }
+      return <span key={i}>{part.text}</span>;
+    }).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ' ', el] : [el]), [])}
+  </>
+);
 
 interface SidePanelProps {
   highlight: Highlight | null;
@@ -519,6 +555,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
         )}
 
+        {/* Дифф показываем у «Требует проверки», когда текст под маркером
+            реально отличается от замороженной цитаты (v1.5.9): человек видит
+            правку и осознанно жмёт «Актуализировать». */}
+        {highlight.status === 'outdated'
+          && highlight.anchored_text != null
+          && !strippedEquals(highlight.anchored_text, highlight.text_content) && (
+          <div style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            color: colors.textSecondary,
+            marginBottom: '6px',
+          }}>
+            Текст на странице изменился — красным было, зелёным стало:
+          </div>
+        )}
+
         {/* Text excerpt — клик возвращает страницу к самому выделению
             (полистал контент → потерял место). Для не отображающихся на
             странице привязок скроллить некуда — цитата остаётся текстом. */}
@@ -554,7 +606,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             e.currentTarget.style.borderColor = colors.border;
           }}
         >
-          {highlight.text_content}
+          {highlight.status === 'outdated'
+            && highlight.anchored_text != null
+            && !strippedEquals(highlight.anchored_text, highlight.text_content)
+            ? <QuoteDiffView before={highlight.text_content} after={highlight.anchored_text} />
+            : highlight.text_content}
         </div>
 
         {/* Tests */}

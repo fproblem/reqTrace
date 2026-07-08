@@ -11,7 +11,6 @@ import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
-import { computeStatusSync } from '../components/PageView/statusSync';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
 import { colors, radii, shadows } from '../styles/tokens';
 
@@ -31,7 +30,6 @@ function sameIdSet(a: Set<string>, b: Set<string>): boolean {
 function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderReport): boolean {
   return !!a
     && sameIdSet(a.rendered, b.rendered)
-    && sameIdSet(a.partial, b.partial)
     && sameIdSet(a.considered, b.considered);
 }
 
@@ -419,37 +417,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     }
   };
 
-  // Синхронизируем статусы с фактической отрисовкой:
-  //  • привязку обработали, но ни одной <mark> не появилось → «Утрачено»
-  //    (видно в секции внизу и в чипе «утрачено» вверху);
-  //  • ранее утраченная привязка снова легла на страницу (в т.ч. «разрывом»
-  //    после правки или частично) → возвращаем в «Требует проверки»;
-  //  • «актуальная» отрисовалась лишь частично (цитату правили, на странице
-  //    уцелевшие куски в её блоке) → понижаем до «Требует проверки» (v1.5.8).
-  // Статус пишем в БД best-effort (эндпоинты идемпотентны), локально — сразу.
-  useEffect(() => {
-    if (!renderReport) return;
-    const { toLose, toRecover, toReview } = computeStatusSync(highlights, renderReport);
-    if (toLose.length === 0 && toRecover.length === 0 && toReview.length === 0) return;
-
-    const apply = (h: Highlight): Highlight => {
-      if (toLose.indexOf(h.id) !== -1) return { ...h, status: 'lost' };
-      if (toRecover.indexOf(h.id) !== -1) return { ...h, status: 'outdated' };
-      if (toReview.indexOf(h.id) !== -1) return { ...h, status: 'outdated' };
-      return h;
-    };
-    setHighlights(prev => prev.map(apply));
-    setSelectedHighlight(prev => (prev ? apply(prev) : prev));
-
-    const ops = [
-      ...toLose.map(id => api.markHighlightLost(id).catch(() => {})),
-      ...toRecover.map(id => api.unmarkHighlightLost(id).catch(() => {})),
-      ...toReview.map(id => api.markHighlightOutdated(id).catch(() => {})),
-    ];
-    // Дерево перечитываем после того, как сервер записал новые статусы, —
-    // иначе оно перечитает старые.
-    void Promise.all(ops).then(() => refreshTree());
-  }, [renderReport, highlights, refreshTree]);
+  // Статусной синхронизации по отчёту слоя больше НЕТ (v1.5.9): статусы решает
+  // только сервер при refresh и человек («Актуализировать»). Просмотр страницы
+  // не меняет статусы по построению — целый класс багов «самоустаревания»
+  // (v1.5.7) и «прыгающих» подсветок невозможен.
 
   if (loading) {
     return (

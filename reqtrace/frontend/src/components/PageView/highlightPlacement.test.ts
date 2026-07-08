@@ -1,11 +1,9 @@
-/** Тесты РАЗМЕЩЕНИЯ подсветок (applyHighlightsToContainer) — где на странице
- * появляются <mark> и что попадает в отчёт rendered/considered.
- *
- * Дополняют highlightMatching.test.ts: там — чистое сопоставление текста,
- * здесь — полный прогон слоя по настоящему DOM (jsdom): блочный якорь,
- * текстовый фолбэк, «разрыв», идемпотентность повторного прогона и защита от
- * оторванного контейнера (регрессия v1.5.7: слой гонял привязки новой страницы
- * по снятому с экрана содержимому старой и массово «терял» их).
+/** Тесты РАЗМЕЩЕНИЯ подсветок (applyHighlightsToContainer) — v1.5.9,
+ * модель «маркер в снимке»: слой рендерит привязки СТРОГО по координатам
+ * (якоря поддерживает сервер при refresh), никакого поиска текста нет.
+ * Валидационный гард: текст под координатами обязан совпадать с текстом
+ * маркера (anchored_text, до первого refresh — цитата) — иначе метка не
+ * рисуется и статусы НЕ трогаются (рассинхрон лечится обновлением).
  */
 import { Highlight } from '../../types';
 import {
@@ -28,6 +26,7 @@ function makeHighlight(overrides: Partial<Highlight>): Highlight {
     end_xpath: '',
     end_offset: 0,
     text_content: '',
+    anchored_text: null,
     text_before: '',
     text_after: '',
     anchor_block_start: null,
@@ -63,8 +62,8 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('applyHighlightsToContainer: блочный якорь', () => {
-  it('точный якорь → одна метка ровно на выделенном тексте', () => {
+describe('applyHighlightsToContainer: рендер по координатам', () => {
+  it('валидный якорь → одна метка ровно на тексте маркера', () => {
     const c = mount('<p>Первый абзац.</p><p>Второе правило работы.</p>');
     const h = makeHighlight({
       text_content: 'правило',
@@ -79,19 +78,6 @@ describe('applyHighlightsToContainer: блочный якорь', () => {
     expect(marks[0].textContent).toBe('правило');
   });
 
-  it('якорь съехал на чужой блок → метка ставится текстовым поиском', () => {
-    const c = mount('<p>Вводный текст.</p><p>Целевое правило работы.</p>');
-    const h = makeHighlight({
-      text_content: 'Целевое правило',
-      // Якорь указывает на первый блок, где такого текста нет.
-      anchor_block_start: 0, anchor_block_end: 0,
-      start_char_offset: 0, end_char_offset: 15,
-    });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(true);
-    expect(marksOf(c, h.id).map(m => m.textContent).join('')).toBe('Целевое правило');
-  });
-
   it('многоблочное выделение → метки в обоих блоках', () => {
     const c = mount('<p>Один два</p><p>три четыре</p>');
     const h = makeHighlight({
@@ -104,30 +90,64 @@ describe('applyHighlightsToContainer: блочный якорь', () => {
     const texts = marksOf(c, h.id).map(m => m.textContent);
     expect(texts).toEqual(['два', 'три']);
   });
+
+  it('anchored_text приоритетнее цитаты: изменённый текст рендерится по якорю', () => {
+    // После правки страницы refresh обновил координаты и anchored_text;
+    // цитата (text_content) осталась старой — гард сверяет с anchored_text.
+    const c = mount('<p>Текст под четвертого уровня.</p>');
+    const h = makeHighlight({
+      text_content: 'Текст под подзаголовок четвертого уровня.',
+      anchored_text: 'Текст под четвертого уровня.',
+      status: 'outdated',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: 28,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(true);
+    expect(marksOf(c, h.id).map(m => m.textContent).join('')).toBe('Текст под четвертого уровня.');
+  });
 });
 
-describe('applyHighlightsToContainer: отчёт и фолбэки', () => {
-  it('текста нет на странице → considered без rendered, меток нет', () => {
-    const c = mount('<p>Совсем другой текст.</p>');
-    const h = makeHighlight({ text_content: 'Удалённое требование' });
+describe('applyHighlightsToContainer: гард и отчёт', () => {
+  it('РАССИНХРОН: текст под координатами не совпал с маркером → метки нет, статус не тронут', () => {
+    // Якорь указывает на чужой блок (контент и привязки от разных версий).
+    const c = mount('<p>Вводный текст.</p><p>Целевое правило работы.</p>');
+    const h = makeHighlight({
+      text_content: 'Целевое правило',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: 15,
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    warn.mockRestore();
+    expect(report!.considered.has(h.id)).toBe(true);
+    expect(report!.rendered.has(h.id)).toBe(false);
+    expect(c.querySelectorAll('mark')).toHaveLength(0);
+    expect(h.status).toBe('active'); // фронт статусы не трогает
+  });
+
+  it('привязка без якорей не рендерится (поиска по тексту нет)', () => {
+    const c = mount('<p>Текст для удаления прямо здесь.</p>');
+    const h = makeHighlight({ text_content: 'Текст для удаления' });
     const report = applyHighlightsToContainer(c, [h], null, noop);
     expect(report!.considered.has(h.id)).toBe(true);
     expect(report!.rendered.has(h.id)).toBe(false);
     expect(marksOf(c, h.id)).toHaveLength(0);
   });
 
-  it('вставка внутрь выделения → подсветка «рвётся» на две метки', () => {
-    const c = mount('<p>Первое правило. Вставка автора. Второе правило.</p>');
-    const h = makeHighlight({ text_content: 'Первое правило. Второе правило.' });
+  it('«Утраченная» не рендерится и не считается, даже с валидными якорями', () => {
+    // Маркер уничтожен (dangling): замороженные якоря осмыслены только для
+    // прежнего снимка — рисовать по ним нельзя.
+    const c = mount('<p>Правило работы.</p>');
+    const h = makeHighlight({
+      text_content: 'Правило', status: 'lost',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: 7,
+    });
     const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(true);
-    // Точки разреза — деталь жадного алгоритма (префикс может захватить
-    // совпавшую букву вставки); фиксируем инвариант: ровно две метки, вместе
-    // покрывающие в точности текст цитаты (без учёта пробелов).
-    const marks = marksOf(c, h.id);
-    expect(marks).toHaveLength(2);
-    const strip = (s: string | null) => (s || '').replace(/\s+/g, '');
-    expect(strip(marks.map(m => m.textContent).join(''))).toBe(strip(h.text_content));
+    expect(report!.considered.has(h.id)).toBe(false);
+    expect(report!.rendered.has(h.id)).toBe(false);
+    expect(marksOf(c, h.id)).toHaveLength(0);
   });
 
   it('повторный прогон идемпотентен: метки не дублируются', () => {
@@ -140,7 +160,6 @@ describe('applyHighlightsToContainer: отчёт и фолбэки', () => {
     applyHighlightsToContainer(c, [h], null, noop);
     applyHighlightsToContainer(c, [h], null, noop);
     expect(marksOf(c, h.id)).toHaveLength(1);
-    // Текст страницы не искажён прогонами.
     expect(c.textContent).toBe('Правило работы.');
   });
 
@@ -154,97 +173,23 @@ describe('applyHighlightsToContainer: отчёт и фолбэки', () => {
   });
 });
 
-describe('applyHighlightsToContainer: частичное размещение в якорном блоке (v1.5.8)', () => {
-  const quote = 'Текст под подзаголовок четвертого уровня.';
-
-  it('слово удалили из цитаты → уцелевшие куски подсвечены, отчёт partial', () => {
-    const c = mount('<p>Шапка раздела.</p><p>Текст под четвертого уровня.</p>');
-    const h = makeHighlight({
-      text_content: quote,
-      anchor_block_start: 1, anchor_block_end: 1,
-      start_char_offset: 0, end_char_offset: quote.length,
-    });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(true);
-    expect(report!.partial.has(h.id)).toBe(true);
-    const texts = marksOf(c, h.id).map(m => m.textContent);
-    expect(texts).toEqual(['Текст под', 'четвертого уровня.']);
-  });
-
-  it('точное совпадение остаётся точным: partial в отчёте пуст', () => {
-    const c = mount(`<p>${quote}</p>`);
-    const h = makeHighlight({
-      text_content: quote,
-      anchor_block_start: 0, anchor_block_end: 0,
-      start_char_offset: 0, end_char_offset: quote.length,
-    });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(true);
-    expect(report!.partial.has(h.id)).toBe(false);
-  });
-
-  it('блок переписан почти целиком → меток нет, привязка не отрисована', () => {
-    const c = mount('<p>Шапка.</p><p>Совершенно другое содержимое раздела.</p>');
-    const h = makeHighlight({
-      text_content: quote,
-      anchor_block_start: 1, anchor_block_end: 1,
-      start_char_offset: 0, end_char_offset: quote.length,
-    });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(false);
-    expect(report!.partial.has(h.id)).toBe(false);
-    expect(marksOf(c, h.id)).toHaveLength(0);
-  });
-
-  it('ЗАЩИТА §6: похожий текст в ЧУЖОМ блоке частично не подсвечивается', () => {
-    // Якорь смотрит на переписанный блок; в соседнем — похожий шаблонный пункт.
-    // Частичное размещение работает строго в якорном блоке — прыжка нет.
-    const c = mount('<p>Уровень 3.1 — пункт один.</p><p>Совсем новое содержимое.</p>');
-    const h = makeHighlight({
-      text_content: 'Уровень 3 — пункт два.',
-      anchor_block_start: 1, anchor_block_end: 1,
-      start_char_offset: 0, end_char_offset: 22,
-    });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(false);
-    expect(marksOf(c, h.id)).toHaveLength(0);
-    expect(c.querySelectorAll('mark')).toHaveLength(0);
-  });
-
-  it('привязка без якоря (legacy) частично не размещается', () => {
-    // Без якорного блока «уцелевшие куски» искать негде: частичный поиск по
-    // всей странице — путь к переезду подсветки на чужой текст.
-    const c = mount('<p>Текст под четвертого уровня.</p>');
-    const h = makeHighlight({ text_content: quote });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(false);
-    expect(marksOf(c, h.id)).toHaveLength(0);
-  });
-
-  it('утраченная привязка с частичным совпадением снова отрисовывается (для возврата статуса)', () => {
-    const c = mount('<p>Текст под четвертого уровня.</p>');
-    const h = makeHighlight({
-      text_content: quote, status: 'lost',
-      anchor_block_start: 0, anchor_block_end: 0,
-      start_char_offset: 0, end_char_offset: quote.length,
-    });
-    const report = applyHighlightsToContainer(c, [h], null, noop);
-    expect(report!.rendered.has(h.id)).toBe(true);
-    expect(report!.partial.has(h.id)).toBe(true);
-  });
-});
-
 describe('applyHighlightsToContainer: выбор и клик', () => {
+  const anchored = () => makeHighlight({
+    text_content: 'Правило',
+    anchor_block_start: 0, anchor_block_end: 0,
+    start_char_offset: 0, end_char_offset: 7,
+  });
+
   it('выбранная привязка получает класс --selected', () => {
     const c = mount('<p>Правило работы.</p>');
-    const h = makeHighlight({ text_content: 'Правило' });
+    const h = anchored();
     applyHighlightsToContainer(c, [h], h.id, noop);
     expect(marksOf(c, h.id)[0].classList.contains('highlight-mark--selected')).toBe(true);
   });
 
   it('клик по метке вызывает onClick с привязкой', () => {
     const c = mount('<p>Правило работы.</p>');
-    const h = makeHighlight({ text_content: 'Правило' });
+    const h = anchored();
     const clicks: Highlight[] = [];
     applyHighlightsToContainer(c, [h], null, hl => clicks.push(hl));
     marksOf(c, h.id)[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -260,7 +205,6 @@ describe('getContentBlocks', () => {
       '<table><tbody><tr><td><p>В ячейке</p></td><td>Просто ячейка</td></tr></tbody></table>',
     );
     const texts = getContentBlocks(c).map(b => (b.textContent || '').trim());
-    // Внешний li и td с <p> внутри — НЕ листовые: вместо них их вложенные блоки.
     expect(texts).toEqual(['Абзац', 'Вложенный', 'В ячейке', 'Просто ячейка']);
   });
 });
@@ -268,8 +212,16 @@ describe('getContentBlocks', () => {
 describe('порядок навигации по привязкам', () => {
   it('отрисованные идут по позиции в DOM, неотрисованные — после, по якорю', () => {
     const c = mount('<p>Альфа. Бета.</p>');
-    const alpha = makeHighlight({ text_content: 'Альфа' });
-    const beta = makeHighlight({ text_content: 'Бета' });
+    const alpha = makeHighlight({
+      text_content: 'Альфа',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: 5,
+    });
+    const beta = makeHighlight({
+      text_content: 'Бета',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 7, end_char_offset: 11,
+    });
     const lost = makeHighlight({
       text_content: 'нет на странице', status: 'lost', anchor_block_start: 0,
     });

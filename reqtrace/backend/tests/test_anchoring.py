@@ -9,6 +9,7 @@ Confluence): диапазон переносится диффом версий, 
 """
 import unittest
 
+from app.services.confluence import process_confluence_html
 from app.services.anchoring import (
     abs_range,
     block_coords,
@@ -43,6 +44,33 @@ def transferred_text(old_html: str, new_html: str, needle: str) -> str | None:
     if rng is None:
         return None
     return doc_from_html(new_html).text[rng[0]:rng[1]]
+
+
+# Мини-копия страницы из бага v1.5.6: абзац с Confluence-ссылкой (текст в
+# CDATA) — сырой storage-XML прячет его от HTML-парсера, обработанный HTML нет.
+RAW_XML = (
+    '<table><tbody><tr><td><p>Текст блока</p></td><td>'
+    '<p>Значение параметра "first_block.text" из кэша '
+    '<ac:link><ri:page ri:content-title="GET /v7/configuration" />'
+    '<ac:plain-text-link-body><![CDATA[GET /v7/configuration]]></ac:plain-text-link-body>'
+    '</ac:link></p>'
+    '<p>Если параметр не пришел или равен null, то значение по дефолту</p>'
+    '</td></tr></tbody></table>'
+)
+
+
+class AnchorCoordinateSpace(unittest.TestCase):
+    """Документная модель обязана строиться по ОБРАБОТАННОМУ HTML (регрессия
+    v1.5.6: по сырому storage-XML текст ссылок в CDATA невидим — блоки короче,
+    и все смещения врут)."""
+
+    def test_processed_blocks_keep_link_text(self):
+        doc = doc_from_html(process_confluence_html(RAW_XML, "p1"))
+        self.assertIn("GET /v7/configuration", doc.blocks[1])
+
+    def test_raw_xml_hides_link_text(self):
+        doc = doc_from_html(RAW_XML)
+        self.assertNotIn("GET /v7/configuration", doc.blocks[1])
 
 
 class DocModel(unittest.TestCase):

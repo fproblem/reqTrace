@@ -17,7 +17,7 @@ from app.schemas.highlight import (
     HighlightCreate, HighlightResponse,
     TestLinkCreate, TestLinkResponse,
 )
-from app.services.highlight_projection import resolve_reanchor
+from app.services import anchoring, page_service
 
 HIGHLIGHT_LOAD_OPTIONS = [
     selectinload(Highlight.tests),
@@ -35,7 +35,7 @@ async def create_highlight(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    page, _, _ = await require_page_access(db, page_id, current_user)
+    page, project, _ = await require_page_access(db, page_id, current_user)
 
     snap_result = await db.execute(
         select(PageSnapshot)
@@ -47,6 +47,29 @@ async def create_highlight(
     if not latest_snapshot:
         raise HTTPException(status_code=400, detail="No snapshot available")
 
+    # Модель «маркер в снимке» (v1.5.9): без блочного якоря привязке негде жить.
+    if data.anchor_block_start is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Не удалось закрепить выделение за текстом — выделите текст внутри абзаца",
+        )
+
+    # Сопоставление по цитате происходит ровно один раз — здесь (контракт
+    # эталона: textSelection+matchIndex при создании). Координаты, посчитанные
+    # фронтом по DOM, обязаны указывать на текст цитаты в актуальном снимке.
+    rendered = render_page_html(latest_snapshot.content_html, page.id, project) or ""
+    verified = anchoring.verify_creation(
+        rendered,
+        data.anchor_block_start, data.anchor_block_end,
+        data.start_char_offset or 0, data.end_char_offset or 0,
+        data.text_content,
+    )
+    if verified is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Выделение не совпало с текущей версией страницы — обновите её и повторите",
+        )
+
     highlight = Highlight(
         page_id=page.id,
         snapshot_id=latest_snapshot.id,
@@ -55,16 +78,17 @@ async def create_highlight(
         end_xpath=data.end_xpath,
         end_offset=data.end_offset,
         text_content=data.text_content,
+        anchored_text=verified["anchored_text"],
         text_before=data.text_before or "",
         text_after=data.text_after or "",
-        anchor_block_start=data.anchor_block_start,
-        anchor_block_end=data.anchor_block_end,
-        start_char_offset=data.start_char_offset,
-        end_char_offset=data.end_char_offset,
+        anchor_block_start=verified["anchor_block_start"],
+        anchor_block_end=verified["anchor_block_end"],
+        start_char_offset=verified["start_char_offset"],
+        end_char_offset=verified["end_char_offset"],
         # Только что созданное выделение ещё пустое (без тестов) и не подтверждено,
         # поэтому заводим его как "требует проверки", а не "актуально". Перевести
         # в "актуально" можно вручную через "Актуализировать" (reanchor). Refresh
-        # не сбрасывает этот статус автоматически (см. refresh_page).
+        # не повышает статус автоматически.
         status="outdated",
         created_by=current_user.id,
     )
@@ -112,7 +136,14 @@ async def reanchor_highlight(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Re-anchor an outdated highlight to current content, making it active."""
+    """«Актуализировать»: подтвердить изменившийся текст под маркером.
+
+    Модель «маркер в снимке» (v1.5.9): якорь всегда точен по инварианту —
+    его поддерживает refresh (page_service). Поэтому актуализация больше НЕ
+    ищет текст: замороженной цитатой (text_content) становится текущий текст
+    под маркером (anchored_text), статус — «Актуально». Понижения/повышения
+    статусов «сами по себе» невозможны: только refresh и это действие.
+    """
     highlight = await db.get(Highlight, highlight_id, options=HIGHLIGHT_LOAD_OPTIONS)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
@@ -130,41 +161,28 @@ async def reanchor_highlight(
     if not latest_snapshot:
         raise HTTPException(status_code=400, detail="No snapshot available")
 
-    # Пересчёт — по ОБРАБОТАННОМУ HTML (координаты фронта) и без слепой
-    # перезаписи: цитата либо подтверждается под якорем, либо находится текстовым
-    # поиском (лечит съехавшие якоря), либо актуализация честно отклоняется —
-    # раньше здесь молча записывался чужой текст со страницы (баг v1.5.6).
-    if highlight.anchor_block_start is not None or highlight.text_content:
+    # Привязки из «до-v1.5.9» мира ещё не имеют anchored_text — извлекаем по
+    # якорям из актуального снимка (якоря актуальны: v1.5.8 поддерживала их
+    # на каждом refresh). Рассинхрон (пустой/битый якорь) — честный 409.
+    anchored = highlight.anchored_text
+    if anchored is None:
         rendered = render_page_html(
             latest_snapshot.content_html, highlight.page_id, project
         ) or ""
-        resolved = resolve_reanchor(
-            rendered,
-            highlight.text_content or "",
-            highlight.text_before or "",
-            highlight.text_after or "",
-            highlight.anchor_block_start,
-            highlight.anchor_block_end,
-            highlight.start_char_offset or 0,
-            highlight.end_char_offset or 0,
-        )
-        if resolved is None:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Выделенный текст не найден в текущей версии страницы — "
-                    "актуализация отменена, чтобы не потерять цитату. "
-                    "Обновите страницу и проверьте выделение."
-                ),
-            )
-        highlight.text_content = resolved["text_content"]
-        highlight.text_before = resolved["text_before"]
-        highlight.text_after = resolved["text_after"]
-        highlight.anchor_block_start = resolved["anchor_block_start"]
-        highlight.anchor_block_end = resolved["anchor_block_end"]
-        highlight.start_char_offset = resolved["start_char_offset"]
-        highlight.end_char_offset = resolved["end_char_offset"]
+        anchored = page_service.extract_anchored_text(rendered, highlight)
 
+    confirmed = anchoring.confirm_reanchor(anchored)
+    if confirmed is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Под привязкой не найден текст в текущей версии страницы — "
+                "актуализация отменена. Обновите страницу и проверьте выделение."
+            ),
+        )
+
+    highlight.text_content = confirmed["text_content"]
+    highlight.anchored_text = anchored
     highlight.status = "active"
     highlight.snapshot_id = latest_snapshot.id
     highlight.reanchored_by = current_user.id

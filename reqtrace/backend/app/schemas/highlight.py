@@ -41,6 +41,9 @@ class HighlightResponse(BaseModel):
     end_xpath: str
     end_offset: int
     text_content: str
+    # Текущий текст под маркером (v1.5.9); None — до первого refresh по новой
+    # модели, читатели используют text_content как фолбэк.
+    anchored_text: Optional[str] = None
     text_before: Optional[str] = ""
     text_after: Optional[str] = ""
     anchor_block_start: Optional[int] = None

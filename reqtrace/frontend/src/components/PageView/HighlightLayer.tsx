@@ -3,11 +3,54 @@ import { Highlight } from '../../types';
 import { colors } from '../../styles/tokens';
 import { strippedEquals } from './highlightMatching';
 
-const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
+export const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
 
-export function getContentBlocks(container: HTMLElement): HTMLElement[] {
+// Сегмент документной модели (v1.5.9, зеркало _segments в anchoring.py):
+// собственный текст одного блочного элемента — текстовые узлы вне вложенных
+// блочных элементов. Листовой блок даёт сегмент всегда; родительский пункт
+// списка / ячейка с вложенными блоками — только если свой текст не пуст.
+// Раньше собственный текст таких элементов вообще не попадал в модель, и
+// выделения на нём были невозможны.
+export interface ContentSegment {
+  el: HTMLElement;
+  /** Собственный текст сегмента (пространство смещений якорей). */
+  text: string;
+}
+
+// Текстовые узлы собственного текста элемента, в document order. Всегда
+// пересобираются на месте использования: оборачивание в <mark> расщепляет
+// текстовые узлы, и закэшированные ссылки протухли бы уже после первой
+// привязки (сам ТЕКСТ сегмента метки не меняют — только узлы).
+export function ownTextNodes(el: HTMLElement): Text[] {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const out: Text[] = [];
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    let p = n.parentElement;
+    let nested = false;
+    while (p && p !== el) {
+      if (p.matches(BLOCK_SELECTOR)) {
+        nested = true;
+        break;
+      }
+      p = p.parentElement;
+    }
+    if (!nested) out.push(n as Text);
+  }
+  return out;
+}
+
+export function getContentSegments(container: HTMLElement): ContentSegment[] {
   const all = Array.from(container.querySelectorAll(BLOCK_SELECTOR)) as HTMLElement[];
-  return all.filter(el => !el.querySelector(BLOCK_SELECTOR));
+  const segments: ContentSegment[] = [];
+  for (const el of all) {
+    const isLeaf = !el.querySelector(BLOCK_SELECTOR);
+    const text = ownTextNodes(el).map(t => t.textContent || '').join('');
+    if (isLeaf || text.trim() !== '') {
+      segments.push({ el, text });
+    }
+  }
+  return segments;
 }
 
 // Карта id подсветки -> порядковый номер по позиции отрисованной <mark> в DOM
@@ -88,7 +131,7 @@ export function applyHighlightsToContainer(
   });
   container.normalize();
 
-  const blocks = getContentBlocks(container);
+  const segments = getContentSegments(container);
 
   const rendered = new Set<string>();
   const considered = new Set<string>();
@@ -102,7 +145,7 @@ export function applyHighlightsToContainer(
     considered.add(highlight.id);
 
     try {
-      if (renderAtAnchors(blocks, highlight, selectedId, onClick)) {
+      if (renderAtAnchors(segments, highlight, selectedId, onClick)) {
         rendered.add(highlight.id);
       }
     } catch (err) {
@@ -166,44 +209,44 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
 // «маркер в снимке», сервер поддерживает якоря актуальными при refresh).
 // Возвращает true, если появилась хотя бы одна метка.
 function renderAtAnchors(
-  blocks: HTMLElement[],
+  segments: ContentSegment[],
   highlight: Highlight,
   selectedId: string | null,
   onClick: (h: Highlight) => void,
 ): boolean {
   if (highlight.anchor_block_start == null) return false;
-  const startBlockIdx = highlight.anchor_block_start;
-  const endBlockIdx = highlight.anchor_block_end ?? startBlockIdx;
+  const startIdx = highlight.anchor_block_start;
+  const endIdx = highlight.anchor_block_end ?? startIdx;
   const startCharOffset = highlight.start_char_offset ?? 0;
   const endCharOffset = highlight.end_char_offset ?? 0;
 
-  if (startBlockIdx >= blocks.length) return false;
+  if (startIdx >= segments.length) return false;
 
   // Сначала собираем диапазоны, потом трогаем DOM — чтобы успеть сверить текст.
-  const targets: { block: HTMLElement; from: number; to: number }[] = [];
-  const clampedEndBlockIdx = Math.min(endBlockIdx, blocks.length - 1);
+  const targets: { segment: ContentSegment; from: number; to: number }[] = [];
+  const clampedEndIdx = Math.min(endIdx, segments.length - 1);
 
-  for (let bi = startBlockIdx; bi <= clampedEndBlockIdx; bi++) {
-    const block = blocks[bi];
-    const blockText = block.textContent || '';
+  for (let si = startIdx; si <= clampedEndIdx; si++) {
+    const segment = segments[si];
+    const len = segment.text.length;
     let from: number;
     let to: number;
 
-    if (startBlockIdx === endBlockIdx) {
-      from = Math.min(startCharOffset, blockText.length);
-      to = Math.min(endCharOffset, blockText.length);
-    } else if (bi === startBlockIdx) {
-      from = Math.min(startCharOffset, blockText.length);
-      to = blockText.length;
-    } else if (bi === clampedEndBlockIdx) {
+    if (startIdx === endIdx) {
+      from = Math.min(startCharOffset, len);
+      to = Math.min(endCharOffset, len);
+    } else if (si === startIdx) {
+      from = Math.min(startCharOffset, len);
+      to = len;
+    } else if (si === clampedEndIdx) {
       from = 0;
-      to = Math.min(endCharOffset, blockText.length);
+      to = Math.min(endCharOffset, len);
     } else {
       from = 0;
-      to = blockText.length;
+      to = len;
     }
 
-    if (from < to) targets.push({ block, from, to });
+    if (from < to) targets.push({ segment, from, to });
   }
 
   if (targets.length === 0) return false;
@@ -216,7 +259,7 @@ function renderAtAnchors(
   const expected = highlight.anchored_text ?? highlight.text_content;
   if (expected) {
     const anchoredText = targets
-      .map(t => (t.block.textContent || '').substring(t.from, t.to))
+      .map(t => t.segment.text.substring(t.from, t.to))
       .join('');
     if (!strippedEquals(anchoredText, expected)) {
       console.warn(
@@ -228,7 +271,9 @@ function renderAtAnchors(
 
   let wrapped = 0;
   for (const t of targets) {
-    wrapped += wrapTextNodesInRange(t.block, t.from, t.to, highlight, selectedId, onClick);
+    wrapped += wrapNodesInRange(
+      ownTextNodes(t.segment.el), t.from, t.to, highlight, selectedId, onClick,
+    );
   }
   return wrapped > 0;
 }
@@ -263,17 +308,17 @@ function createMark(
   return mark;
 }
 
-// Оборачивает выделенный диапазон [startOffset, endOffset) (смещения по тексту
-// root) в подсветку, НЕ разрезая инлайн-элементы. Раньше для диапазона из
-// нескольких узлов использовался range.extractContents() через границы тегов:
-// он клонировал частично задетые <span>/<code>/<strong> на обе стороны mark,
-// из-за чего бейджи и код «расползались» (один бейдж превращался в два).
-// Здесь же каждый затронутый текстовый узел оборачивается отдельным <mark>
-// через range.surroundContents в пределах ОДНОГО узла — структура предков не
-// меняется, mark вставляется внутрь существующего элемента.
-// Возвращает количество фактически обёрнутых сегментов (созданных <mark>).
-function wrapTextNodesInRange(
-  root: HTMLElement,
+// Оборачивает диапазон [startOffset, endOffset) (смещения по конкатенации
+// nodes — тексту сегмента) в подсветку, НЕ разрезая инлайн-элементы. Раньше
+// для диапазона из нескольких узлов использовался range.extractContents()
+// через границы тегов: он клонировал частично задетые <span>/<code>/<strong>
+// на обе стороны mark, из-за чего бейджи и код «расползались» (один бейдж
+// превращался в два). Здесь же каждый затронутый текстовый узел оборачивается
+// отдельным <mark> через range.surroundContents в пределах ОДНОГО узла —
+// структура предков не меняется, mark вставляется внутрь существующего
+// элемента. Возвращает количество созданных <mark>.
+function wrapNodesInRange(
+  nodes: Text[],
   startOffset: number,
   endOffset: number,
   highlight: Highlight,
@@ -282,13 +327,10 @@ function wrapTextNodesInRange(
 ): number {
   if (startOffset >= endOffset) return 0;
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const segments: { node: Text; from: number; to: number }[] = [];
   let charCount = 0;
-  let node: Node | null;
 
-  while ((node = walker.nextNode())) {
-    const text = node as Text;
+  for (const text of nodes) {
     const len = (text.textContent || '').length;
     const nodeStart = charCount;
     charCount += len;

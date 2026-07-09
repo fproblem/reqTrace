@@ -8,7 +8,12 @@
 // Сопоставление цитаты с координатами затем ОДИН РАЗ верифицирует сервер при
 // создании (контракт эталона: textSelection + matchIndex).
 
-import { getContentBlocks } from '../HighlightLayer';
+import {
+  BLOCK_SELECTOR,
+  ContentSegment,
+  getContentSegments,
+  ownTextNodes,
+} from '../HighlightLayer';
 
 export interface SelectionAnchors {
   textBefore: string;
@@ -32,13 +37,44 @@ export function measureTextOffset(root: Node, node: Node, offset: number): numbe
   return len;
 }
 
+// Принадлежит ли точка выделения СОБСТВЕННОМУ тексту сегмента (текст вложенных
+// блочных элементов относится к их сегментам).
+function segmentContains(seg: ContentSegment, container: Node): boolean {
+  if (!seg.el.contains(container)) return false;
+  let p: Node | null = container;
+  while (p && p !== seg.el) {
+    if (p instanceof Element && p.matches(BLOCK_SELECTOR)) return false;
+    p = p.parentNode;
+  }
+  return true;
+}
+
+// Смещение точки (container, offset) в тексте сегмента — по конкатенации его
+// собственных текстовых узлов (пространство якорей = anchoring.py). Точка-
+// элемент (тройной клик) разрешается сравнением позиций Range.
+function segmentOffsetOf(seg: ContentSegment, container: Node, offset: number): number {
+  const nodes = ownTextNodes(seg.el);
+  let acc = 0;
+  const point = document.createRange();
+  point.setStart(container, offset);
+  for (const t of nodes) {
+    if (t === container) return acc + offset;
+    const r = document.createRange();
+    r.selectNodeContents(t);
+    // Точка не позже начала узла → весь собственный текст до узла уже учтён.
+    if (point.compareBoundaryPoints(Range.START_TO_START, r) <= 0) return acc;
+    acc += (t.textContent || '').length;
+  }
+  return acc;
+}
+
 /** Захват якорей выделения. null — границы выделения вне контейнера контента
  * (например, зацепили заголовок страницы или секцию «Утраченные»).
  *
  * Якорные поля могут быть null и при валидном выделении: границы не попали в
- * листовые блоки (текст прямо в <blockquote> без <p>, контейнерный <ul>).
- * Такому выделению в модели «маркер в снимке» жить негде — вызывающий код не
- * предлагает создать привязку. */
+ * собственный текст ни одного сегмента (например, текст прямо в <blockquote>
+ * без <p> — такого текста нет и в серверной модели). Такому выделению в модели
+ * «маркер в снимке» жить негде — вызывающий код не предлагает создать привязку. */
 export function captureSelectionAnchors(
   container: HTMLElement,
   range: Range,
@@ -64,22 +100,22 @@ export function captureSelectionAnchors(
     offsetInContainer + text.length + 100,
   );
 
-  const blocks = getContentBlocks(container);
+  const segments = getContentSegments(container);
   let anchorBlockStart = -1;
   let anchorBlockEnd = -1;
   let startCharOffset = 0;
   let endCharOffset = 0;
 
-  for (let i = 0; i < blocks.length; i++) {
-    if (anchorBlockStart === -1 && blocks[i].contains(range.startContainer)) {
+  for (let i = 0; i < segments.length; i++) {
+    if (anchorBlockStart === -1 && segmentContains(segments[i], range.startContainer)) {
       anchorBlockStart = i;
       startCharOffset =
-        measureTextOffset(blocks[i], range.startContainer, range.startOffset) + leadingTrimmed;
+        segmentOffsetOf(segments[i], range.startContainer, range.startOffset) + leadingTrimmed;
     }
-    if (blocks[i].contains(range.endContainer)) {
+    if (segmentContains(segments[i], range.endContainer)) {
       anchorBlockEnd = i;
       const rawEndOffset =
-        measureTextOffset(blocks[i], range.endContainer, range.endOffset) - trailingTrimmed;
+        segmentOffsetOf(segments[i], range.endContainer, range.endOffset) - trailingTrimmed;
       endCharOffset = Math.max(0, rawEndOffset);
       break;
     }

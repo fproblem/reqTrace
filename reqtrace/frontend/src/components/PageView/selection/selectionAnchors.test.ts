@@ -110,4 +110,31 @@ describe('captureSelectionAnchors', () => {
     );
     expect(anchored).toBe('два');
   });
+
+  it('РЕГРЕССИЯ §6: собственный текст родительского пункта — валидные якоря', () => {
+    // Раньше такой текст не принадлежал ни одному листовому блоку, якоря были
+    // null и кнопка «Привязать тесты» не появлялась.
+    const c = mount(
+      '<ul><li>Ещё один родительский пункт с двумя уровнями вложенности:' +
+      '<ul><li>Уровень 2 — пункт с подпунктами:</li></ul></li></ul>',
+    );
+    const parent = 'Ещё один родительский пункт с двумя уровнями вложенности:';
+    const r = rangeOver(c, parent);
+    const a = captureSelectionAnchors(c, r, parent)!;
+    expect(a.anchorBlockStart).toBe(0);
+    expect(a.anchorBlockEnd).toBe(0);
+    expect(a.startCharOffset).toBe(0);
+    expect(a.endCharOffset).toBe(parent.length);
+  });
+
+  it('якоря вложенного пункта считаются в его сегменте, не в родителе', () => {
+    const c = mount(
+      '<ul><li>Родительский текст:<ul><li>Вложенный пункт А.</li></ul></li></ul>',
+    );
+    const r = rangeOver(c, 'пункт А');
+    const a = captureSelectionAnchors(c, r, 'пункт А')!;
+    expect(a.anchorBlockStart).toBe(1);
+    expect(a.startCharOffset).toBe('Вложенный '.length);
+    expect(a.endCharOffset).toBe('Вложенный пункт А'.length);
+  });
 });

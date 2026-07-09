@@ -8,7 +8,7 @@
 import { Highlight } from '../../types';
 import {
   applyHighlightsToContainer,
-  getContentBlocks,
+  getContentSegments,
   highlightDomOrder,
   compareByDomThenAnchor,
 } from './HighlightLayer';
@@ -197,15 +197,63 @@ describe('applyHighlightsToContainer: выбор и клик', () => {
   });
 });
 
-describe('getContentBlocks', () => {
-  it('возвращает только листовые блоки', () => {
+describe('getContentSegments', () => {
+  it('собственный текст родителя — отдельный сегмент перед вложенными (зеркало anchoring.py)', () => {
     const c = mount(
       '<p>Абзац</p>' +
       '<ul><li>Пункт <ul><li>Вложенный</li></ul></li></ul>' +
       '<table><tbody><tr><td><p>В ячейке</p></td><td>Просто ячейка</td></tr></tbody></table>',
     );
-    const texts = getContentBlocks(c).map(b => (b.textContent || '').trim());
-    expect(texts).toEqual(['Абзац', 'Вложенный', 'В ячейке', 'Просто ячейка']);
+    const texts = getContentSegments(c).map(s => s.text.trim());
+    expect(texts).toEqual(['Абзац', 'Пункт', 'Вложенный', 'В ячейке', 'Просто ячейка']);
+  });
+
+  it('текст сегмента родителя не содержит текста вложенных пунктов', () => {
+    const c = mount('<ul><li>Родительский:<ul><li>Вложенный А.</li></ul></li></ul>');
+    const segs = getContentSegments(c);
+    expect(segs[0].text).toBe('Родительский:');
+    expect(segs[1].text).toBe('Вложенный А.');
+  });
+});
+
+describe('applyHighlightsToContainer: сегменты вложенных списков (§6)', () => {
+  it('привязка на собственном тексте родительского пункта рендерится', () => {
+    const c = mount(
+      '<ul><li>Ещё один родительский пункт с двумя уровнями вложенности:' +
+      '<ul><li>Уровень 2 — пункт с подпунктами:</li></ul></li></ul>',
+    );
+    const parent = 'Ещё один родительский пункт с двумя уровнями вложенности:';
+    const h = makeHighlight({
+      text_content: parent,
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: parent.length,
+    });
+    const report = applyHighlightsToContainer(c, [h], null, noop);
+    expect(report!.rendered.has(h.id)).toBe(true);
+    expect(marksOf(c, h.id).map(m => m.textContent).join('')).toBe(parent);
+    // Вложенный пункт не задет меткой.
+    const nested = c.querySelectorAll('li')[1];
+    expect(nested.querySelectorAll('mark')).toHaveLength(0);
+  });
+
+  it('две привязки в одном сегменте не ломают друг друга (узлы пересобираются)', () => {
+    const c = mount('<ul><li>Первое правило и второе правило.<ul><li>Вложенный.</li></ul></li></ul>');
+    const a = makeHighlight({
+      text_content: 'Первое',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 0, end_char_offset: 6,
+    });
+    const b = makeHighlight({
+      text_content: 'второе',
+      anchor_block_start: 0, anchor_block_end: 0,
+      start_char_offset: 'Первое правило и '.length,
+      end_char_offset: 'Первое правило и второе'.length,
+    });
+    const report = applyHighlightsToContainer(c, [a, b], null, noop);
+    expect(report!.rendered.has(a.id)).toBe(true);
+    expect(report!.rendered.has(b.id)).toBe(true);
+    expect(marksOf(c, a.id)[0].textContent).toBe('Первое');
+    expect(marksOf(c, b.id)[0].textContent).toBe('второе');
   });
 });
 

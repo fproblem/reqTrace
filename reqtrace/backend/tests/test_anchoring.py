@@ -74,16 +74,42 @@ class AnchorCoordinateSpace(unittest.TestCase):
 
 
 class DocModel(unittest.TestCase):
-    def test_leaf_blocks_only(self):
+    def test_segments_include_parent_own_text(self):
+        # Собственный текст родительского пункта — отдельный сегмент ПЕРЕД
+        # вложенными (v1.5.9: раньше он вообще не попадал в модель). Ячейка,
+        # содержащая только <p>, своего сегмента не даёт (свой текст пуст).
         doc = doc_from_html(
             "<p>Абзац</p><ul><li>Пункт <ul><li>Вложенный</li></ul></li></ul>"
             "<table><tbody><tr><td><p>В ячейке</p></td><td>Просто</td></tr></tbody></table>"
         )
         self.assertEqual(
             [b.strip() for b in doc.blocks],
-            ["Абзац", "Вложенный", "В ячейке", "Просто"],
+            ["Абзац", "Пункт", "Вложенный", "В ячейке", "Просто"],
         )
         self.assertEqual(doc.text, "".join(doc.blocks))
+
+    def test_nested_list_parent_anchor_round_trip(self):
+        # Сценарий бага (§6 полигона): выделение собственного текста
+        # родительского пункта должно жить в якорной модели.
+        html = ("<ul><li>Ещё один родительский пункт с двумя уровнями вложенности:"
+                "<ul><li>Уровень 2 — пункт с подпунктами:</li></ul></li></ul>")
+        doc = doc_from_html(html)
+        parent = "Ещё один родительский пункт с двумя уровнями вложенности:"
+        self.assertEqual(doc.blocks[0], parent)
+        rng = abs_range(doc, 0, 0, 0, len(parent))
+        self.assertEqual(doc.text[rng[0]:rng[1]], parent)
+        v = verify_creation(html, 0, 0, 0, len(parent), parent)
+        self.assertIsNotNone(v)
+        self.assertEqual(v["anchored_text"], parent)
+
+    def test_transfer_on_parent_own_text(self):
+        old = ("<p>Шапка</p><ul><li>Родительский пункт со своим текстом:"
+               "<ul><li>Вложенный пункт А.</li></ul></li></ul>")
+        new = old.replace("Вложенный пункт А.", "Вложенный пункт Б.")
+        self.assertEqual(
+            transferred_text(old, new, "Родительский пункт со своим текстом:"),
+            "Родительский пункт со своим текстом:",
+        )
 
     def test_abs_range_and_block_coords_round_trip(self):
         doc = doc_from_html(PAGE)
@@ -103,6 +129,65 @@ class DocModel(unittest.TestCase):
         # Блока с таким индексом нет / пустой диапазон.
         self.assertIsNone(abs_range(doc, 99, 99, 0, 5))
         self.assertIsNone(abs_range(doc, 1, 1, 7, 7))
+
+
+def utf16_len(s: str) -> int:
+    """Длина строки, как её видит JS (.length): UTF-16 code units."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+class Utf16Coordinates(unittest.TestCase):
+    """Внешние смещения якорей — UTF-16 code units (родное пространство DOM).
+
+    Регрессия ручного теста: на сегментах с эмодзи (🚀 = 2 юнита UTF-16,
+    1 кодпоинт) смещения фронта и бэка расходились на символ за каждый
+    астральный знак, и валидационный гард отказывал в рендере.
+    """
+
+    HTML = "<p>Пункт с эмодзи 🚀 внутри и хвостом.</p>"
+
+    def test_abs_range_accepts_utf16_offsets(self):
+        doc = doc_from_html(self.HTML)
+        # Смещение 'внутри', каким его посчитает JS (эмодзи = 2 юнита).
+        js_start = utf16_len("Пункт с эмодзи 🚀 ")
+        rng = abs_range(doc, 0, 0, js_start, js_start + utf16_len("внутри"))
+        self.assertEqual(doc.text[rng[0]:rng[1]], "внутри")
+
+    def test_block_coords_round_trip_through_utf16(self):
+        doc = doc_from_html(self.HTML)
+        i = doc.text.index("внутри")
+        coords = block_coords(doc, i, i + len("внутри"))
+        # Наружу — UTF-16: на единицу больше числа кодпоинтов до 'внутри'.
+        self.assertEqual(coords["start_char_offset"], i + 1)
+        rng = abs_range(
+            doc, coords["anchor_block_start"], coords["anchor_block_end"],
+            coords["start_char_offset"], coords["end_char_offset"],
+        )
+        self.assertEqual(doc.text[rng[0]:rng[1]], "внутри")
+
+    def test_verify_creation_with_js_style_offsets(self):
+        quote = "Пункт с эмодзи 🚀 внутри и хвостом."
+        v = verify_creation(self.HTML, 0, 0, 0, utf16_len(quote), quote)
+        self.assertIsNotNone(v)
+        self.assertEqual(v["anchored_text"], quote)
+        self.assertEqual(v["end_char_offset"], utf16_len(quote))
+
+    def test_project_emits_utf16_offsets(self):
+        old = f"<p>Шапка</p>{self.HTML}"
+        new = old.replace("хвостом", "новым хвостом")
+        quote = "Пункт с эмодзи 🚀 внутри и хвостом."
+        h = {
+            "id": "h1", "status": "active", "text_content": quote,
+            "anchor_block_start": 1, "anchor_block_end": 1,
+            "start_char_offset": 0, "end_char_offset": utf16_len(quote),
+        }
+        proj = project(old, new, [h])[0]
+        self.assertEqual(proj["projected_status"], "outdated")
+        self.assertEqual(proj["anchored_text"], "Пункт с эмодзи 🚀 внутри и новым хвостом.")
+        self.assertEqual(
+            proj["new_end_char_offset"],
+            utf16_len("Пункт с эмодзи 🚀 внутри и новым хвостом."),
+        )
 
 
 class NormKey(unittest.TestCase):

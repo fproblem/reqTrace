@@ -16,6 +16,9 @@
 (render_page_html / process_confluence_html), как их считает фронт. Сырой
 storage-XML даёт другую разбивку на блоки: текст ссылок/кода сидит в CDATA и
 невидим HTML-парсеру (баг v1.5.6 — порча цитат при актуализации).
+⚠ Смещения во внешних якорях — UTF-16 code units (родное пространство DOM);
+внутри движка — кодпоинты, конвертация на границе (см. блок «Пространство
+координат» ниже). Эмодзи вне BMP = 2 юнита UTF-16, но 1 кодпоинт.
 
 Границы диапазона ведут себя как annotation-mark редактора: вставка СТРОГО
 ВНУТРИ диапазона расширяет его, вставка вплотную к границе — нет
@@ -72,9 +75,15 @@ MIN_EQUAL_RUN = 4
 
 @dataclass
 class Doc:
-    """Обработанный HTML как последовательность листовых блоков + полный текст.
+    """Обработанный HTML как последовательность СЕГМЕНТОВ + полный текст.
 
-    bounds[i] — абсолютное смещение начала i-го блока в text;
+    Сегмент — собственный текст одного блочного элемента (текст вне вложенных
+    блочных элементов): листовой блок целиком даёт один сегмент, а у
+    родительского пункта списка / ячейки с вложенными блоками СВОЙ текст —
+    отдельный сегмент перед сегментами вложенных (v1.5.9: раньше такой текст
+    вообще не попадал в модель, и выделения на нём были невозможны).
+
+    bounds[i] — абсолютное смещение начала i-го сегмента в text;
     bounds[-1] == len(text). Все позиции привязок живут в пространстве text.
     """
     blocks: list[str] = field(default_factory=list)
@@ -82,24 +91,96 @@ class Doc:
     bounds: list[int] = field(default_factory=list)
 
 
-def doc_from_html(html: str) -> Doc:
-    """Разбирает ОБРАБОТАННЫЙ HTML в документную модель (листовые блоки)."""
+def _own_text(el) -> str:
+    """Собственный текст блочного элемента: строки, между которыми и el нет
+    другого блочного предка (текст вложенных блоков — их собственные сегменты)."""
+    parts: list[str] = []
+    for s in el.strings:
+        p = s.parent
+        nested = False
+        while p is not None and p is not el:
+            if p.name in BLOCK_TAGS:
+                nested = True
+                break
+            p = p.parent
+        if not nested:
+            parts.append(str(s))
+    return "".join(parts)
+
+
+def _segments(html: str) -> list[tuple[str, bool]]:
+    """Сегменты документа в document order: (текст, листовой ли элемент).
+
+    Листовой блок даёт сегмент всегда (даже пустой — стабильность индексов,
+    как в старой блочной модели); НЕлистовой — только когда его собственный
+    текст не пуст (иначе каждый ul-обёрточный li плодил бы пустые сегменты).
+    Зеркало getContentSegments на фронте — правила обязаны совпадать.
+    """
     soup = BeautifulSoup(html or "", "lxml")
     for tag in soup(["script", "style"]):
         tag.decompose()
-    blocks: list[str] = []
+    out: list[tuple[str, bool]] = []
     for el in soup.find_all(BLOCK_TAGS):
-        if not el.find(BLOCK_TAGS):
-            blocks.append(el.get_text(separator="", strip=False))
+        is_leaf = el.find(BLOCK_TAGS) is None
+        if is_leaf:
+            out.append((el.get_text(separator="", strip=False), True))
+        else:
+            own = _own_text(el)
+            if own.strip():
+                out.append((own, False))
+    return out
+
+
+def doc_from_html(html: str) -> Doc:
+    """Разбирает ОБРАБОТАННЫЙ HTML в документную модель (сегменты)."""
+    blocks = [text for text, _ in _segments(html)]
     bounds = [0]
     for b in blocks:
         bounds.append(bounds[-1] + len(b))
     return Doc(blocks=blocks, text="".join(blocks), bounds=bounds)
 
 
+def leaf_segment_indexes(html: str) -> list[int]:
+    """Позиция k-го ЛИСТОВОГО сегмента в новой нумерации сегментов.
+
+    Для миграции 010 со старой блочной модели (в ней нумеровались только
+    листовые блоки): старый индекс k → новый leaf_segment_indexes(html)[k].
+    """
+    return [i for i, (_, is_leaf) in enumerate(_segments(html)) if is_leaf]
+
+
+# --- Пространство координат (⚠ критично) ----------------------------------
+# ВНЕШНИЕ якоря (БД, API, фронт) — в UTF-16 code units: это родное пространство
+# DOM (Range.setStart, .length, substring в JS). ВНУТРИ движка позиции — в
+# кодпоинтах Python. Конвертация происходит ровно на границе: abs_range
+# принимает UTF-16-смещения, block_coords возвращает UTF-16-смещения.
+# Без этого сегменты с эмодзи (🚀 = 2 юнита UTF-16, 1 кодпоинт) расходились
+# на символ за каждый астральный знак, и гард фронта отказывал в рендере.
+
+def _utf16_len(s: str) -> int:
+    return sum(2 if ord(ch) > 0xFFFF else 1 for ch in s)
+
+
+def _utf16_to_cp(s: str, off16: int) -> int:
+    """UTF-16-смещение → индекс кодпоинта (кламп в пределах строки)."""
+    if off16 <= 0:
+        return 0
+    acc = 0
+    for i, ch in enumerate(s):
+        if acc >= off16:
+            return i
+        acc += 2 if ord(ch) > 0xFFFF else 1
+    return len(s)
+
+
+def _cp_to_utf16(s: str, cp: int) -> int:
+    return _utf16_len(s[:max(0, min(cp, len(s)))])
+
+
 def abs_range(doc: Doc, block_start: int, block_end: int | None,
               start_offset: int, end_offset: int) -> tuple[int, int] | None:
-    """Блочные якоря → абсолютный диапазон [start, end) в doc.text.
+    """Блочные якоря (смещения в UTF-16) → абсолютный диапазон [start, end)
+    в doc.text (кодпоинты).
 
     None — якорь вне документа (блока с таким индексом нет) или пустой диапазон.
     Смещения клампятся к длинам блоков (защита от дрейфа исторических данных).
@@ -109,22 +190,23 @@ def abs_range(doc: Doc, block_start: int, block_end: int | None,
     b_end = block_start if block_end is None else min(block_end, len(doc.blocks) - 1)
     if b_end < block_start:
         b_end = block_start
-    start = doc.bounds[block_start] + min(max(start_offset, 0), len(doc.blocks[block_start]))
-    end = doc.bounds[b_end] + min(max(end_offset, 0), len(doc.blocks[b_end]))
+    start = doc.bounds[block_start] + _utf16_to_cp(doc.blocks[block_start], start_offset)
+    end = doc.bounds[b_end] + _utf16_to_cp(doc.blocks[b_end], end_offset)
     if end <= start:
         return None
     return (start, end)
 
 
 def block_coords(doc: Doc, start: int, end: int) -> dict:
-    """Абсолютный диапазон [start, end) → блочные якоря (для БД и фронта)."""
+    """Абсолютный диапазон [start, end) в кодпоинтах → блочные якоря со
+    смещениями в UTF-16 (для БД и фронта)."""
     start_block = min(bisect_right(doc.bounds, start) - 1, len(doc.blocks) - 1)
     end_block = min(bisect_right(doc.bounds, end - 1) - 1, len(doc.blocks) - 1)
     return {
         "anchor_block_start": start_block,
         "anchor_block_end": end_block,
-        "start_char_offset": start - doc.bounds[start_block],
-        "end_char_offset": end - doc.bounds[end_block],
+        "start_char_offset": _cp_to_utf16(doc.blocks[start_block], start - doc.bounds[start_block]),
+        "end_char_offset": _cp_to_utf16(doc.blocks[end_block], end - doc.bounds[end_block]),
     }
 
 

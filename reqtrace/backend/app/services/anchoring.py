@@ -34,7 +34,13 @@ storage-XML даёт другую разбивку на блоки: текст �
     проверки», человек разрешит вручную;
   • своп соседних блоков неотличим от «переехал другой блок» — неизменённый
     блок остаётся жив (мягче эталона, где cut/paste теряет комментарий, но
-    честно: текст привязки не менялся); перенос через несколько блоков — утрата.
+    честно: текст привязки не менялся); перенос через несколько блоков — утрата;
+  • «хвост» собственного текста ПОСЛЕ вложенного блока внутри того же элемента
+    (<li>текст<ol>…</ol>хвост</li> без обёртки в <p>) склеивается с pre-текстом
+    в один сегмент перед вложенными: выделение, пересекающее границу
+    «родитель → вложенный», не создастся (409). Разметка достижима в основном
+    старым редактором/импортом; современный редактор оборачивает хвост в <p>.
+    Решение ревью 2026-07-09: не чиним до первого реального появления.
 """
 import unicodedata
 from bisect import bisect_right
@@ -270,14 +276,18 @@ def map_range(ops: list[tuple[str, int, int, int, int]],
       • новых кусков insert СТРОГО внутри; вставка ровно на границе не
         наследует маркер (inclusive=false у annotation-марок).
 
-    Гейт выживания: диапазон жив, только если его пересекает хотя бы один
-    equal-кусок с ≥ MIN_EQUAL_RUN значащих символов — иначе полностью
-    перенабранный текст «воскресал» бы на россыпи случайно совпавших букв.
+    Гейт выживания: диапазон жив, только если уцелели ЕГО СОБСТВЕННЫЕ значащие
+    символы — хотя бы один equal-кусок пересекается с диапазоном на
+    ≥ MIN_EQUAL_RUN значащих символов, ЛИБО диапазон уцелел целиком (все его
+    значащие символы в equal-кусках — поблажка коротким цитатам вроде «API»).
+    Длина всего equal-куска не считается: иначе полностью перенабранная цитата
+    «выживала» бы, зацепив краем пару пробелов соседнего неизменённого текста.
     Не жив → None (→ «Утрачено», как dangling).
     """
     new_start: int | None = None
     new_end: int | None = None
     alive = False
+    survived_sig = 0
 
     def contribute(ns: int, ne: int) -> None:
         nonlocal new_start, new_end
@@ -293,7 +303,9 @@ def map_range(ops: list[tuple[str, int, int, int, int]],
             s = max(start, o1)
             e = min(end, o2)
             contribute(n1 + (s - o1), n1 + (e - o1))
-            if not alive and len(norm_key(old_text[o1:o2])) >= MIN_EQUAL_RUN:
+            inter_sig = len(norm_key(old_text[s:e]))
+            survived_sig += inter_sig
+            if inter_sig >= MIN_EQUAL_RUN:
                 alive = True
         elif tag == "insert":
             if start < o1 < end and n2 > n1:
@@ -303,6 +315,9 @@ def map_range(ops: list[tuple[str, int, int, int, int]],
                 contribute(n1, n2)
         # delete: старые символы исчезли — вклада в образ нет.
 
+    if not alive:
+        range_sig = len(norm_key(old_text[start:end]))
+        alive = range_sig > 0 and survived_sig >= range_sig
     if not alive or new_start is None or new_end is None or new_end <= new_start:
         return None
     return (new_start, new_end)

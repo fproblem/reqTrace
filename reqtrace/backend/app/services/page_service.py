@@ -124,9 +124,12 @@ async def refresh_from_confluence(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch from Confluence: {e}")
 
-    # Место страницы в дереве — до раннего выхода «контент не изменился»:
-    # перемещение страницы в Confluence меняет предков, не трогая содержимого
-    # (get_db закоммитит изменение в любом случае).
+    # Заголовок и место страницы в дереве — до раннего выхода «контент не
+    # изменился»: переименование и перемещение страницы в Confluence не трогают
+    # тело (get_db закоммитит изменения в любом случае). Раньше title писался
+    # только при новом снимке, и переименование без правки текста не доезжало
+    # до ReqTrace никогда.
+    page.title = page_data.title
     new_parent = page_data.ancestors[-1].page_id if page_data.ancestors else None
     if page.parent_confluence_page_id != new_parent:
         page.parent_confluence_page_id = new_parent
@@ -150,8 +153,6 @@ async def refresh_from_confluence(
         content_html=page_data.content_html,
     ))
     await db.flush()
-
-    page.title = page_data.title
 
     hl_result = await db.execute(select(Highlight).where(Highlight.page_id == page.id))
     highlights = hl_result.scalars().all()

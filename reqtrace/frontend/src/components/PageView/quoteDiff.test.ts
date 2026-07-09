@@ -2,7 +2,7 @@
 import { quoteDiff } from './quoteDiff';
 
 function render(parts: ReturnType<typeof quoteDiff>): string {
-  return parts
+  return (parts ?? [])
     .map(p => (p.kind === 'removed' ? `[-${p.text}-]` : p.kind === 'added' ? `[+${p.text}+]` : p.text))
     .join(' ');
 }
@@ -48,5 +48,12 @@ describe('quoteDiff', () => {
     expect(quoteDiff('', '')).toEqual([]);
     expect(quoteDiff('слово', '')).toEqual([{ kind: 'removed', text: 'слово' }]);
     expect(quoteDiff('', 'слово')).toEqual([{ kind: 'added', text: 'слово' }]);
+  });
+
+  it('слишком большой вход → null (панель покажет цитату без диффа)', () => {
+    const big = Array.from({ length: 600 }, (_, i) => `слово${i}`).join(' ');
+    expect(quoteDiff(big, big + ' хвост')).toBeNull();
+    // Обычные цитаты далеки от потолка.
+    expect(quoteDiff('раз два три', 'раз три')).not.toBeNull();
   });
 });

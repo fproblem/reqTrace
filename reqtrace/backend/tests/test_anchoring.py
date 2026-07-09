@@ -294,6 +294,29 @@ class Transfer(unittest.TestCase):
         new = PAGE.replace(QUOTE, "Совершенно другое содержимое раздела.")
         self.assertIsNone(transferred_text(PAGE, new, QUOTE))
 
+    def test_full_retype_with_whitespace_edge_is_lost(self):
+        # РЕВЬЮ v1.5.9: диапазон краем зацепил два пробела соседнего
+        # неизменённого текста (занижение leadingTrimmed при множественных
+        # пробелах в DOM) — при полном перенаборе цитаты гейт не должен
+        # квалифицировать выживание длиной ВСЕГО соседнего equal-куска.
+        old = "<p>Итого:   проверка завершена успешно.</p>"
+        new = "<p>Итого:   ревизия закончена.</p>"
+        old_doc = doc_from_html(old)
+        i = old_doc.text.index("проверка")
+        # Диапазон начинается на втором из трёх пробелов перед цитатой.
+        rng = map_range(
+            char_opcodes(old_doc, doc_from_html(new)),
+            i - 2, len(old_doc.text), old_doc.text,
+        )
+        self.assertIsNone(rng)
+
+    def test_short_quote_fully_survived_stays_alive(self):
+        # Поблажка гейта: цитата короче MIN_EQUAL_RUN, уцелевшая ЦЕЛИКОМ
+        # (правка в другом месте блока), жива.
+        old = "<p>Ключ API описан в разделе настроек.</p>"
+        new = "<p>Ключ API описан в параграфе настроек.</p>"
+        self.assertEqual(transferred_text(old, new, "API"), "API")
+
     def test_paragraph_moved_far_away_is_lost(self):
         # Cut/paste у эталона = удаление (CONFSERVER-42726). Перенос через
         # несколько блоков дифф совместить не может → утрата.

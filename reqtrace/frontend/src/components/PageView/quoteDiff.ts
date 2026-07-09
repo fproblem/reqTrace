@@ -11,12 +11,20 @@ export interface DiffPart {
   text: string;
 }
 
-// LCS по словам (пробельная токенизация; цитаты короткие — квадратичный DP
-// дешевле любых хитростей). Соседние куски одного вида склеиваются.
-export function quoteDiff(before: string, after: string): DiffPart[] {
+// Потолок DP-таблицы (слова(до) × слова(после)): цитаты не ограничены по
+// размеру, и на многотысячесловных выделениях квадратичный дифф замораживал
+// бы вкладку при каждом рендере панели. Выше потолка — null, вызывающий код
+// показывает цитату без сравнения.
+const MAX_DIFF_CELLS = 250_000;
+
+// LCS по словам (пробельная токенизация; обычные цитаты короткие — квадратичный
+// DP дешевле любых хитростей). Соседние куски одного вида склеиваются.
+// null — вход слишком велик для диффа (см. MAX_DIFF_CELLS).
+export function quoteDiff(before: string, after: string): DiffPart[] | null {
   const a = before.split(/\s+/).filter(Boolean);
   const b = after.split(/\s+/).filter(Boolean);
   if (!a.length && !b.length) return [];
+  if (a.length * b.length > MAX_DIFF_CELLS) return null;
 
   const dp: number[][] = Array.from({ length: a.length + 1 }, () =>
     new Array<number>(b.length + 1).fill(0),

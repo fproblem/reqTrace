@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
@@ -6,14 +6,14 @@ import { StatusAlertIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
-import { quoteDiff } from './quoteDiff';
+import { DiffPart, quoteDiff } from './quoteDiff';
 
 /** Дифф цитаты для «Требует проверки»: что изменилось в тексте под маркером
  * относительно замороженной цитаты. Удалённое — зачёркнуто красным,
  * добавленное — на зелёной подложке (фирменные оттенки ICON_TINTS). */
-const QuoteDiffView: React.FC<{ before: string; after: string }> = ({ before, after }) => (
+const QuoteDiffView: React.FC<{ parts: DiffPart[] }> = ({ parts }) => (
   <>
-    {quoteDiff(before, after).map((part, i) => {
+    {parts.map((part, i) => {
       if (part.kind === 'removed') {
         return (
           <span key={i} style={{
@@ -205,6 +205,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // нечего — возвращаем пустую оболочку, а не null: она держит DOM-узел живым
   // для следующего транзишена.
   const highlight = rendered;
+
+  // Дифф цитаты для «Требует проверки» — один раз на привязку (LCS
+  // квадратичен). null — показывать нечего: тексты совпадают по norm,
+  // anchored_text ещё не заполнен или дифф слишком велик (потолок quoteDiff).
+  const quoteDiffParts = useMemo<DiffPart[] | null>(() => {
+    if (!highlight || highlight.status !== 'outdated' || highlight.anchored_text == null) {
+      return null;
+    }
+    if (strippedEquals(highlight.anchored_text, highlight.text_content)) return null;
+    const parts = quoteDiff(highlight.text_content, highlight.anchored_text);
+    return parts && parts.length ? parts : null;
+  }, [highlight]);
+
   if (!highlight) return <div style={shellStyle(false, false)} />;
 
   const sorted = sortedByPosition(allHighlights);
@@ -493,12 +506,23 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             lineHeight: 1.45,
           }}>
             <span style={{ flexShrink: 0 }}>⚠</span>
-            <span>
-              Эта привязка <strong>не отображается на странице</strong>: выделенный
-              текст не удалось найти в текущем содержимом, поэтому она помечена как
-              «Утрачено». Найти её можно внизу страницы или по чипу «утрачено» в
-              верхней панели. Привязанные тесты сохранены.
-            </span>
+            {highlight.status === 'lost' ? (
+              <span>
+                Эта привязка <strong>не отображается на странице</strong>: выделенный
+                текст удалён из содержимого, и привязка «Утрачена» окончательно.
+                Найти её можно внизу страницы или по чипу «утрачено» в верхней
+                панели. Привязанные тесты сохранены — перепривяжите их к новому
+                выделению.
+              </span>
+            ) : (
+              // Не-lost привязка, которую слой отказался рендерить: содержимое и
+              // координаты рассинхронизированы (фронт статусы не меняет — v1.5.9).
+              <span>
+                Эта привязка <strong>не отображается на странице</strong>: содержимое
+                и координаты привязки рассинхронизированы. Нажмите «Обновить» в
+                шапке — сервер пересчитает привязки по актуальной версии страницы.
+              </span>
+            )}
           </div>
         )}
 
@@ -558,9 +582,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* Дифф показываем у «Требует проверки», когда текст под маркером
             реально отличается от замороженной цитаты (v1.5.9): человек видит
             правку и осознанно жмёт «Актуализировать». */}
-        {highlight.status === 'outdated'
-          && highlight.anchored_text != null
-          && !strippedEquals(highlight.anchored_text, highlight.text_content) && (
+        {quoteDiffParts && (
           <div style={{
             fontSize: '11px',
             fontWeight: 600,
@@ -606,10 +628,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             e.currentTarget.style.borderColor = colors.border;
           }}
         >
-          {highlight.status === 'outdated'
-            && highlight.anchored_text != null
-            && !strippedEquals(highlight.anchored_text, highlight.text_content)
-            ? <QuoteDiffView before={highlight.text_content} after={highlight.anchored_text} />
+          {quoteDiffParts
+            ? <QuoteDiffView parts={quoteDiffParts} />
             : highlight.text_content}
         </div>
 

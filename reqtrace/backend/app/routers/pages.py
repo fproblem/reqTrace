@@ -32,10 +32,8 @@ from app.schemas.page import (
     SnapshotInfo, BaselineInfo,
     TreeNodeItem, SpaceTreeResponse, ProjectTreeResponse, TreeSyncResult,
 )
-from app.services import confluence
+from app.services import confluence, page_service
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
-from app.services.diff_engine import has_text_changed
-from app.services.highlight_projection import project_highlights
 
 logger = logging.getLogger(__name__)
 
@@ -682,102 +680,10 @@ async def refresh_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Refresh page content from Confluence. Projects highlights if content changed."""
+    """Обновить содержимое из Confluence и перенести привязки (page_service)."""
     page, project, cred = await require_page_access(db, page_id, current_user)
     require_confluence_project(project)
-
-    conn = connection_for(project, cred)
-    try:
-        page_data = await run_confluence(
-            db, project, cred, confluence.fetch_page(page.confluence_page_id, conn)
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch from Confluence: {e}")
-
-    # Keep this page's place in the tree current: moving a page in Confluence
-    # changes its ancestors without touching content, so do this before the
-    # "content unchanged" early-return below (get_db commits the change anyway).
-    new_parent = page_data.ancestors[-1].page_id if page_data.ancestors else None
-    if page.parent_confluence_page_id != new_parent:
-        page.parent_confluence_page_id = new_parent
-
-    snap_result = await db.execute(
-        select(PageSnapshot)
-        .where(PageSnapshot.page_id == page.id)
-        .order_by(PageSnapshot.fetched_at.desc())
-        .limit(1)
-    )
-    latest_snapshot = snap_result.scalar_one_or_none()
-
-    if latest_snapshot and not has_text_changed(latest_snapshot.content_html, page_data.content_html):
-        return await get_page(page_id, db, current_user)
-
-    new_snapshot = PageSnapshot(
-        page_id=page.id,
-        confluence_version=page_data.version,
-        content_html=page_data.content_html,
-    )
-    db.add(new_snapshot)
-    await db.flush()
-
-    page.title = page_data.title
-
-    # Проецируем ВСЕ привязки, включая «утраченные»: у них тоже должны
-    # обновляться якоря (замороженные якоря протухали, и вернувшийся текст
-    # размещался «разрывом» по устаревшим координатам), а вернувшаяся цитата —
-    # восстанавливать привязку в «Требует проверки» прямо на refresh.
-    hl_result = await db.execute(
-        select(Highlight)
-        .where(Highlight.page_id == page.id)
-    )
-    highlights = hl_result.scalars().all()
-
-    if highlights:
-        hl_dicts = [
-            {
-                "id": h.id,
-                "text_content": h.text_content,
-                "text_before": h.text_before or "",
-                "text_after": h.text_after or "",
-                "anchor_block_start": h.anchor_block_start,
-                "anchor_block_end": h.anchor_block_end,
-                "start_char_offset": h.start_char_offset,
-                "end_char_offset": h.end_char_offset,
-            }
-            for h in highlights
-        ]
-
-        # Проекция — строго в координатах ОБРАБОТАННОГО HTML (render_page_html):
-        # якоря привязок фронт считал по нему. Сырой storage-XML давал другую
-        # разбивку на блоки (текст ссылок/кода в CDATA невидим парсеру), из-за
-        # чего якоря дрейфовали при каждом обновлении.
-        rendered_new = render_page_html(page_data.content_html, page.id, project) or ""
-        rendered_old = (
-            render_page_html(latest_snapshot.content_html, page.id, project)
-            if latest_snapshot else None
-        )
-        projected = project_highlights(hl_dicts, rendered_new, rendered_old)
-
-        for proj in projected:
-            for h in highlights:
-                if h.id == proj["id"]:
-                    projected_status = proj["projected_status"]
-                    # Refresh никогда сам не «повышает» до «актуально» — это
-                    # делает только человек («Актуализировать»). Вернувшаяся
-                    # цитата у outdated/lost-привязки → «Требует проверки».
-                    if projected_status == "active" and h.status != "active":
-                        projected_status = "outdated"
-                    h.status = projected_status
-                    if "new_anchor_block_start" in proj:
-                        h.anchor_block_start = proj["new_anchor_block_start"]
-                        h.anchor_block_end = proj["new_anchor_block_end"]
-                        h.start_char_offset = proj["new_start_char_offset"]
-                        h.end_char_offset = proj["new_end_char_offset"]
-                    break
-
-    await db.flush()
+    await page_service.refresh_from_confluence(db, page, project, cred)
     return await get_page(page_id, db, current_user)
 
 

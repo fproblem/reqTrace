@@ -19,6 +19,11 @@ class Highlight(Base):
     end_xpath: Mapped[str] = mapped_column(Text, nullable=False)
     end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Текущий текст под маркером в актуальном снимке (v1.5.9). text_content —
+    # замороженная цитата (аналог inlineOriginalSelection у Confluence);
+    # anchored_text пересчитывает движок anchoring при refresh. NULL — привязка
+    # ещё не проходила refresh по новой модели.
+    anchored_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     text_before: Mapped[str] = mapped_column(String(100), nullable=True, default="")
     text_after: Mapped[str] = mapped_column(String(100), nullable=True, default="")
     anchor_block_start: Mapped[int | None] = mapped_column(Integer, nullable=True)

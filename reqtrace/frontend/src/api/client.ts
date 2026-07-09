@@ -204,14 +204,8 @@ export const api = {
   reanchorHighlight: (highlightId: string) =>
     request<Highlight>(`/highlights/${highlightId}/reanchor`, { method: 'POST' }),
 
-  markHighlightLost: (highlightId: string) =>
-    request<Highlight>(`/highlights/${highlightId}/mark-lost`, { method: 'POST' }),
-
-  unmarkHighlightLost: (highlightId: string) =>
-    request<Highlight>(`/highlights/${highlightId}/unmark-lost`, { method: 'POST' }),
-
-  markHighlightOutdated: (highlightId: string) =>
-    request<Highlight>(`/highlights/${highlightId}/mark-outdated`, { method: 'POST' }),
+  // Эндпоинтов ручной смены статусов (mark-lost и т.п.) больше нет (v1.5.9):
+  // статусы привязок меняет только сервер при refresh и «Актуализировать».
 
   // Test links
   addTestLink: (highlightId: string, test_key: string) =>

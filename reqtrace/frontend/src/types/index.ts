@@ -91,6 +91,10 @@ export interface Highlight {
   end_xpath: string;
   end_offset: number;
   text_content: string;
+  /** Текущий текст под маркером в актуальном снимке (v1.5.9); text_content —
+   * замороженная цитата. null — привязка ещё не проходила refresh по новой
+   * модели, читатели используют text_content. */
+  anchored_text: string | null;
   text_before: string;
   text_after: string;
   anchor_block_start: number | null;

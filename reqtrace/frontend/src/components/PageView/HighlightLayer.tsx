@@ -1,18 +1,56 @@
 import React, { useEffect, useCallback } from 'react';
 import { Highlight } from '../../types';
 import { colors } from '../../styles/tokens';
-import {
-  strippedEquals,
-  findBestMatchIndex,
-  findSplitRangesIgnoringWhitespace,
-  findPartialRanges,
-} from './highlightMatching';
+import { strippedEquals } from './highlightMatching';
 
-const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
+export const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, td, th, pre, dt, dd';
 
-export function getContentBlocks(container: HTMLElement): HTMLElement[] {
+// Сегмент документной модели (v1.5.9, зеркало _segments в anchoring.py):
+// собственный текст одного блочного элемента — текстовые узлы вне вложенных
+// блочных элементов. Листовой блок даёт сегмент всегда; родительский пункт
+// списка / ячейка с вложенными блоками — только если свой текст не пуст.
+// Раньше собственный текст таких элементов вообще не попадал в модель, и
+// выделения на нём были невозможны.
+export interface ContentSegment {
+  el: HTMLElement;
+  /** Собственный текст сегмента (пространство смещений якорей). */
+  text: string;
+}
+
+// Текстовые узлы собственного текста элемента, в document order. Всегда
+// пересобираются на месте использования: оборачивание в <mark> расщепляет
+// текстовые узлы, и закэшированные ссылки протухли бы уже после первой
+// привязки (сам ТЕКСТ сегмента метки не меняют — только узлы).
+export function ownTextNodes(el: HTMLElement): Text[] {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const out: Text[] = [];
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    let p = n.parentElement;
+    let nested = false;
+    while (p && p !== el) {
+      if (p.matches(BLOCK_SELECTOR)) {
+        nested = true;
+        break;
+      }
+      p = p.parentElement;
+    }
+    if (!nested) out.push(n as Text);
+  }
+  return out;
+}
+
+export function getContentSegments(container: HTMLElement): ContentSegment[] {
   const all = Array.from(container.querySelectorAll(BLOCK_SELECTOR)) as HTMLElement[];
-  return all.filter(el => !el.querySelector(BLOCK_SELECTOR));
+  const segments: ContentSegment[] = [];
+  for (const el of all) {
+    const isLeaf = !el.querySelector(BLOCK_SELECTOR);
+    const text = ownTextNodes(el).map(t => t.textContent || '').join('');
+    if (isLeaf || text.trim() !== '') {
+      segments.push({ el, text });
+    }
+  }
+  return segments;
 }
 
 // Карта id подсветки -> порядковый номер по позиции отрисованной <mark> в DOM
@@ -47,12 +85,11 @@ export function compareByDomThenAnchor(order: Map<string, number>) {
 
 // Отчёт об отрисовке: considered — все привязки, которые слой пытался показать
 // (не «утраченные»); rendered — те, у которых реально появилась хотя бы одна
-// <mark>; partial ⊆ rendered — размещённые ЧАСТИЧНО (точного совпадения нет,
-// подсвечены уцелевшие куски цитаты в якорном блоке — текст цитаты изменился).
-// Разница (considered − rendered) = привязки, не отобразившиеся на странице.
+// <mark>. Отчёт НЕ управляет статусами (v1.5.9: статусы решает только сервер
+// при refresh) — он нужен подскроллу к созданной привязке и плашке
+// «не на странице» в панели.
 export interface HighlightRenderReport {
   rendered: Set<string>;
-  partial: Set<string>;
   considered: Set<string>;
 }
 
@@ -94,48 +131,29 @@ export function applyHighlightsToContainer(
   });
   container.normalize();
 
-  const blocks = getContentBlocks(container);
+  const segments = getContentSegments(container);
 
   const rendered = new Set<string>();
-  const partial = new Set<string>();
   const considered = new Set<string>();
 
   for (const highlight of highlights) {
-    // Пытаемся отрисовать ВСЕ привязки, в т.ч. «утраченные»: если такая снова
-    // легла на страницу (текст вернулся или подсветка ложится «разрывом»),
-    // вызывающий код вернёт её из «Утрачено». Иначе lost-статус был бы
-    // «липким» — однажды утраченную привязку слой больше никогда не пробовал
-    // бы показать.
+    // «Утраченные» не рендерятся вовсе: их маркер уничтожен правкой страницы
+    // (аналог dangling у Confluence), а замороженные якоря осмыслены только
+    // для прежнего снимка. Никакого поиска текста здесь нет — координаты
+    // привязок поддерживает сервер при refresh.
+    if (highlight.status === 'lost') continue;
     considered.add(highlight.id);
 
     try {
-      let ok = false;
-      if (highlight.anchor_block_start != null) {
-        ok = applyBlockAnchored(container, blocks, highlight, selectedId, onClick);
+      if (renderAtAnchors(segments, highlight, selectedId, onClick)) {
+        rendered.add(highlight.id);
       }
-      // Фолбэк: блочный якорь не дал ни одной метки (номер блока уехал за
-      // пределы текущей структуры либо смещения схлопнулись в пустой диапазон
-      // после изменения контента) — пробуем разместить по тексту. Так метка
-      // не пропадает молча. Для legacy-привязок (anchor_block_start == null)
-      // это и есть основной путь.
-      if (!ok) {
-        ok = applyLegacyTextSearch(container, highlight, selectedId, onClick);
-      }
-      // Последний ярус: точного совпадения нигде нет — цитату правили. Ищем
-      // уцелевшие куски В ПРЕДЕЛАХ якорного блока (как Confluence оставляет
-      // комментарий на оставшемся тексте); статус такой привязки вызывающий
-      // код понизит до «Требует проверки» (statusSync).
-      if (!ok && applyPartialAtAnchor(blocks, highlight, selectedId, onClick)) {
-        ok = true;
-        partial.add(highlight.id);
-      }
-      if (ok) rendered.add(highlight.id);
     } catch (err) {
       console.warn('Failed to apply highlight:', highlight.id, err);
     }
   }
 
-  return { rendered, partial, considered };
+  return { rendered, considered };
 }
 
 export const HighlightLayer: React.FC<HighlightLayerProps> = ({
@@ -187,154 +205,75 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
   return null;
 };
 
-// Возвращает true, если удалось отрисовать хотя бы одну метку. false означает,
-// что блочный якорь не сработал (вызывающий код тогда пробует текстовый поиск).
-function applyBlockAnchored(
-  container: HTMLElement,
-  blocks: HTMLElement[],
+// Рендер привязки по её координатам (v1.5.9: единственный способ размещения —
+// «маркер в снимке», сервер поддерживает якоря актуальными при refresh).
+// Возвращает true, если появилась хотя бы одна метка.
+function renderAtAnchors(
+  segments: ContentSegment[],
   highlight: Highlight,
   selectedId: string | null,
   onClick: (h: Highlight) => void,
 ): boolean {
-  const startBlockIdx = highlight.anchor_block_start!;
-  const endBlockIdx = highlight.anchor_block_end ?? startBlockIdx;
+  if (highlight.anchor_block_start == null) return false;
+  const startIdx = highlight.anchor_block_start;
+  const endIdx = highlight.anchor_block_end ?? startIdx;
   const startCharOffset = highlight.start_char_offset ?? 0;
   const endCharOffset = highlight.end_char_offset ?? 0;
 
-  if (startBlockIdx >= blocks.length) return false;
+  if (startIdx >= segments.length) return false;
 
-  // Сначала собираем диапазоны, которые собираемся подсветить, и их текст —
-  // и только потом трогаем DOM. Это позволяет СНАЧАЛА проверить, что под якорем
-  // действительно наш текст: после удаления/вставки пунктов списка индекс блока
-  // мог указать на чужой блок, и подсвечивать его (как было раньше) — баг.
-  const targets: { block: HTMLElement; from: number; to: number }[] = [];
-  const clampedEndBlockIdx = Math.min(endBlockIdx, blocks.length - 1);
+  // Сначала собираем диапазоны, потом трогаем DOM — чтобы успеть сверить текст.
+  const targets: { segment: ContentSegment; from: number; to: number }[] = [];
+  const clampedEndIdx = Math.min(endIdx, segments.length - 1);
 
-  for (let bi = startBlockIdx; bi <= clampedEndBlockIdx; bi++) {
-    const block = blocks[bi];
-    const blockText = block.textContent || '';
+  for (let si = startIdx; si <= clampedEndIdx; si++) {
+    const segment = segments[si];
+    const len = segment.text.length;
     let from: number;
     let to: number;
 
-    if (startBlockIdx === endBlockIdx) {
-      from = Math.min(startCharOffset, blockText.length);
-      to = Math.min(endCharOffset, blockText.length);
-    } else if (bi === startBlockIdx) {
-      from = Math.min(startCharOffset, blockText.length);
-      to = blockText.length;
-    } else if (bi === clampedEndBlockIdx) {
+    if (startIdx === endIdx) {
+      from = Math.min(startCharOffset, len);
+      to = Math.min(endCharOffset, len);
+    } else if (si === startIdx) {
+      from = Math.min(startCharOffset, len);
+      to = len;
+    } else if (si === clampedEndIdx) {
       from = 0;
-      to = Math.min(endCharOffset, blockText.length);
+      to = Math.min(endCharOffset, len);
     } else {
       from = 0;
-      to = blockText.length;
+      to = len;
     }
 
-    if (from < to) targets.push({ block, from, to });
+    if (from < to) targets.push({ segment, from, to });
   }
 
   if (targets.length === 0) return false;
 
-  // Текст под якорем должен ТОЧНО совпадать с сохранённым (без учёта пробелов и
-  // переносов). Если индекс блока «съехал» на чужой блок, либо текст
-  // отредактировали — совпадения нет, и мы НЕ подсвечиваем здесь: пусть сработает
-  // точный текстовый поиск, иначе привязка уйдёт в «Утрачено». Никаких
-  // «процентов похожести» — правка выделенного текста = потеря привязки.
-  if (highlight.text_content) {
+  // Валидационный гард: текст под координатами обязан совпадать с текстом
+  // маркера (anchored_text; для привязок до первого refresh — с цитатой).
+  // Расхождение означает рассинхрон снимка и привязок (например, контент и
+  // привязки загрузились от разных версий) — честно не рисуем и ругаемся в
+  // консоль. Статусы фронт НЕ трогает: их решает только сервер при refresh.
+  const expected = highlight.anchored_text ?? highlight.text_content;
+  if (expected) {
     const anchoredText = targets
-      .map(t => (t.block.textContent || '').substring(t.from, t.to))
+      .map(t => t.segment.text.substring(t.from, t.to))
       .join('');
-    if (!strippedEquals(anchoredText, highlight.text_content)) {
+    if (!strippedEquals(anchoredText, expected)) {
+      console.warn(
+        'Highlight anchors out of sync with content, skip render:', highlight.id,
+      );
       return false;
     }
   }
 
   let wrapped = 0;
   for (const t of targets) {
-    wrapped += wrapTextNodesInRange(t.block, t.from, t.to, highlight, selectedId, onClick);
-  }
-  return wrapped > 0;
-}
-
-// Возвращает true, если удалось отрисовать хотя бы одну метку.
-function applyLegacyTextSearch(
-  container: HTMLElement,
-  highlight: Highlight,
-  selectedId: string | null,
-  onClick: (h: Highlight) => void,
-): boolean {
-  const textContent = highlight.text_content;
-  if (!textContent) return false;
-
-  const fullText = container.textContent || '';
-  const idx = findBestMatchIndex(
-    fullText, textContent, highlight.text_before, highlight.text_after,
-  );
-  if (idx !== -1) {
-    return wrapTextNodesInRange(
-      container, idx, idx + textContent.length, highlight, selectedId, onClick,
-    ) > 0;
-  }
-
-  // Фолбэк: точного совпадения нет. text_content приходит из selection.toString(),
-  // которое для выделений через границы блоков вставляет переносы строк \n,
-  // а container.textContent между текстом пункта и вложенным списком может вовсе
-  // не иметь пробела (<li>...:<ol>). Кроме того, в содержимое могли вставить
-  // новую строку ВНУТРИ выделения (как в Confluence). Поэтому ищем, полностью
-  // игнорируя пробелы, и допускаем вставки в середину: совпавшие куски
-  // подсвечиваем по отдельности — подсветка «рвётся» на части, как
-  // инлайн-комментарий в Confluence, вместо полной потери.
-  const ranges = findSplitRangesIgnoringWhitespace(
-    fullText, textContent, highlight.text_before, highlight.text_after,
-  );
-
-  let wrapped = 0;
-  for (const r of ranges) {
-    wrapped += wrapTextNodesInRange(container, r.start, r.end, highlight, selectedId, onClick);
-  }
-  return wrapped > 0;
-}
-
-// Частичное размещение: цитату правили (точного совпадения нет) — подсвечиваем
-// её уцелевшие куски строго в пределах якорных блоков (findPartialRanges, с
-// порогом «уцелело ≥ половины»). Возвращает true, если появилась хотя бы одна
-// метка. Для legacy-привязок без якоря частичного размещения нет — искать
-// «похожий» текст по всей странице запрещено (переезд подсветки на чужой текст).
-function applyPartialAtAnchor(
-  blocks: HTMLElement[],
-  highlight: Highlight,
-  selectedId: string | null,
-  onClick: (h: Highlight) => void,
-): boolean {
-  if (highlight.anchor_block_start == null || !highlight.text_content) return false;
-  const startIdx = highlight.anchor_block_start;
-  if (startIdx >= blocks.length) return false;
-  const endIdx = Math.min(highlight.anchor_block_end ?? startIdx, blocks.length - 1);
-
-  // Текст якорных блоков целиком (цитата могла сместиться внутри блока) и
-  // границы блоков в конкатенации — чтобы разложить найденные куски обратно.
-  const texts: string[] = [];
-  for (let bi = startIdx; bi <= endIdx; bi++) {
-    texts.push(blocks[bi].textContent || '');
-  }
-  const ranges = findPartialRanges(texts.join(''), highlight.text_content);
-  if (ranges.length === 0) return false;
-
-  const bounds = [0];
-  for (const t of texts) bounds.push(bounds[bounds.length - 1] + t.length);
-
-  let wrapped = 0;
-  for (const r of ranges) {
-    for (let k = 0; k < texts.length; k++) {
-      const from = Math.max(r.start, bounds[k]);
-      const to = Math.min(r.end, bounds[k + 1]);
-      if (from < to) {
-        wrapped += wrapTextNodesInRange(
-          blocks[startIdx + k], from - bounds[k], to - bounds[k],
-          highlight, selectedId, onClick,
-        );
-      }
-    }
+    wrapped += wrapNodesInRange(
+      ownTextNodes(t.segment.el), t.from, t.to, highlight, selectedId, onClick,
+    );
   }
   return wrapped > 0;
 }
@@ -369,17 +308,17 @@ function createMark(
   return mark;
 }
 
-// Оборачивает выделенный диапазон [startOffset, endOffset) (смещения по тексту
-// root) в подсветку, НЕ разрезая инлайн-элементы. Раньше для диапазона из
-// нескольких узлов использовался range.extractContents() через границы тегов:
-// он клонировал частично задетые <span>/<code>/<strong> на обе стороны mark,
-// из-за чего бейджи и код «расползались» (один бейдж превращался в два).
-// Здесь же каждый затронутый текстовый узел оборачивается отдельным <mark>
-// через range.surroundContents в пределах ОДНОГО узла — структура предков не
-// меняется, mark вставляется внутрь существующего элемента.
-// Возвращает количество фактически обёрнутых сегментов (созданных <mark>).
-function wrapTextNodesInRange(
-  root: HTMLElement,
+// Оборачивает диапазон [startOffset, endOffset) (смещения по конкатенации
+// nodes — тексту сегмента) в подсветку, НЕ разрезая инлайн-элементы. Раньше
+// для диапазона из нескольких узлов использовался range.extractContents()
+// через границы тегов: он клонировал частично задетые <span>/<code>/<strong>
+// на обе стороны mark, из-за чего бейджи и код «расползались» (один бейдж
+// превращался в два). Здесь же каждый затронутый текстовый узел оборачивается
+// отдельным <mark> через range.surroundContents в пределах ОДНОГО узла —
+// структура предков не меняется, mark вставляется внутрь существующего
+// элемента. Возвращает количество созданных <mark>.
+function wrapNodesInRange(
+  nodes: Text[],
   startOffset: number,
   endOffset: number,
   highlight: Highlight,
@@ -388,13 +327,10 @@ function wrapTextNodesInRange(
 ): number {
   if (startOffset >= endOffset) return 0;
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const segments: { node: Text; from: number; to: number }[] = [];
   let charCount = 0;
-  let node: Node | null;
 
-  while ((node = walker.nextNode())) {
-    const text = node as Text;
+  for (const text of nodes) {
     const len = (text.textContent || '').length;
     const nodeStart = charCount;
     charCount += len;

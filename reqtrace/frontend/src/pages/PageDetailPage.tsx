@@ -1075,8 +1075,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         />
       </div>
 
-      {/* Selection popup */}
-      {selection && viewMode === 'coverage' && (
+      {/* Selection popup. Координаты живые: хук пересчитывает их от Selection
+          при прокрутке/ресайзе, кнопка едет вместе с текстом; выделение за
+          видимой областью контента прячет попап (hidden), не гася выделение. */}
+      {selection && !selection.hidden && viewMode === 'coverage' && (
         <div style={{
           position: 'fixed',
           left: selection.x,
@@ -1084,8 +1086,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           transform: 'translate(-50%, -100%)',
           zIndex: 1000,
         }}>
+          {/* preventDefault на mousedown — клик не должен снять выделение
+              раньше, чем сработает onClick. Ховер/пресс — ступени той же
+              зелени вниз от базового greenDark (#3F9E27 — пресс примари-кнопок). */}
           <button
-            onMouseDown={e => e.preventDefault()}
+            onMouseDown={e => { e.preventDefault(); e.currentTarget.style.background = '#358A1F'; }}
+            onMouseUp={e => { e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = colors.greenDark; }}
             onClick={handleCreateHighlight}
             style={{
               padding: '8px 16px',
@@ -1099,6 +1107,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               fontFamily: 'inherit',
               boxShadow: shadows.panel,
               whiteSpace: 'nowrap',
+              transition: 'background 0.15s',
             }}
           >
             Привязать тесты

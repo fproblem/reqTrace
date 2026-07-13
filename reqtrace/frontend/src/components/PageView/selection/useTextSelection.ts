@@ -13,6 +13,9 @@ export interface PendingSelection {
   /** Точка для попапа (fixed-координаты, центр верхней грани выделения). */
   x: number;
   y: number;
+  /** Выделение уехало за видимую область контента: попап скрыт, но выделение
+   *  живо — вернётся на экран вместе с текстом. */
+  hidden?: boolean;
 }
 
 export function useTextSelection(opts: {
@@ -66,6 +69,50 @@ export function useTextSelection(opts: {
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [handleMouseUp]);
+
+  // Попап следует за выделенным текстом, а не за экраном: при прокрутке
+  // (capture — ловит и область контента, и вложенные скроллеры таблиц),
+  // ресайзе окна и пере-вёрстке контента (анимация ширины панели) позиция
+  // пересчитывается от живого Selection через rAF. Выделение за пределами
+  // видимой области контента прячет попап, не гася его, — иначе кнопка
+  // всплывала бы поверх шапки страницы. Deps — булев active: пересчёт сам
+  // меняет selection, и зависимость от объекта пересоздавала бы слушатели
+  // на каждом кадре прокрутки.
+  const active = selection !== null;
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    const reposition = () => {
+      raf = 0;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      const area = contentAreaRef.current?.getBoundingClientRect();
+      const hidden = !!area && !(
+        rect.bottom > area.top && rect.top < area.bottom &&
+        rect.right > area.left && rect.left < area.right
+      );
+      setSelection(prev => prev && ({
+        ...prev,
+        x: rect.left + rect.width / 2,
+        y: rect.top - 10,
+        hidden,
+      }));
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(reposition); };
+    document.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    const ro = typeof ResizeObserver !== 'undefined' && contentAreaRef.current
+      ? new ResizeObserver(schedule)
+      : null;
+    if (ro && contentAreaRef.current) ro.observe(contentAreaRef.current);
+    return () => {
+      document.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+      ro?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [active, contentAreaRef]);
 
   const dismiss = useCallback(() => {
     anchorsRef.current = null;

@@ -324,16 +324,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        {/* baseline, не center: кегли разные (15px и 12px), и центрирование
-            по высоте строк поднимало базовую линию счётчика на ~1px над
-            базовой линией слова — текст в одной строке ровняем по baseline. */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-          <span style={{ fontWeight: 600, fontSize: '15px', color: colors.textPrimary }}>
-            Выделение
-          </span>
+        {/* Заголовка-слова в шапке нет (ревью v1.6.0): панель и так открывается
+            по клику на выделение. На его месте — счётчик позиции: отдельно от
+            кнопок справа и без переноса на две строки в узкой шапке. */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           {sorted.length > 1 && (
             <span style={{
-              fontSize: '12px', color: colors.textTertiary, fontWeight: 400,
+              fontSize: '14px',
+              fontWeight: 600,
+              color: colors.textSecondary,
+              whiteSpace: 'nowrap',
             }}>
               {currentIndex + 1} из {sorted.length}
             </span>
@@ -723,7 +723,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {tests.map(test => (
+              {tests.map(test => {
+                // Ключ непохож на PROJECT-123 — вероятная опечатка и битая
+                // ссылка в Jira. Строка целиком в янтаре (рамка + заливка, как
+                // у плашки «Требует проверки»), значок-пояснение — В НАЧАЛЕ
+                // строки; помечаются и давние опечатки, не только свежий ввод.
+                const nonstandard = !isLikelyJiraKey(test.test_key);
+                return (
                 <div
                   key={test.id}
                   style={{
@@ -732,14 +738,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     alignItems: 'center',
                     padding: '8px 12px',
                     borderRadius: radii.md,
-                    border: `1px solid ${colors.border}`,
-                    background: colors.white,
+                    border: `1px solid ${nonstandard ? 'rgba(245,158,11,0.3)' : colors.border}`,
+                    background: nonstandard ? 'rgba(245,158,11,0.06)' : colors.white,
                   }}
                 >
                   {/* Без адреса Jira ссылка собиралась бы в «/browse/КЛЮЧ» —
                       битый роут самого приложения в новой вкладке. Показываем
                       ключ текстом с подсказкой, где включить ссылки. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {nonstandard && (
+                      <span
+                        title="Ключ не похож на формат Jira (PROJECT-123) — ссылка на тест может не открыться"
+                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
+                      >
+                        <StatusAlertIcon kind="warning" size={14} />
+                      </span>
+                    )}
                     {jiraBaseUrl ? (
                       <a
                         href={`${jiraBaseUrl}/browse/${test.test_key}`}
@@ -768,17 +782,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                         {test.test_key}
                       </span>
                     )}
-                    {/* Ключ непохож на PROJECT-123 — вероятная опечатка и битая
-                        ссылка в Jira; значок постоянный, чтобы всплывали и
-                        давние опечатки, а не только свежий ввод. */}
-                    {!isLikelyJiraKey(test.test_key) && (
-                      <span
-                        title="Ключ не похож на формат Jira (PROJECT-123) — ссылка на тест может не открыться"
-                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
-                      >
-                        <StatusAlertIcon kind="warning" size={14} />
-                      </span>
-                    )}
                   </div>
                   {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
                   <button
@@ -804,7 +807,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     <XIcon />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

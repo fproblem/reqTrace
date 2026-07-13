@@ -374,6 +374,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           >
             <LinkIcon size={16} />
           </button>
+          {/* Дивайдер отделяет копирование ссылки от навигации по выделениям —
+              как чипы тестов от «Покрытие | Изменения» в верхнем баре. */}
+          <div style={{ width: '1px', height: '24px', background: colors.border, flexShrink: 0 }} />
           {sorted.length > 1 && (
             <>
               <button

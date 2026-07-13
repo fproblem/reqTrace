@@ -8,6 +8,7 @@ import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
 import { DiffPart, quoteDiff } from './quoteDiff';
 import { sortedTests } from './testOrder';
+import { isLikelyJiraKey } from './testKeyFormat';
 
 /** Дифф цитаты для «Требует проверки»: что изменилось в тексте под маркером
  * относительно замороженной цитаты. Удалённое — зачёркнуто красным,
@@ -258,6 +259,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     try {
       await onAddTest(highlight.id, key);
       setTestKey('');
+      // Мягкое напоминание ПОСЛЕ привязки (не запрет): из ключа строится
+      // ссылка /browse/<ключ>, и непохожий на PROJECT-123 ключ — почти
+      // наверняка опечатка с битой ссылкой. В списке такой ключ дополнительно
+      // помечен янтарным значком.
+      if (!isLikelyJiraKey(key)) {
+        showToast('warning', 'Ключ не похож на формат Jira', `${key} не соответствует виду PROJECT-123 — ссылка на тест может не открыться`);
+      }
     } finally {
       setAdding(false);
       // Фокус не теряется после добавления (клик по «Добавить» уводит его на
@@ -682,34 +690,47 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   {/* Без адреса Jira ссылка собиралась бы в «/browse/КЛЮЧ» —
                       битый роут самого приложения в новой вкладке. Показываем
                       ключ текстом с подсказкой, где включить ссылки. */}
-                  {jiraBaseUrl ? (
-                    <a
-                      href={`${jiraBaseUrl}/browse/${test.test_key}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: '#2563EB',
-                        textDecoration: 'none',
-                        fontWeight: 500,
-                        fontSize: '13px',
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {test.test_key}
-                    </a>
-                  ) : (
-                    <span
-                      title="Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками"
-                      style={{
-                        color: colors.textPrimary,
-                        fontWeight: 500,
-                        fontSize: '13px',
-                        cursor: 'help',
-                      }}
-                    >
-                      {test.test_key}
-                    </span>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {jiraBaseUrl ? (
+                      <a
+                        href={`${jiraBaseUrl}/browse/${test.test_key}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: '#2563EB',
+                          textDecoration: 'none',
+                          fontWeight: 500,
+                          fontSize: '13px',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {test.test_key}
+                      </a>
+                    ) : (
+                      <span
+                        title="Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками"
+                        style={{
+                          color: colors.textPrimary,
+                          fontWeight: 500,
+                          fontSize: '13px',
+                          cursor: 'help',
+                        }}
+                      >
+                        {test.test_key}
+                      </span>
+                    )}
+                    {/* Ключ непохож на PROJECT-123 — вероятная опечатка и битая
+                        ссылка в Jira; значок постоянный, чтобы всплывали и
+                        давние опечатки, а не только свежий ввод. */}
+                    {!isLikelyJiraKey(test.test_key) && (
+                      <span
+                        title="Ключ не похож на формат Jira (PROJECT-123) — ссылка на тест может не открыться"
+                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
+                      >
+                        <StatusAlertIcon kind="warning" size={14} />
+                      </span>
+                    )}
+                  </div>
                   {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
                   <button
                     onClick={() => onRemoveTest(test.id)}

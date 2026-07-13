@@ -70,6 +70,25 @@ export function useTextSelection(opts: {
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [handleMouseUp]);
 
+  // Выделение может умереть и БЕЗ mouseup: в Chrome mousedown по <button>
+  // (чипы статусов, кнопки бара) выделение не сбрасывает, попап на mouseup
+  // остаётся, а выделение снимает уже автофокус поля в открывшейся панели —
+  // и попап зависал над страницей без выделения. selectionchange накрывает
+  // все причины разом: живого выделения больше нет → попап гаснет.
+  const active = selection !== null;
+  useEffect(() => {
+    if (!active) return;
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        anchorsRef.current = null;
+        setSelection(null);
+      }
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, [active]);
+
   // Попап следует за выделенным текстом, а не за экраном: при прокрутке
   // (capture — ловит и область контента, и вложенные скроллеры таблиц),
   // ресайзе окна и пере-вёрстке контента (анимация ширины панели) позиция
@@ -78,7 +97,6 @@ export function useTextSelection(opts: {
   // всплывала бы поверх шапки страницы. Deps — булев active: пересчёт сам
   // меняет selection, и зависимость от объекта пересоздавала бы слушатели
   // на каждом кадре прокрутки.
-  const active = selection !== null;
   useEffect(() => {
     if (!active) return;
     let raf = 0;

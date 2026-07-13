@@ -1105,7 +1105,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               fontWeight: 600,
               cursor: 'pointer',
               fontFamily: 'inherit',
-              boxShadow: shadows.panel,
+              // shadows.panel (как у попапа удаления) на маленькой зелёной
+              // пилюле не читается — те же слои, но плотнее + контактная тень:
+              // кнопка «парит» над контентом.
+              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.12)',
               whiteSpace: 'nowrap',
               transition: 'background 0.15s',
             }}

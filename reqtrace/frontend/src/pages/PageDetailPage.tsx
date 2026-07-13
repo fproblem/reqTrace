@@ -90,7 +90,25 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     }
   }, [pageId, showToast]);
 
-  useEffect(() => { loadPage(); }, [loadPage]);
+  // Загрузка при навигации. Диплинк ?highlight=<id> (кнопка «Скопировать
+  // ссылку» в панели) применяется ровно здесь — к привязкам, пришедшим для
+  // ЭТОЙ навигации, а не к остаткам прошлой страницы в состоянии: открываем
+  // панель и подскролливаем к выделению, как после «Привязать тесты».
+  // Повторные loadPage (добавление теста и т.п.) диплинк не переприменяют.
+  useEffect(() => {
+    void loadPage().then(hls => {
+      if (!hls) return;
+      const id = new URLSearchParams(window.location.search).get('highlight');
+      if (!id) return;
+      const target = hls.find(h => h.id === id);
+      if (!target) {
+        showToast('warning', 'Привязка по ссылке не найдена', 'Возможно, её удалили после того, как ссылку скопировали');
+        return;
+      }
+      setSelectedHighlight(target);
+      pendingScrollHighlightRef.current = target.id;
+    });
+  }, [loadPage, showToast]);
 
   // Предложение «Закрепить текущую версию?» (тост после актуализации последней
   // outdated-привязки) адресовано конкретной странице — при уходе с неё тост

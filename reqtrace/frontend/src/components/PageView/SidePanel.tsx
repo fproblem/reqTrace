@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
-import { StatusAlertIcon } from '../icons';
+import { LinkIcon, StatusAlertIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
@@ -274,6 +274,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     }
   };
 
+  // Ссылка на конкретную привязку: текущий адрес страницы + ?highlight=<id>.
+  // По ней ReqTrace открывает панель на этой привязке и подскролливает к
+  // выделению — связь Jira/Slack → ReqTrace, обратная к ссылкам на тесты.
+  // Доступ ссылка не расширяет: не-участнику проекта откроется обычный отказ.
+  const handleCopyLink = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('highlight', highlight.id);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      showToast('success', 'Ссылка скопирована', 'У получателя страница откроется сразу на этом выделении');
+    } catch {
+      showToast('error', 'Не удалось скопировать ссылку', 'Скопируйте адрес из строки браузера');
+    }
+  };
+
   const handlePrev = () => {
     if (hasPrev) onNavigate(sorted[currentIndex - 1]);
   };
@@ -325,6 +340,40 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Копирование ссылки на привязку — первым в кластере: правые две
+              кнопки (стрелка/крестик) держат колонку с верхним баром. */}
+          <button
+            onClick={handleCopyLink}
+            title="Скопировать ссылку на это выделение — у получателя страница откроется сразу на нём (нужно быть участником проекта)"
+            style={{
+              width: '34px',
+              height: '34px',
+              background: colors.white,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              borderRadius: radii.md,
+              color: colors.textSecondary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = colors.white;
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+          >
+            <LinkIcon size={16} />
+          </button>
           {sorted.length > 1 && (
             <>
               <button

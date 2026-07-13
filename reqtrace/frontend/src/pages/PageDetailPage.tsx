@@ -604,6 +604,27 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     ? Math.round((coveredCount / highlights.length) * 100)
     : 0;
 
+  // Чип «Покрытие: N%» при неполном покрытии ходит по привязкам БЕЗ тестов
+  // по кругу (механика чипов статусов): дыры покрытия ищутся кликами, а не
+  // глазами. Утраченная без тестов на странице не отрисована — только панель,
+  // без подскролла, как у чипа «утрачено».
+  const uncoveredCount = highlights.length - coveredCount;
+  const jumpToUncovered = () => {
+    const ordered = highlights
+      .filter(h => h.tests.length === 0)
+      .sort(compareByDomThenAnchor(highlightDomOrder()));
+    if (ordered.length === 0) return;
+    const currentIdx = selectedHighlight
+      ? ordered.findIndex(h => h.id === selectedHighlight.id)
+      : -1;
+    const target = ordered[(currentIdx + 1) % ordered.length];
+    if (target.status === 'lost') {
+      setSelectedHighlight(target);
+    } else {
+      handleHighlightClick(target);
+    }
+  };
+
   // Счётчики статусов в шапке. Показываем только те, у которых есть привязки —
   // как было раньше с чипами (нулевые статусы не выводим, ряд не «прыгает»).
   const statusCounters = ([
@@ -688,9 +709,15 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          {/* Coverage indicator */}
+          {/* Coverage indicator. Пока покрытие неполное, чип — кнопка: клик
+              циклит по привязкам без тестов (jumpToUncovered). При 100% жать
+              некуда — остаётся справочным, как раньше (cursor: help). */}
           <div
-            title={`Покрытие требований тестами: доля привязок, к которым привязан хотя бы один тест — ${coveredCount} из ${highlights.length}`}
+            onClick={uncoveredCount > 0 ? jumpToUncovered : undefined}
+            title={
+              `Покрытие требований тестами: доля привязок, к которым привязан хотя бы один тест — ${coveredCount} из ${highlights.length}` +
+              (uncoveredCount > 0 ? '. Клик — перейти к привязке без тестов' : '')
+            }
             style={{
               padding: '9px 10px',
               borderRadius: radii.pill,
@@ -698,11 +725,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               fontSize: '13px',
               fontWeight: 600,
               color: colors.textSecondary,
-              cursor: 'help',
+              cursor: uncoveredCount > 0 ? 'pointer' : 'help',
               transition: 'background 0.15s',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+            onMouseDown={uncoveredCount > 0
+              ? e => { e.currentTarget.style.background = 'rgba(0,0,0,0.11)'; }
+              : undefined}
+            onMouseUp={uncoveredCount > 0
+              ? e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; }
+              : undefined}
           >
             Покрытие: {coveragePercent}%
           </div>

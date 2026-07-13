@@ -202,6 +202,36 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     return () => document.removeEventListener('keydown', onKey);
   }, [confirmOpen, testKey, onClose, rendered]);
 
+  // Стрелки ↑/↓ листают привязки в порядке отрисовки — вместе с Escape и
+  // автофокусом весь обход «выделение за выделением» проходит без мыши.
+  // Слои — как у Escape: поповер подтверждения и модалки/меню стрелкам не
+  // отдаются; чужие поля ввода (поиск в дереве) живут своей жизнью; своё
+  // поле теста отдаёт стрелки только пустым — с текстом они правят каретку.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (!rendered || confirmOpen) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      const target = e.target as HTMLElement | null;
+      const isOwnInput = target === testInputRef.current;
+      if (isOwnInput && testKey) return;
+      if (!isOwnInput && target && (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )) return;
+      const ordered = sortedByPosition(allHighlights);
+      const idx = ordered.findIndex(h => h.id === rendered.id);
+      if (idx === -1) return;
+      const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+      if (nextIdx < 0 || nextIdx >= ordered.length) return;
+      e.preventDefault();
+      onNavigate(ordered[nextIdx]);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [rendered, confirmOpen, testKey, allHighlights, onNavigate]);
+
   // Дальше рисуем rendered: во время анимации закрытия activeHighlight уже
   // null, а панель ещё должна показывать последнее выделение. Когда показывать
   // нечего — возвращаем пустую оболочку, а не null: она держит DOM-узел живым

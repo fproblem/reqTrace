@@ -7,6 +7,7 @@ import { HighlightLayer, highlightDomOrder, compareByDomThenAnchor } from '../co
 import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
+import { sortedTests } from '../components/PageView/testOrder';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -1028,7 +1029,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                       </div>
                       {h.tests.length > 0 && (
                         <div style={{ fontSize: '12px', color: colors.textSecondary }}>
-                          Тесты: {h.tests.map(t => t.test_key).join(', ')}
+                          Тесты: {sortedTests(h.tests).map(t => t.test_key).join(', ')}
                         </div>
                       )}
                     </div>

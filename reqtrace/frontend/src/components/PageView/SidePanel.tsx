@@ -7,6 +7,7 @@ import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
 import { DiffPart, quoteDiff } from './quoteDiff';
+import { sortedTests } from './testOrder';
 
 /** Дифф цитаты для «Требует проверки»: что изменилось в тексте под маркером
  * относительно замороженной цитаты. Удалённое — зачёркнуто красным,
@@ -227,6 +228,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
   const noTests = highlight.tests.length === 0;
+  // Список рисуем по ключу (testOrder): сервер порядок связей не гарантирует,
+  // и «как пришло» ставило только что добавленный тест в случайное место.
+  const tests = sortedTests(highlight.tests);
 
   // Навигация по статусу: плашка ведёт к следующему выделению с тем же
   // статусом (по кругу, в порядке отрисовки на странице). В день актуализации
@@ -641,7 +645,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </span>
             {/* Число — нейтральной пилюлей, а не «(2)» в скобках; без цветового
                 акцента — в панели их и так достаточно */}
-            {highlight.tests.length > 0 && (
+            {tests.length > 0 && (
               <span style={{
                 padding: '2px 8px',
                 borderRadius: radii.pill,
@@ -651,18 +655,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 fontWeight: 600,
                 lineHeight: 1.4,
               }}>
-                {highlight.tests.length}
+                {tests.length}
               </span>
             )}
           </div>
 
-          {highlight.tests.length === 0 ? (
+          {noTests ? (
             <div style={{ fontSize: '13px', color: colors.textTertiary, fontStyle: 'italic' }}>
               Нет привязанных тестов
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {highlight.tests.map(test => (
+              {tests.map(test => (
                 <div
                   key={test.id}
                   style={{

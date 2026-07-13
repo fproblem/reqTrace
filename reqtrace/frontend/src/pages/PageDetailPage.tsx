@@ -37,7 +37,7 @@ function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderRep
 export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
-  const { showToast, showUndoToast, dismissToast } = useToast();
+  const { showToast, showPromptToast, dismissToast } = useToast();
   // Точки статусов в дереве считаются по привязкам страницы. Само дерево
   // перечитывается только при навигации — после действий, меняющих статусы
   // или состав привязок (актуализация, удаление, авто-«Утрачено»), его нужно
@@ -92,6 +92,11 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
   useEffect(() => { loadPage(); }, [loadPage]);
 
+  // Предложение «Закрепить текущую версию?» (тост после актуализации последней
+  // outdated-привязки) адресовано конкретной странице — при уходе с неё тост
+  // гасится, иначе «Закрепить» сработал бы по чужому pageId.
+  const baselinePromptRef = useRef<number | null>(null);
+
   // Переход на другую страницу через дерево НЕ размонтирует компонент —
   // в маршруте меняется только :pageId. Выделение прошлой страницы сбрасываем,
   // иначе панель оставалась открытой с чужими данными (закроется штатной
@@ -100,6 +105,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setSelectedHighlight(null);
     dismissSelection();
     setRenderReport(null);
+    if (baselinePromptRef.current != null) {
+      dismissToast(baselinePromptRef.current);
+      baselinePromptRef.current = null;
+    }
     // Контейнер контента прошлой страницы больше не годится: если по пути
     // ContentRenderer размонтировался (виртуальная страница, «Изменения»),
     // в состоянии остаётся оторванный div со старым контентом, и слой успевал
@@ -187,6 +196,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     try {
       await api.setBaseline(pageId);
       await loadPage();
+      showToast('success', 'Версия закреплена', 'Изменения страницы теперь считаются от текущей версии');
     } catch (e: any) {
       showToast('error', 'Не удалось закрепить baseline', e.message);
     }
@@ -318,7 +328,23 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         // Обход по статусу остаётся ручным (плашка статуса/чипы), а завершение
         // обхода отмечаем тостом.
         if (!refreshed.some(h => h.status === 'outdated')) {
-          showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
+          // Все привязки проверены — удобный момент закрепить проверенную
+          // версию как baseline, мягко побуждаем. Тост с отсчётом: дотикал
+          // или «Не сейчас» — ничего не происходит. Если baseline уже стоит
+          // на текущем снимке, закреплять нечего — обычный тост, как раньше.
+          const baselineCurrent = !page?.current_snapshot ||
+            page.baseline?.snapshot_id === page.current_snapshot.id;
+          if (baselineCurrent) {
+            showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
+          } else {
+            baselinePromptRef.current = showPromptToast('success', 'Все привязки проверены', {
+              message: 'Закрепить текущую версию страницы?',
+              seconds: 10,
+              acceptLabel: 'Закрепить',
+              declineLabel: 'Не сейчас',
+              onAccept: () => void handleSetBaseline(),
+            });
+          }
         }
       }
     } catch (e: any) {
@@ -326,52 +352,24 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     }
   };
 
-  // Отложенное удаление выделения: с экрана оно исчезает сразу, но DELETE
-  // уходит на сервер только когда undo-тост дотикал до конца. «Отменить»
-  // просто перечитывает привязки — сервер ещё ничего не удалял. Одновременно
-  // живёт одно отложенное удаление: новое немедленно коммитит предыдущее.
-  const pendingDeleteRef = useRef<{ toastId: number; commit: () => void } | null>(null);
-
+  // Удаление мгновенное (v1.6.0): подтверждение уже спросила карточка в панели.
+  // Прежний undo-таймер (v1.5.4) держал привязку живой на сервере ещё 5 секунд,
+  // и любой перезапрос списка в это окно воскрешал её в UI — а новое выделение
+  // на освободившемся тексте пересекалось с «зомби»-диапазоном.
   const handleDeleteHighlight = async (highlightId: string) => {
-    if (pendingDeleteRef.current) {
-      const prev = pendingDeleteRef.current;
-      pendingDeleteRef.current = null;
-      dismissToast(prev.toastId);
-      prev.commit();
-    }
-
     setSelectedHighlight(null);
     setHighlights(prev => prev.filter(h => h.id !== highlightId));
-
-    const restore = async () => {
-      pendingDeleteRef.current = null;
+    try {
+      await api.deleteHighlight(highlightId);
+      refreshTree();
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить привязку', e.message);
       try {
-        const refreshed = await api.listHighlights(pageId!);
-        setHighlights(refreshed);
-      } catch (e: any) {
-        showToast('error', 'Не удалось восстановить привязку', e.message);
+        setHighlights(await api.listHighlights(pageId!));
+      } catch {
+        // Сервер недоступен — вернуть актуальный список всё равно нечем.
       }
-    };
-
-    const commit = () => {
-      pendingDeleteRef.current = null;
-      api.deleteHighlight(highlightId)
-        .then(() => refreshTree())
-        .catch((e: any) => {
-          showToast('error', 'Не удалось удалить привязку', e.message);
-          void restore();
-        });
-    };
-
-    // Без message: про удаление связей с тестами уже предупредила карточка
-    // подтверждения в панели — в тосте хватает заголовка.
-    const toastId = showUndoToast('warning', 'Выделение удалено', {
-      seconds: 5,
-      actionLabel: 'Отменить',
-      onExpire: commit,
-      onAction: restore,
-    });
-    pendingDeleteRef.current = { toastId, commit };
+    }
   };
 
   const handleDeletePage = async () => {

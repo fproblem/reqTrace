@@ -1054,9 +1054,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         }}>
           <div
             style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            title={`Создано ${formatDate(highlight.created_at)}${highlight.created_by_name ? ` — ${highlight.created_by_name}` : ''}`}
+            title={`Создан ${formatDate(highlight.created_at)}${highlight.created_by_name ? ` — ${highlight.created_by_name}` : ''}`}
           >
-            Создано {formatDate(highlight.created_at)}
+            Создан {formatDate(highlight.created_at)}
             {highlight.created_by_name && (
               <span style={{ color: colors.textSecondary }}> — {highlight.created_by_name}</span>
             )}
@@ -1064,9 +1064,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           {highlight.reanchored_at && (
             <div
               style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              title={`Актуализировано ${formatDate(highlight.reanchored_at)}${highlight.reanchored_by_name ? ` — ${highlight.reanchored_by_name}` : ''}`}
+              title={`Обновлён ${formatDate(highlight.reanchored_at)}${highlight.reanchored_by_name ? ` — ${highlight.reanchored_by_name}` : ''}`}
             >
-              Актуализировано {formatDate(highlight.reanchored_at)}
+              Обновлён {formatDate(highlight.reanchored_at)}
               {highlight.reanchored_by_name && (
                 <span style={{ color: colors.textSecondary }}> — {highlight.reanchored_by_name}</span>
               )}

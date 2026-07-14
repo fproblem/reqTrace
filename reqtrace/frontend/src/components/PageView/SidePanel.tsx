@@ -529,69 +529,17 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       </div>
 
       <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю.
-            Если выделений этого статуса несколько, плашка кликабельна и ведёт
-            к следующему по кругу; справа — позиция среди одностатусных и
-            шеврон как намёк на переход. */}
-        <div
-          onClick={statusNavigable ? handleNextOfStatus : undefined}
-          title={statusNavigable ? 'Перейти к следующему выделению с этим статусом' : undefined}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            // Единая вертикальная сетка панели: все однострочные элементы
-            // контента — 44px (плашка статуса, строки тестов, поле и кнопки).
-            height: '44px',
-            padding: '0 14px',
-            borderRadius: radii.md,
-            background: `${statusInfo.color}15`,
-            border: `1px solid ${statusInfo.color}33`,
-            color: statusInfo.color,
-            fontSize: '13px',
-            fontWeight: 600,
-            // 8px до цитаты: статус и цитата — одна визуальная группа
-            // (рамка цитаты в цвете статуса), секции разделяют дивайдеры.
-            marginBottom: '8px',
-            cursor: statusNavigable ? 'pointer' : 'default',
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => {
-            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = `${statusInfo.color}15`;
-          }}
-          onMouseDown={e => {
-            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}33`;
-          }}
-          onMouseUp={e => {
-            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
-          }}
-        >
-          <StatusAlertIcon kind={STATUS_ICON_KIND[highlight.status] ?? 'ok'} />
-          {statusInfo.label}
-          {statusNavigable && (
-            <span style={{
-              marginLeft: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '12px',
-              fontWeight: 500,
-              opacity: 0.85,
-            }}>
-              {statusIndex + 1} из {sameStatus.length}
-              <svg
-                width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth={2.2}
-                strokeLinecap="round" strokeLinejoin="round"
-                style={{ display: 'block' }}
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </span>
-          )}
+        {/* Секция «Выделенный текст» — единая карточка (вариант 2 референса):
+            тонированная шапка-статус, белое тело цитаты, «Актуализировать» —
+            встроенная нижняя строка. Клик-зоны прежние: шапка — следующая
+            привязка того же статуса, цитата — подскролл к выделению. */}
+        <div style={{
+          fontSize: '13px',
+          fontWeight: 600,
+          color: colors.textSecondary,
+          marginBottom: '10px',
+        }}>
+          Выделенный текст
         </div>
 
         {/* Alert: привязка не отображается на странице */}
@@ -643,7 +591,71 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </div>
         )}
 
-        {/* Text excerpt — клик возвращает страницу к самому выделению
+        {/* Карточка привязки: рамка и линии между зонами — в цвете статуса. */}
+        <div style={{
+          borderRadius: radii.md,
+          border: `1px solid ${statusInfo.color}33`,
+          overflow: 'hidden',
+        }}>
+
+        {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
+            несколько: ведёт к следующему по кругу; справа — позиция среди
+            одностатусных и шеврон как намёк на переход. */}
+        <div
+          onClick={statusNavigable ? handleNextOfStatus : undefined}
+          title={statusNavigable ? 'Перейти к следующему выделению с этим статусом' : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            height: '44px',
+            padding: '0 14px',
+            background: `${statusInfo.color}15`,
+            color: statusInfo.color,
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: statusNavigable ? 'pointer' : 'default',
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = `${statusInfo.color}15`;
+          }}
+          onMouseDown={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}33`;
+          }}
+          onMouseUp={e => {
+            if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
+          }}
+        >
+          <StatusAlertIcon kind={STATUS_ICON_KIND[highlight.status] ?? 'ok'} />
+          {statusInfo.label}
+          {statusNavigable && (
+            <span style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              fontWeight: 500,
+              opacity: 0.85,
+            }}>
+              {statusIndex + 1} из {sameStatus.length}
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth={2.2}
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ display: 'block' }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          )}
+        </div>
+
+        {/* Тело-цитата — клик возвращает страницу к самому выделению
             (полистал контент → потерял место). Для не отображающихся на
             странице привязок скроллить некуда — цитата остаётся текстом. */}
         <div
@@ -655,28 +667,23 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           }}
           title={notOnPage ? undefined : 'Показать выделение на странице'}
           style={{
-            background: 'rgba(0,0,0,0.02)',
-            borderRadius: radii.md,
+            background: colors.white,
             padding: '12px 16px',
             fontSize: '13px',
             lineHeight: '1.5',
             color: colors.textPrimary,
             maxHeight: '150px',
             overflow: 'auto',
-            // Рамка — в цвете статуса (та же прозрачность 33, что у рамки
-            // плашки): статус и цитата читаются одной группой (референс v1.6.0).
-            border: `1px solid ${statusInfo.color}33`,
+            borderTop: `1px solid ${statusInfo.color}33`,
             cursor: notOnPage ? 'default' : 'pointer',
-            transition: 'background 0.15s, border-color 0.15s',
+            transition: 'background 0.15s',
           }}
           onMouseEnter={e => {
             if (notOnPage) return;
-            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
-            e.currentTarget.style.borderColor = `${statusInfo.color}66`;
+            e.currentTarget.style.background = 'rgba(0,0,0,0.03)';
           }}
           onMouseLeave={e => {
-            e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
-            e.currentTarget.style.borderColor = `${statusInfo.color}33`;
+            e.currentTarget.style.background = colors.white;
           }}
         >
           {quoteDiffParts
@@ -684,11 +691,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             : highlight.text_content}
         </div>
 
-        {/* Reanchor — действие привязки, под цитатой (референс v1.6.0). Без
-            тестов кнопка задизейблена: актуализация подтверждает, что
-            привязанные тесты всё ещё покрывают текст — «актуальное» выделение
-            без единого теста вводило бы в заблуждение. Привязали первый
-            тест — кнопка оживает. */}
+        {/* Reanchor — нижняя строка карточки, продолжает блок «статус +
+            цитата» (вариант 2 референса). Без тестов кнопка задизейблена:
+            актуализация подтверждает, что привязанные тесты всё ещё покрывают
+            текст — «актуальное» выделение без единого теста вводило бы в
+            заблуждение. Привязали первый тест — кнопка оживает. */}
         {highlight.status === 'outdated' && onReanchor && (
           <button
             onClick={async () => {
@@ -711,9 +718,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               width: '100%',
               height: '44px',
               padding: '0 14px',
-              marginTop: '12px',
-              borderRadius: radii.md,
-              border: `1px solid rgba(245,158,11,0.3)`,
+              border: 'none',
+              borderTop: `1px solid ${statusInfo.color}33`,
               background: 'rgba(245,158,11,0.06)',
               color: colors.statusOutdated,
               fontSize: '13px',
@@ -739,6 +745,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}
           </button>
         )}
+        </div>
 
         {/* Дивайдер-секция: группа привязки (статус + цитата + актуализация)
             отделена от тестов. Полная ширина панели (минус-поля гасят паддинг

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
-import { LinkIcon, StatusAlertIcon } from '../icons';
+import { LinkIcon, QuoteIcon, StatusAlertIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
@@ -529,18 +529,12 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       </div>
 
       <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {/* Секция «Выделенный текст» — единая карточка (вариант 2 референса):
-            тонированная шапка-статус, белое тело цитаты, «Актуализировать» —
-            встроенная нижняя строка. Клик-зоны прежние: шапка — следующая
-            привязка того же статуса, цитата — подскролл к выделению. */}
-        <div style={{
-          fontSize: '13px',
-          fontWeight: 600,
-          color: colors.textSecondary,
-          marginBottom: '10px',
-        }}>
-          Выделенный текст
-        </div>
+        {/* Секция привязки — единая карточка (вариант 2 референса):
+            тонированная шапка-статус, белое тело цитаты со знаком «❝»,
+            «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
+            сознательно: панель открылась по клику на выделение, карточка
+            самодостаточна. Клик-зоны прежние: шапка — следующая привязка
+            того же статуса, цитата — подскролл к выделению. */}
 
         {/* Alert: привязка не отображается на странице */}
         {notOnPage && (
@@ -574,20 +568,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 шапке — сервер пересчитает привязки по актуальной версии страницы.
               </span>
             )}
-          </div>
-        )}
-
-        {/* Дифф показываем у «Требует проверки», когда текст под маркером
-            реально отличается от замороженной цитаты (v1.5.9): человек видит
-            правку и осознанно жмёт «Актуализировать». */}
-        {quoteDiffParts && (
-          <div style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: colors.textSecondary,
-            marginBottom: '6px',
-          }}>
-            Текст на странице изменился — красным было, зелёным стало:
           </div>
         )}
 
@@ -686,9 +666,17 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             e.currentTarget.style.background = colors.white;
           }}
         >
-          {quoteDiffParts
-            ? <QuoteDiffView parts={quoteDiffParts} />
-            : highlight.text_content}
+          {/* «❝» — маркер дословной цитаты со страницы. Подстрочник у диффа
+              убран (ревью): красное зачёркнутое / зелёное читается и без
+              пояснения, а подпись висела не над цитатой, а над статусом. */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+            <QuoteIcon size={14} style={{ marginTop: '3px', color: colors.textTertiary }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {quoteDiffParts
+                ? <QuoteDiffView parts={quoteDiffParts} />
+                : highlight.text_content}
+            </div>
+          </div>
         </div>
 
         {/* Reanchor — нижняя строка карточки, продолжает блок «статус +

@@ -387,21 +387,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         display: 'flex',
         flexDirection: 'column',
       }}>
-      {/* Микро-стили панели: мягкое проявление контента при смене привязки
-          (key на контенте ниже) и крестик «Отвязать» только при наведении на
-          строку теста (или его фокусе с клавиатуры) — список в покое чище. */}
+      {/* Микро-стили панели: крестик «Отвязать» только при наведении на
+          строку теста (или его фокусе с клавиатуры) — список в покое чище.
+          Fade контента при листании пробовали и убрали: «мигание» всего блока
+          читалось как переинициализация панели, резкая смена содержимого в
+          зафиксированных элементах воспринимается лучше. */}
       <style>{`
-        @keyframes sidepanel-fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .sidepanel-content-in { animation: sidepanel-fade-in 0.13s ease-out; }
         .test-row .test-row-remove { opacity: 0; transition: opacity 0.15s; }
         .test-row:hover .test-row-remove,
         .test-row .test-row-remove:focus-visible { opacity: 1; }
-        @media (prefers-reduced-motion: reduce) {
-          .sidepanel-content-in { animation: none; }
-        }
       `}</style>
       {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
           (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
@@ -587,11 +581,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div
-        key={highlight.id}
-        className="sidepanel-content-in"
-        style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}
-      >
+      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -863,15 +853,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* Tests */}
         <div style={{ marginBottom: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            {/* Капитель секционного ярлыка: типографская иерархия — ярлык
-                тише контента, который он подписывает. */}
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: colors.textSecondary,
-            }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
               Привязанные тесты
             </span>
             {/* Число — нейтральной пилюлей, а не «(2)» в скобках; без цветового
@@ -1023,18 +1005,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               fontFamily: 'inherit',
               outline: 'none',
               boxSizing: 'border-box',
-              transition: 'border-color 0.15s, box-shadow 0.15s',
+              transition: 'border-color 0.15s',
             }}
-            // Видимый фокус (в поле автофокус — приглашение печатать должно
-            // быть заметным): серые рамка и кольцо, в гамме блока тестов.
-            onFocus={e => {
-              e.currentTarget.style.borderColor = colors.borderHover;
-              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,0,0,0.05)';
-            }}
-            onBlur={e => {
-              e.currentTarget.style.borderColor = colors.border;
-              e.currentTarget.style.boxShadow = 'none';
-            }}
+            // Видимый фокус — по-ReqTrace'овски тихо: та же рамка 1px, только
+            // темнее соседних полей (borderHover). Колец-обводок в приложении
+            // нет нигде — пробовали и убрали.
+            onFocus={e => { e.currentTarget.style.borderColor = colors.borderHover; }}
+            onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
           />
           <button
             onClick={handleAdd}

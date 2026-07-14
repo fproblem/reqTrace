@@ -256,7 +256,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     }
     if (prev.count === 0 && rendered.tests.length > 0 && rendered.status === 'outdated') {
       setReanchorPulse(true);
-      const t = setTimeout(() => setReanchorPulse(false), 1000);
+      const t = setTimeout(() => setReanchorPulse(false), 1700);
       return () => clearTimeout(t);
     }
   }, [rendered]);
@@ -716,9 +716,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           <style>{`
             @keyframes reanchor-pulse {
               0%, 100% { background-color: ${colors.statusOutdated}0F; }
-              50% { background-color: ${colors.statusOutdated}4D; }
+              50% { background-color: ${colors.statusOutdated}33; }
             }
-            .reanchor-pulse { animation: reanchor-pulse 0.45s ease-in-out 2; }
+            .reanchor-pulse { animation: reanchor-pulse 0.8s ease-in-out 2; }
             @media (prefers-reduced-motion: reduce) {
               .reanchor-pulse { animation: none; }
             }

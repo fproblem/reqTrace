@@ -956,23 +956,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             padding: '20px 16px 16px',
             textAlign: 'center',
           }}>
-            {/* Симметричная карточка: корзина в тонированном круге, заголовок
-                и текст по центру, кнопки 50/50 без дивайдера. Это единственная
+            {/* Симметричная карточка: заголовок и текст по центру, кнопки 50/50
+                без дивайдера. Корзины в круге больше нет — иконку уже несёт
+                кнопка футера, из которой поповер открылся. Это единственная
                 защита от случайного удаления — undo-таймера больше нет (v1.6.0),
                 текст честно предупреждает о необратимости. */}
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-              background: 'rgba(239,68,68,0.1)',
-              color: colors.statusLost,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 12px',
-            }}>
-              <TrashIcon size={20} />
-            </div>
             <div style={{
               fontSize: '14px',
               fontWeight: 600,
@@ -1073,6 +1061,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </div>
           )}
         </div>
+        {/* Дивайдер отделяет справку от деструктивной кнопки — как разделитель
+            в шапке панели (1×24, краёв не касается). */}
+        <div style={{ width: '1px', height: '24px', background: colors.border, flexShrink: 0 }} />
         <button
           onClick={() => setConfirmOpen(o => !o)}
           title="Удалить выделение"

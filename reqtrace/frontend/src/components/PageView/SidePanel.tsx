@@ -550,7 +550,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             color: statusInfo.color,
             fontSize: '13px',
             fontWeight: 600,
-            marginBottom: '16px',
+            // 8px до цитаты: статус и цитата — одна визуальная группа
+            // (рамка цитаты в цвете статуса), секции разделяют дивайдеры.
+            marginBottom: '8px',
             cursor: statusNavigable ? 'pointer' : 'default',
             transition: 'background 0.15s',
           }}
@@ -627,61 +629,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </div>
         )}
 
-        {/* Reanchor button for outdated highlights. Без тестов кнопка
-            задизейблена: актуализация подтверждает, что привязанные тесты всё
-            ещё покрывают текст — «актуальное» выделение без единого теста
-            вводило бы в заблуждение. Привязали первый тест — кнопка оживает. */}
-        {highlight.status === 'outdated' && onReanchor && (
-          <button
-            onClick={async () => {
-              setReanchoring(true);
-              try {
-                await onReanchor(highlight.id);
-              } finally {
-                setReanchoring(false);
-              }
-            }}
-            disabled={reanchoring || noTests}
-            title={noTests
-              ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
-              : undefined}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              width: '100%',
-              height: '44px',
-              padding: '0 14px',
-              marginBottom: '16px',
-              borderRadius: radii.md,
-              border: `1px solid rgba(245,158,11,0.3)`,
-              background: 'rgba(245,158,11,0.06)',
-              color: colors.statusOutdated,
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: reanchoring ? 'wait' : noTests ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              transition: 'all 0.15s',
-              opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
-            }}
-            onMouseEnter={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
-            }}
-            onMouseDown={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
-            }}
-            onMouseUp={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
-            }}
-          >
-            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
-          </button>
-        )}
-
         {/* Дифф показываем у «Требует проверки», когда текст под маркером
             реально отличается от замороженной цитаты (v1.5.9): человек видит
             правку и осознанно жмёт «Актуализировать». */}
@@ -714,27 +661,89 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             fontSize: '13px',
             lineHeight: '1.5',
             color: colors.textPrimary,
-            marginBottom: '20px',
             maxHeight: '150px',
             overflow: 'auto',
-            border: `1px solid ${colors.border}`,
+            // Рамка — в цвете статуса (та же прозрачность 33, что у рамки
+            // плашки): статус и цитата читаются одной группой (референс v1.6.0).
+            border: `1px solid ${statusInfo.color}33`,
             cursor: notOnPage ? 'default' : 'pointer',
             transition: 'background 0.15s, border-color 0.15s',
           }}
           onMouseEnter={e => {
             if (notOnPage) return;
             e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
-            e.currentTarget.style.borderColor = colors.borderHover;
+            e.currentTarget.style.borderColor = `${statusInfo.color}66`;
           }}
           onMouseLeave={e => {
             e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
-            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.borderColor = `${statusInfo.color}33`;
           }}
         >
           {quoteDiffParts
             ? <QuoteDiffView parts={quoteDiffParts} />
             : highlight.text_content}
         </div>
+
+        {/* Reanchor — действие привязки, под цитатой (референс v1.6.0). Без
+            тестов кнопка задизейблена: актуализация подтверждает, что
+            привязанные тесты всё ещё покрывают текст — «актуальное» выделение
+            без единого теста вводило бы в заблуждение. Привязали первый
+            тест — кнопка оживает. */}
+        {highlight.status === 'outdated' && onReanchor && (
+          <button
+            onClick={async () => {
+              setReanchoring(true);
+              try {
+                await onReanchor(highlight.id);
+              } finally {
+                setReanchoring(false);
+              }
+            }}
+            disabled={reanchoring || noTests}
+            title={noTests
+              ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
+              : undefined}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              width: '100%',
+              height: '44px',
+              padding: '0 14px',
+              marginTop: '12px',
+              borderRadius: radii.md,
+              border: `1px solid rgba(245,158,11,0.3)`,
+              background: 'rgba(245,158,11,0.06)',
+              color: colors.statusOutdated,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: reanchoring ? 'wait' : noTests ? 'default' : 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+              opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
+            }}
+            onMouseEnter={e => {
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
+            }}
+            onMouseDown={e => {
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
+            }}
+            onMouseUp={e => {
+              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+            }}
+          >
+            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
+          </button>
+        )}
+
+        {/* Дивайдер-секция: группа привязки (статус + цитата + актуализация)
+            отделена от тестов. Полная ширина панели (минус-поля гасят паддинг
+            контента) — линия читается как у шапки и футера. */}
+        <div style={{ height: '1px', background: colors.border, margin: '20px -20px' }} />
 
         {/* Tests */}
         <div style={{ marginBottom: '6px' }}>
@@ -858,7 +867,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
         {/* Add test form */}
         <div style={{
-          display: 'flex', gap: '8px', marginBottom: '20px',
+          display: 'flex', gap: '8px',
         }}>
           <input
             ref={testInputRef}
@@ -912,6 +921,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             {adding ? '...' : 'Добавить'}
           </button>
         </div>
+
+        {/* Дивайдер-секция: тесты | мета (кто и когда создал/актуализировал). */}
+        <div style={{ height: '1px', background: colors.border, margin: '20px -20px' }} />
 
         {/* Meta info */}
         <div style={{

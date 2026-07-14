@@ -346,13 +346,17 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       }}>
       {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
           (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
-          ровно под «⋮», стрелка «вниз» — под «Обновить». */}
+          ровно под «⋮», стрелка «вниз» — под «Обновить». Высота фиксированная
+          64px (с бордером), как у шапок сайдбара и бара страницы, — не гуляет
+          от содержимого. */}
       <div style={{
-        padding: '12px 24px 12px 20px',
+        height: '64px',
+        padding: '0 24px 0 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexShrink: 0,
       }}>
         {/* Заголовка-слова в шапке нет (ревью v1.6.0): панель и так открывается
             по клику на выделение. На его месте — счётчик позиции: отдельно от
@@ -536,7 +540,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            padding: '12px 14px',
+            // Единая вертикальная сетка панели: все однострочные элементы
+            // контента — 44px (плашка статуса, строки тестов, поле и кнопки).
+            height: '44px',
+            padding: '0 14px',
             borderRadius: radii.md,
             background: `${statusInfo.color}15`,
             border: `1px solid ${statusInfo.color}33`,
@@ -639,11 +646,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
               : undefined}
             style={{
-              display: 'block',
+              display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '6px',
               width: '100%',
-              padding: '10px 14px',
+              height: '44px',
+              padding: '0 14px',
               marginBottom: '16px',
               borderRadius: radii.md,
               border: `1px solid rgba(245,158,11,0.3)`,
@@ -769,7 +778,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    height: '44px',
+                    padding: '0 12px',
                     borderRadius: radii.md,
                     border: `1px solid ${nonstandard ? 'rgba(245,158,11,0.3)' : colors.border}`,
                     background: nonstandard ? 'rgba(245,158,11,0.06)' : colors.white,
@@ -859,7 +869,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             style={{
               flex: 1,
-              padding: '8px 12px',
+              height: '44px',
+              padding: '0 12px',
               borderRadius: radii.md,
               border: `1px solid ${colors.border}`,
               fontSize: '13px',
@@ -872,7 +883,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             onClick={handleAdd}
             disabled={!testKey.trim() || adding}
             style={{
-              padding: '8px 14px',
+              height: '44px',
+              padding: '0 14px',
               borderRadius: radii.md,
               border: 'none',
               background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
@@ -937,7 +949,12 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       <div
         ref={confirmRef}
         style={{
-          padding: '14px 20px',
+          // Зеркало шапки: фиксированные 64px (с бордером), кнопка 44px
+          // отцентрована — та же вертикальная сетка, что у элементов контента.
+          height: '64px',
+          padding: '0 20px',
+          display: 'flex',
+          alignItems: 'center',
           borderTop: `1px solid ${colors.border}`,
           flexShrink: 0,
           position: 'relative',
@@ -1050,7 +1067,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           onClick={() => setConfirmOpen(o => !o)}
           style={{
             width: '100%',
-            padding: '8px',
+            height: '44px',
+            padding: 0,
             borderRadius: radii.md,
             border: `1px solid rgba(239,68,68,0.2)`,
             background: 'rgba(239,68,68,0.05)',

@@ -698,7 +698,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             заблуждение. Привязали первый тест — кнопка оживает. */}
         {highlight.status === 'outdated' && onReanchor && (
           <button
+            // Не disabled-атрибут, а охрана в onClick: disabled глушит события
+            // мыши, и у недоступной кнопки не работали ни title, ни курсор —
+            // а «почему нельзя нажать» важнее всего именно у недоступной.
             onClick={async () => {
+              if (reanchoring || noTests) return;
               setReanchoring(true);
               try {
                 await onReanchor(highlight.id);
@@ -706,10 +710,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 setReanchoring(false);
               }
             }}
-            disabled={reanchoring || noTests}
+            aria-disabled={reanchoring || noTests}
             title={noTests
-              ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
-              : undefined}
+              ? 'Сначала привяжите хотя бы один тест — актуализация подтверждает, что тесты покрывают текущий текст'
+              : 'Подтвердить: текст под выделением проверен, привязка снова «Актуально»'}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -720,26 +724,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               padding: '0 14px',
               border: 'none',
               borderTop: `1px solid ${statusInfo.color}33`,
-              background: 'rgba(245,158,11,0.06)',
+              // Ступени фона — те же, что у шапки-статуса (0F → 26 → 33):
+              // зоны карточки откликаются одинаково.
+              background: `${statusInfo.color}0F`,
               color: colors.statusOutdated,
               fontSize: '13px',
               fontWeight: 600,
-              cursor: reanchoring ? 'wait' : noTests ? 'default' : 'pointer',
+              cursor: reanchoring ? 'wait' : noTests ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit',
               transition: 'all 0.15s',
               opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
             }}
             onMouseEnter={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
+              e.currentTarget.style.background = `${statusInfo.color}0F`;
             }}
             onMouseDown={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}33`;
             }}
             onMouseUp={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
+              if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
             }}
           >
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}

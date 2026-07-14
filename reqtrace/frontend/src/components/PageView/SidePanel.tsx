@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
-import { StatusAlertIcon } from '../icons';
+import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
 import { DiffPart, quoteDiff } from './quoteDiff';
+import { sortedTests } from './testOrder';
+import { isLikelyJiraKey } from './testKeyFormat';
 
 /** Дифф цитаты для «Требует проверки»: что изменилось в тексте под маркером
  * относительно замороженной цитаты. Удалённое — зачёркнуто красным,
@@ -55,10 +57,25 @@ interface SidePanelProps {
   onNavigate: (highlight: Highlight) => void;
 }
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  active: { label: 'Актуально', color: colors.statusActive },
-  outdated: { label: 'Требует проверки', color: colors.statusOutdated },
-  lost: { label: 'Утрачено', color: colors.statusLost },
+// hint — определение статуса для тултипа шапки карточки: модель привязок
+// должна объясняться сама, без чтения документации (формулировки — по
+// правилам anchoring-plan-v1.5.9).
+const statusLabels: Record<string, { label: string; color: string; hint: string }> = {
+  active: {
+    label: 'Актуально',
+    color: colors.statusActive,
+    hint: 'Актуально: текст выделения подтверждён человеком и после этого не менялся',
+  },
+  outdated: {
+    label: 'Требует проверки',
+    color: colors.statusOutdated,
+    hint: 'Требует проверки: привязка ещё не подтверждена или текст под ней изменился — проверьте и нажмите «Актуализировать»',
+  },
+  lost: {
+    label: 'Утрачено',
+    color: colors.statusLost,
+    hint: 'Утрачено: выделенный текст удалён со страницы, статус окончательный — тесты сохранены для перепривязки',
+  },
 };
 
 // Знак статуса привязки → вид общего StatusAlertIcon (галочка/«!»/крестик).
@@ -68,18 +85,7 @@ const STATUS_ICON_KIND: Record<string, 'ok' | 'warning' | 'error'> = {
   lost: 'error',
 };
 
-// Корзина для карточки подтверждения удаления (feather trash-2).
-const TrashIcon: React.FC = () => (
-  <svg
-    width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}
-  >
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    <line x1="10" y1="11" x2="10" y2="17" />
-    <line x1="14" y1="11" x2="14" y2="17" />
-  </svg>
-);
+// Корзина — библиотечная TrashIcon (см. импорт): своя копия больше не нужна.
 
 // Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
@@ -200,6 +206,61 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     return () => document.removeEventListener('keydown', onKey);
   }, [confirmOpen, testKey, onClose, rendered]);
 
+  // Стрелки ↑/↓ листают привязки в порядке отрисовки — вместе с Escape и
+  // автофокусом весь обход «выделение за выделением» проходит без мыши.
+  // Слои — как у Escape: поповер подтверждения и модалки/меню стрелкам не
+  // отдаются; чужие поля ввода (поиск в дереве) живут своей жизнью; своё
+  // поле теста отдаёт стрелки только пустым — с текстом они правят каретку.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (!rendered || confirmOpen) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      const target = e.target as HTMLElement | null;
+      const isOwnInput = target === testInputRef.current;
+      if (isOwnInput && testKey) return;
+      if (!isOwnInput && target && (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )) return;
+      const ordered = sortedByPosition(allHighlights);
+      const idx = ordered.findIndex(h => h.id === rendered.id);
+      if (idx === -1) return;
+      const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+      if (nextIdx < 0 || nextIdx >= ordered.length) return;
+      e.preventDefault();
+      onNavigate(ordered[nextIdx]);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [rendered, confirmOpen, testKey, allHighlights, onNavigate]);
+
+  // Одноразовый пульс «Актуализировать» в момент, когда у outdated-привязки
+  // появился ПЕРВЫЙ тест: кнопка ожила — остался один шаг. Сигнал привязан к
+  // событию перехода (не к состоянию), затухает за ~1с и не возвращается —
+  // постоянное напоминание мозолило бы глаза при серийной работе.
+  const [reanchorPulse, setReanchorPulse] = useState(false);
+  const prevTestsRef = useRef<{ id: string; count: number } | null>(null);
+  useEffect(() => {
+    if (!rendered) {
+      prevTestsRef.current = null;
+      return;
+    }
+    const prev = prevTestsRef.current;
+    prevTestsRef.current = { id: rendered.id, count: rendered.tests.length };
+    // Смена привязки — не событие «тест добавили», мигать нечему.
+    if (!prev || prev.id !== rendered.id) {
+      setReanchorPulse(false);
+      return;
+    }
+    if (prev.count === 0 && rendered.tests.length > 0 && rendered.status === 'outdated') {
+      setReanchorPulse(true);
+      const t = setTimeout(() => setReanchorPulse(false), 1700);
+      return () => clearTimeout(t);
+    }
+  }, [rendered]);
+
   // Дальше рисуем rendered: во время анимации закрытия activeHighlight уже
   // null, а панель ещё должна показывать последнее выделение. Когда показывать
   // нечего — возвращаем пустую оболочку, а не null: она держит DOM-узел живым
@@ -218,6 +279,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     return parts && parts.length ? parts : null;
   }, [highlight]);
 
+  // Фейд-подсказка прокрутки у длинной цитаты: жёсткий обрез на maxHeight не
+  // намекал, что внутри есть ещё текст. Градиент виден, пока скролл цитаты
+  // не дошёл до конца (иначе затухала бы последняя строка).
+  const quoteScrollRef = useRef<HTMLDivElement>(null);
+  const [quoteFade, setQuoteFade] = useState(false);
+  const updateQuoteFade = useCallback(() => {
+    const el = quoteScrollRef.current;
+    if (!el) return;
+    setQuoteFade(el.scrollHeight - el.scrollTop - el.clientHeight > 2);
+  }, []);
+  useEffect(() => { updateQuoteFade(); }, [rendered, quoteDiffParts, updateQuoteFade]);
+
   if (!highlight) return <div style={shellStyle(false, false)} />;
 
   const sorted = sortedByPosition(allHighlights);
@@ -227,6 +300,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
   const noTests = highlight.tests.length === 0;
+  // Список рисуем по ключу (testOrder): сервер порядок связей не гарантирует,
+  // и «как пришло» ставило только что добавленный тест в случайное место.
+  const tests = sortedTests(highlight.tests);
 
   // Навигация по статусу: плашка ведёт к следующему выделению с тем же
   // статусом (по кругу, в порядке отрисовки на странице). В день актуализации
@@ -254,11 +330,33 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     try {
       await onAddTest(highlight.id, key);
       setTestKey('');
+      // Мягкое напоминание ПОСЛЕ привязки (не запрет): непохожий на
+      // PROJECT-123 ключ — почти наверняка опечатка, поэтому ссылкой в Jira
+      // он не становится (см. рендер списка). В списке такой ключ дополнительно
+      // помечен янтарной строкой со значком.
+      if (!isLikelyJiraKey(key)) {
+        showToast('warning', 'Ключ не похож на формат Jira', `${key} не соответствует виду PROJECT-123 и не станет ссылкой на тест — проверьте, нет ли опечатки`);
+      }
     } finally {
       setAdding(false);
       // Фокус не теряется после добавления (клик по «Добавить» уводит его на
       // кнопку) — серию тестов можно вбить подряд, не трогая мышь.
       testInputRef.current?.focus();
+    }
+  };
+
+  // Ссылка на конкретную привязку: текущий адрес страницы + ?highlight=<id>.
+  // По ней ReqTrace открывает панель на этой привязке и подскролливает к
+  // выделению — связь Jira/Slack → ReqTrace, обратная к ссылкам на тесты.
+  // Доступ ссылка не расширяет: не-участнику проекта откроется обычный отказ.
+  const handleCopyLink = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('highlight', highlight.id);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      showToast('success', 'Ссылка скопирована', 'У получателя страница откроется сразу на этом выделении');
+    } catch {
+      showToast('error', 'Не удалось скопировать ссылку', 'Скопируйте адрес из строки браузера');
     }
   };
 
@@ -270,9 +368,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     if (hasNext) onNavigate(sorted[currentIndex + 1]);
   };
 
+  // Компактный формат под строку футера: «13.07.2026, 23:31» — полнословная
+  // версия («13 июл. 2026 г., 23:31») не оставляла места имени автора.
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('ru-RU', {
-      day: 'numeric', month: 'short', year: 'numeric',
+      day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
 
@@ -287,32 +387,83 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         display: 'flex',
         flexDirection: 'column',
       }}>
+      {/* Микро-стили панели: крестик «Отвязать» только при наведении на
+          строку теста (или его фокусе с клавиатуры) — список в покое чище.
+          Fade контента при листании пробовали и убрали: «мигание» всего блока
+          читалось как переинициализация панели, резкая смена содержимого в
+          зафиксированных элементах воспринимается лучше. */}
+      <style>{`
+        .test-row .test-row-remove { opacity: 0; transition: opacity 0.15s; }
+        .test-row:hover .test-row-remove,
+        .test-row .test-row-remove:focus-visible { opacity: 1; }
+      `}</style>
       {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
           (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
-          ровно под «⋮», стрелка «вниз» — под «Обновить». */}
+          ровно под «⋮», стрелка «вниз» — под «Обновить». Высота фиксированная
+          64px (с бордером), как у шапок сайдбара и бара страницы, — не гуляет
+          от содержимого. */}
       <div style={{
-        padding: '12px 24px 12px 20px',
+        height: '64px',
+        padding: '0 24px 0 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexShrink: 0,
       }}>
-        {/* baseline, не center: кегли разные (15px и 12px), и центрирование
-            по высоте строк поднимало базовую линию счётчика на ~1px над
-            базовой линией слова — текст в одной строке ровняем по baseline. */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-          <span style={{ fontWeight: 600, fontSize: '15px', color: colors.textPrimary }}>
-            Выделение
-          </span>
+        {/* Заголовка-слова в шапке нет (ревью v1.6.0): панель и так открывается
+            по клику на выделение. На его месте — счётчик позиции: отдельно от
+            кнопок справа и без переноса на две строки в узкой шапке. */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           {sorted.length > 1 && (
             <span style={{
-              fontSize: '12px', color: colors.textTertiary, fontWeight: 400,
+              fontSize: '14px',
+              fontWeight: 600,
+              color: colors.textSecondary,
+              whiteSpace: 'nowrap',
             }}>
               {currentIndex + 1} из {sorted.length}
             </span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Копирование ссылки на привязку — первым в кластере: правые две
+              кнопки (стрелка/крестик) держат колонку с верхним баром. */}
+          <button
+            onClick={handleCopyLink}
+            title="Скопировать ссылку на это выделение — у получателя страница откроется сразу на нём (нужно быть участником проекта)"
+            style={{
+              width: '34px',
+              height: '34px',
+              background: colors.white,
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              borderRadius: radii.md,
+              color: colors.textSecondary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = colors.white;
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+          >
+            <LinkIcon size={16} />
+          </button>
+          {/* Дивайдер отделяет копирование ссылки от навигации по выделениям —
+              как чипы тестов от «Покрытие | Изменения» в верхнем баре. */}
+          <div style={{ width: '1px', height: '24px', background: colors.border, flexShrink: 0 }} />
           {sorted.length > 1 && (
             <>
               <button
@@ -431,25 +582,66 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       </div>
 
       <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {/* Status — алерт во всю ширину: иконка и текст прижаты к левому краю.
-            Если выделений этого статуса несколько, плашка кликабельна и ведёт
-            к следующему по кругу; справа — позиция среди одностатусных и
-            шеврон как намёк на переход. */}
+        {/* Секция привязки — единая карточка (вариант 2 референса):
+            тонированная шапка-статус, белое тело цитаты со знаком «❝»,
+            «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
+            сознательно: панель открылась по клику на выделение, карточка
+            самодостаточна. Клик-зоны прежние: шапка — следующая привязка
+            того же статуса, цитата — подскролл к выделению. */}
+
+        {/* Alert-аномалия: НЕ-lost привязка, которую слой отказался рендерить —
+            содержимое и координаты рассинхронизированы (фронт статусы не
+            меняет, v1.5.9). У «Утрачено» отдельной плашки нет: пояснение —
+            нижняя строка карточки, там же, где у outdated «Актуализировать». */}
+        {notOnPage && highlight.status !== 'lost' && (
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            padding: '10px 12px',
+            marginBottom: '16px',
+            borderRadius: radii.sm,
+            border: `1px solid rgba(239,68,68,0.3)`,
+            background: 'rgba(239,68,68,0.06)',
+            color: colors.statusLost,
+            fontSize: '12px',
+            lineHeight: 1.45,
+          }}>
+            <span style={{ flexShrink: 0 }}>⚠</span>
+            <span>
+              Эта привязка <strong>не отображается на странице</strong>: содержимое
+              и координаты привязки рассинхронизированы. Нажмите «Обновить» в
+              шапке — сервер пересчитает привязки по актуальной версии страницы.
+            </span>
+          </div>
+        )}
+
+        {/* Карточка привязки: рамка и линии между зонами — в цвете статуса;
+            лёгкая тень приподнимает героя панели над служебными блоками. */}
+        <div style={{
+          borderRadius: radii.md,
+          border: `1px solid ${statusInfo.color}33`,
+          overflow: 'hidden',
+          boxShadow: shadows.card,
+        }}>
+
+        {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
+            несколько: ведёт к следующему по кругу; справа — позиция среди
+            одностатусных и шеврон как намёк на переход. */}
         <div
           onClick={statusNavigable ? handleNextOfStatus : undefined}
-          title={statusNavigable ? 'Перейти к следующему выделению с этим статусом' : undefined}
+          title={statusNavigable
+            ? `${statusInfo.hint}. Клик — к следующему выделению с этим статусом`
+            : statusInfo.hint}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            padding: '12px 14px',
-            borderRadius: radii.md,
+            height: '44px',
+            padding: '0 14px',
             background: `${statusInfo.color}15`,
-            border: `1px solid ${statusInfo.color}33`,
             color: statusInfo.color,
             fontSize: '13px',
             fontWeight: 600,
-            marginBottom: '16px',
             cursor: statusNavigable ? 'pointer' : 'default',
             transition: 'background 0.15s',
           }}
@@ -491,109 +683,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           )}
         </div>
 
-        {/* Alert: привязка не отображается на странице */}
-        {notOnPage && (
-          <div style={{
-            display: 'flex',
-            gap: '8px',
-            padding: '10px 12px',
-            marginBottom: '16px',
-            borderRadius: radii.sm,
-            border: `1px solid rgba(239,68,68,0.3)`,
-            background: 'rgba(239,68,68,0.06)',
-            color: colors.statusLost,
-            fontSize: '12px',
-            lineHeight: 1.45,
-          }}>
-            <span style={{ flexShrink: 0 }}>⚠</span>
-            {highlight.status === 'lost' ? (
-              <span>
-                Эта привязка <strong>не отображается на странице</strong>: выделенный
-                текст удалён из содержимого, и привязка «Утрачена» окончательно.
-                Найти её можно внизу страницы или по чипу «утрачено» в верхней
-                панели. Привязанные тесты сохранены — перепривяжите их к новому
-                выделению.
-              </span>
-            ) : (
-              // Не-lost привязка, которую слой отказался рендерить: содержимое и
-              // координаты рассинхронизированы (фронт статусы не меняет — v1.5.9).
-              <span>
-                Эта привязка <strong>не отображается на странице</strong>: содержимое
-                и координаты привязки рассинхронизированы. Нажмите «Обновить» в
-                шапке — сервер пересчитает привязки по актуальной версии страницы.
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Reanchor button for outdated highlights. Без тестов кнопка
-            задизейблена: актуализация подтверждает, что привязанные тесты всё
-            ещё покрывают текст — «актуальное» выделение без единого теста
-            вводило бы в заблуждение. Привязали первый тест — кнопка оживает. */}
-        {highlight.status === 'outdated' && onReanchor && (
-          <button
-            onClick={async () => {
-              setReanchoring(true);
-              try {
-                await onReanchor(highlight.id);
-              } finally {
-                setReanchoring(false);
-              }
-            }}
-            disabled={reanchoring || noTests}
-            title={noTests
-              ? 'Актуализация подтверждает покрытие выделения — сначала привяжите хотя бы один тест'
-              : undefined}
-            style={{
-              display: 'block',
-              alignItems: 'center',
-              gap: '6px',
-              width: '100%',
-              padding: '10px 14px',
-              marginBottom: '16px',
-              borderRadius: radii.md,
-              border: `1px solid rgba(245,158,11,0.3)`,
-              background: 'rgba(245,158,11,0.06)',
-              color: colors.statusOutdated,
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: reanchoring ? 'wait' : noTests ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-              transition: 'all 0.15s',
-              opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
-            }}
-            onMouseEnter={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'rgba(245,158,11,0.06)';
-            }}
-            onMouseDown={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.18)';
-            }}
-            onMouseUp={e => {
-              if (!reanchoring && !noTests) e.currentTarget.style.background = 'rgba(245,158,11,0.12)';
-            }}
-          >
-            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
-          </button>
-        )}
-
-        {/* Дифф показываем у «Требует проверки», когда текст под маркером
-            реально отличается от замороженной цитаты (v1.5.9): человек видит
-            правку и осознанно жмёт «Актуализировать». */}
-        {quoteDiffParts && (
-          <div style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: colors.textSecondary,
-            marginBottom: '6px',
-          }}>
-            Текст на странице изменился — красным было, зелёным стало:
-          </div>
-        )}
-
-        {/* Text excerpt — клик возвращает страницу к самому выделению
+        {/* Тело-цитата — клик возвращает страницу к самому выделению
             (полистал контент → потерял место). Для не отображающихся на
             странице привязок скроллить некуда — цитата остаётся текстом. */}
         <div
@@ -605,33 +695,160 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           }}
           title={notOnPage ? undefined : 'Показать выделение на странице'}
           style={{
-            background: 'rgba(0,0,0,0.02)',
-            borderRadius: radii.md,
-            padding: '12px 16px',
-            fontSize: '13px',
-            lineHeight: '1.5',
-            color: colors.textPrimary,
-            marginBottom: '20px',
-            maxHeight: '150px',
-            overflow: 'auto',
-            border: `1px solid ${colors.border}`,
+            background: colors.white,
+            borderTop: `1px solid ${statusInfo.color}33`,
             cursor: notOnPage ? 'default' : 'pointer',
-            transition: 'background 0.15s, border-color 0.15s',
+            transition: 'background 0.15s',
+            position: 'relative',
           }}
           onMouseEnter={e => {
             if (notOnPage) return;
-            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
-            e.currentTarget.style.borderColor = colors.borderHover;
+            e.currentTarget.style.background = 'rgba(0,0,0,0.03)';
           }}
           onMouseLeave={e => {
-            e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
-            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.background = colors.white;
           }}
         >
-          {quoteDiffParts
-            ? <QuoteDiffView parts={quoteDiffParts} />
-            : highlight.text_content}
+          {/* «❝» — маркер дословной цитаты со страницы. Подстрочник у диффа
+              убран (ревью): красное зачёркнутое / зелёное читается и без
+              пояснения, а подпись висела не над цитатой, а над статусом. */}
+          <div
+            ref={quoteScrollRef}
+            onScroll={updateQuoteFade}
+            style={{
+              padding: '12px 16px',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              color: colors.textPrimary,
+              maxHeight: '150px',
+              overflow: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <QuoteIcon size={14} style={{ marginTop: '3px', color: colors.textTertiary }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                {quoteDiffParts
+                  ? <QuoteDiffView parts={quoteDiffParts} />
+                  : highlight.text_content}
+              </div>
+            </div>
+          </div>
+          {/* Градиент поверх нижнего края — «там ещё есть»; гаснет у конца
+              прокрутки, чтобы не туманить последнюю строку. */}
+          {quoteFade && (
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: '18px',
+              background: `linear-gradient(to bottom, rgba(255,255,255,0), ${colors.white})`,
+              pointerEvents: 'none',
+            }} />
+          )}
         </div>
+
+        {/* Reanchor — нижняя строка карточки, продолжает блок «статус +
+            цитата» (вариант 2 референса). Без тестов кнопка задизейблена:
+            актуализация подтверждает, что привязанные тесты всё ещё покрывают
+            текст — «актуальное» выделение без единого теста вводило бы в
+            заблуждение. Привязали первый тест — кнопка оживает. */}
+        {highlight.status === 'outdated' && onReanchor && (
+          <>
+          {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
+              ховер-манипуляции фоном на время проигрывания, а reduced-motion
+              отключается медиа-запросом. */}
+          <style>{`
+            @keyframes reanchor-pulse {
+              0%, 100% { background-color: ${colors.statusOutdated}0F; }
+              50% { background-color: ${colors.statusOutdated}33; }
+            }
+            .reanchor-pulse { animation: reanchor-pulse 0.6s ease-in-out 2; }
+            @media (prefers-reduced-motion: reduce) {
+              .reanchor-pulse { animation: none; }
+            }
+          `}</style>
+          <button
+            className={reanchorPulse ? 'reanchor-pulse' : undefined}
+            // Не disabled-атрибут, а охрана в onClick: disabled глушит события
+            // мыши, и у недоступной кнопки не работали ни title, ни курсор —
+            // а «почему нельзя нажать» важнее всего именно у недоступной.
+            onClick={async () => {
+              if (reanchoring || noTests) return;
+              setReanchoring(true);
+              try {
+                await onReanchor(highlight.id);
+              } finally {
+                setReanchoring(false);
+              }
+            }}
+            aria-disabled={reanchoring || noTests}
+            title={noTests
+              ? 'Сначала привяжите хотя бы один тест — актуализация подтверждает, что тесты покрывают текущий текст'
+              : 'Подтвердить: текст под выделением проверен, привязка снова «Актуально»'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              width: '100%',
+              height: '44px',
+              padding: '0 14px',
+              border: 'none',
+              borderTop: `1px solid ${statusInfo.color}33`,
+              // Ступени фона — те же, что у шапки-статуса (0F → 26 → 33):
+              // зоны карточки откликаются одинаково.
+              background: `${statusInfo.color}0F`,
+              color: colors.statusOutdated,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: reanchoring ? 'wait' : noTests ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+              opacity: reanchoring ? 0.7 : noTests ? 0.5 : 1,
+            }}
+            onMouseEnter={e => {
+              if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = `${statusInfo.color}0F`;
+            }}
+            onMouseDown={e => {
+              if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}33`;
+            }}
+            onMouseUp={e => {
+              if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
+            }}
+          >
+            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
+          </button>
+          </>
+        )}
+
+        {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
+            действия: статус терминальный, актуализировать нечего. Полная
+            версия текста жила отдельной красной плашкой над карточкой и
+            выглядела оторванной от статуса. */}
+        {highlight.status === 'lost' && (
+          <div style={{
+            padding: '10px 14px',
+            borderTop: `1px solid ${statusInfo.color}33`,
+            background: `${statusInfo.color}0F`,
+            color: colors.statusLost,
+            fontSize: '12px',
+            lineHeight: 1.45,
+          }}>
+            Выделенный текст удалён со страницы — привязка утрачена
+            окончательно. Привязанные тесты сохранены: перепривяжите их
+            к новому выделению.
+          </div>
+        )}
+        </div>
+
+        {/* Дивайдер-секция: группа привязки (статус + цитата + актуализация)
+            отделена от тестов. В пределах контентных полей, краёв панели не
+            касается — как вертикальный разделитель в шапке. */}
+        <div style={{ height: '1px', background: colors.border, margin: '20px 0' }} />
 
         {/* Tests */}
         <div style={{ marginBottom: '6px' }}>
@@ -641,7 +858,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </span>
             {/* Число — нейтральной пилюлей, а не «(2)» в скобках; без цветового
                 акцента — в панели их и так достаточно */}
-            {highlight.tests.length > 0 && (
+            {tests.length > 0 && (
               <span style={{
                 padding: '2px 8px',
                 borderRadius: radii.pill,
@@ -651,64 +868,170 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 fontWeight: 600,
                 lineHeight: 1.4,
               }}>
-                {highlight.tests.length}
+                {tests.length}
               </span>
             )}
           </div>
 
-          {highlight.tests.length === 0 ? (
+          {/* Add test form — закреплена НАД списком: добавить следующий тест
+              можно не прокручивая длинный список, а свежепривязанный ключ
+              появляется прямо под полем. */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+            <input
+              ref={testInputRef}
+              type="text"
+              value={testKey}
+              onChange={e => setTestKey(e.target.value)}
+              placeholder="PROJECT-123"
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              style={{
+                flex: 1,
+                height: '44px',
+                padding: '0 12px',
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                fontSize: '13px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+              }}
+              // Фокус — стандарт полей ReqTrace: рамка зеленеет (focusBorder,
+              // полупрозрачный greenDark) + тонкое кольцо (shadows.focusRing,
+              // референс — поля Confluence, оттенки подобраны по макету).
+              onFocus={e => {
+                e.currentTarget.style.borderColor = colors.focusBorder;
+                e.currentTarget.style.boxShadow = shadows.focusRing;
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            />
+            <button
+              onClick={handleAdd}
+              disabled={!testKey.trim() || adding}
+              style={{
+                height: '44px',
+                padding: '0 14px',
+                borderRadius: radii.md,
+                border: 'none',
+                background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: testKey.trim() && !adding ? 'pointer' : 'default',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = testKey.trim() ? colors.greenAccent : '#E5E7EB';
+              }}
+              onMouseDown={e => {
+                if (testKey.trim() && !adding) e.currentTarget.style.background = '#3F9E27';
+              }}
+              onMouseUp={e => {
+                if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
+              }}
+            >
+              {adding ? '...' : 'Добавить'}
+            </button>
+          </div>
+
+          {noTests ? (
             <div style={{ fontSize: '13px', color: colors.textTertiary, fontStyle: 'italic' }}>
-              Нет привязанных тестов
+              Тестов пока нет — привяжите первый
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {highlight.tests.map(test => (
+              {tests.map(test => {
+                // Ключ непохож на PROJECT-123 — вероятная опечатка и битая
+                // ссылка в Jira. Строка целиком в янтаре (рамка + заливка, как
+                // у плашки «Требует проверки»), значок-пояснение — В НАЧАЛЕ
+                // строки; помечаются и давние опечатки, не только свежий ввод.
+                const nonstandard = !isLikelyJiraKey(test.test_key);
+                return (
                 <div
                   key={test.id}
+                  className="test-row"
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    height: '44px',
+                    padding: '0 12px',
                     borderRadius: radii.md,
-                    border: `1px solid ${colors.border}`,
-                    background: colors.white,
+                    border: `1px solid ${nonstandard ? 'rgba(245,158,11,0.3)' : colors.border}`,
+                    background: nonstandard ? 'rgba(245,158,11,0.06)' : colors.white,
                   }}
                 >
-                  {/* Без адреса Jira ссылка собиралась бы в «/browse/КЛЮЧ» —
-                      битый роут самого приложения в новой вкладке. Показываем
-                      ключ текстом с подсказкой, где включить ссылки. */}
-                  {jiraBaseUrl ? (
-                    <a
-                      href={`${jiraBaseUrl}/browse/${test.test_key}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: '#2563EB',
-                        textDecoration: 'none',
-                        fontWeight: 500,
-                        fontSize: '13px',
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {test.test_key}
-                    </a>
-                  ) : (
-                    <span
-                      title="Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками"
-                      style={{
-                        color: colors.textPrimary,
-                        fontWeight: 500,
-                        fontSize: '13px',
-                        cursor: 'help',
-                      }}
-                    >
-                      {test.test_key}
-                    </span>
-                  )}
-                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
+                  {/* Ключ — ссылка только когда есть адрес Jira И формат похож
+                      на настоящий: без адреса /browse/КЛЮЧ — битый роут самого
+                      приложения, с нестандартным ключом — почти наверняка 404
+                      в Jira (да и зелёная ссылка на янтарной строке-предупреждении
+                      конфликтовала цветом). Текстовый ключ объясняет себя тултипом. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {nonstandard && (
+                      <span
+                        title="Ключ не похож на формат Jira (PROJECT-123) — проверьте, нет ли опечатки"
+                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
+                      >
+                        <StatusAlertIcon kind="warning" size={14} />
+                      </span>
+                    )}
+                    {jiraBaseUrl && !nonstandard ? (
+                      // Фирменный зелёный вместо веб-синего (#2563EB был
+                      // единственным элементом вне палитры ReqTrace); ховер —
+                      // темнее ступенью + подчёркивание: ссылка остаётся ссылкой.
+                      <a
+                        href={`${jiraBaseUrl}/browse/${test.test_key}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: colors.greenDark,
+                          textDecoration: 'none',
+                          fontWeight: 500,
+                          fontSize: '13px',
+                          transition: 'color 0.15s',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.color = '#3F9E27';
+                          e.currentTarget.style.textDecoration = 'underline';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.color = colors.greenDark;
+                          e.currentTarget.style.textDecoration = 'none';
+                        }}
+                      >
+                        {test.test_key}
+                      </a>
+                    ) : (
+                      <span
+                        title={nonstandard
+                          ? 'Ключ не похож на формат Jira (PROJECT-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
+                          : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
+                        style={{
+                          color: colors.textPrimary,
+                          fontWeight: 500,
+                          fontSize: '13px',
+                          cursor: 'help',
+                        }}
+                      >
+                        {test.test_key}
+                      </span>
+                    )}
+                  </div>
+                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
+                      ховер; виден только при наведении на строку (.test-row) —
+                      список в покое без колонки крестиков. */}
                   <button
                     onClick={() => onRemoveTest(test.id)}
+                    className="test-row-remove"
                     style={{
                       width: '26px', height: '26px', borderRadius: radii.sm,
                       border: 'none', background: 'transparent', cursor: 'pointer',
@@ -730,103 +1053,27 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     <XIcon />
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Add test form */}
-        <div style={{
-          display: 'flex', gap: '8px', marginBottom: '20px',
-        }}>
-          <input
-            ref={testInputRef}
-            type="text"
-            value={testKey}
-            onChange={e => setTestKey(e.target.value)}
-            placeholder="PROJECT-123"
-            onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: radii.md,
-              border: `1px solid ${colors.border}`,
-              fontSize: '13px',
-              fontFamily: 'inherit',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
-          <button
-            onClick={handleAdd}
-            disabled={!testKey.trim() || adding}
-            style={{
-              padding: '8px 14px',
-              borderRadius: radii.md,
-              border: 'none',
-              background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
-              color: '#fff',
-              fontWeight: 600,
-              fontSize: '13px',
-              cursor: testKey.trim() && !adding ? 'pointer' : 'default',
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => {
-              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = testKey.trim() ? colors.greenAccent : '#E5E7EB';
-            }}
-            onMouseDown={e => {
-              if (testKey.trim() && !adding) e.currentTarget.style.background = '#3F9E27';
-            }}
-            onMouseUp={e => {
-              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
-            }}
-          >
-            {adding ? '...' : 'Добавить'}
-          </button>
-        </div>
-
-        {/* Meta info */}
-        <div style={{
-          fontSize: '12px', color: colors.textTertiary,
-          display: 'flex', flexDirection: 'column', gap: '10px',
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: '2px' }}>Создано:</div>
-            <div>
-              {formatDate(highlight.created_at)}
-              {highlight.created_by_name && (
-                <span style={{ color: colors.textSecondary }}> — {highlight.created_by_name}</span>
-              )}
-            </div>
-          </div>
-          {highlight.reanchored_at && (
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: '2px' }}>Актуализировано:</div>
-              <div>
-                {formatDate(highlight.reanchored_at)}
-                {highlight.reanchored_by_name && (
-                  <span style={{ color: colors.textSecondary }}> — {highlight.reanchored_by_name}</span>
-                )}
-              </div>
+                );
+              })}
             </div>
           )}
         </div>
 
       </div>
 
-      {/* Футер с удалением — прижат к низу панели и отделён от контента
-          линией, как шапка: деструктивное действие не смешивается с работой
-          над привязкой. Клик открывает компактный поповер-подтверждение
-          (стиль меню «⋮»), само удаление отложенное — с тостом «Отменить». */}
+      {/* Футер: слева — компактная мета (кто и когда создал/актуализировал,
+          по строке на событие, длинное — в эллипсис с полным текстом в title),
+          справа — корзина 34×34 (стиль кнопок шапки, красные тона). Клик по
+          корзине открывает поповер-подтверждение; удаление мгновенное. */}
       <div
         ref={confirmRef}
         style={{
-          padding: '14px 20px',
+          // Зеркало шапки: фиксированные 64px (с бордером) — та же сетка.
+          height: '64px',
+          padding: '0 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
           borderTop: `1px solid ${colors.border}`,
           flexShrink: 0,
           position: 'relative',
@@ -846,22 +1093,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             padding: '20px 16px 16px',
             textAlign: 'center',
           }}>
-            {/* Симметричная карточка: корзина в тонированном круге, заголовок
-                и текст по центру, кнопки 50/50 без дивайдера. Текст честный:
-                удаление можно отменить в течение таймера undo-тоста. */}
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-              background: 'rgba(239,68,68,0.1)',
-              color: colors.statusLost,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 12px',
-            }}>
-              <TrashIcon />
-            </div>
+            {/* Симметричная карточка: заголовок и текст по центру, кнопки 50/50
+                без дивайдера. Корзины в круге больше нет — иконку уже несёт
+                кнопка футера, из которой поповер открылся. Это единственная
+                защита от случайного удаления — undo-таймера больше нет (v1.6.0),
+                текст честно предупреждает о необратимости. */}
             <div style={{
               fontSize: '14px',
               fontWeight: 600,
@@ -876,7 +1112,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               lineHeight: 1.45,
               marginBottom: '16px',
             }}>
-              Связи с тестами удалятся вместе с ним. После удаления будет 5 секунд, чтобы передумать
+              Связи с тестами удалятся вместе с ним — действие необратимо
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -934,18 +1170,52 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </div>
           </div>
         )}
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: '11px',
+          color: colors.textTertiary,
+          lineHeight: 1.55,
+        }}>
+          <div
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={`Создан ${formatDate(highlight.created_at)}${highlight.created_by_name ? ` · ${highlight.created_by_name}` : ''}`}
+          >
+            Создан {formatDate(highlight.created_at)}
+            {highlight.created_by_name && (
+              <span style={{ color: colors.textSecondary }}> · {highlight.created_by_name}</span>
+            )}
+          </div>
+          {highlight.reanchored_at && (
+            <div
+              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title={`Обновлён ${formatDate(highlight.reanchored_at)}${highlight.reanchored_by_name ? ` · ${highlight.reanchored_by_name}` : ''}`}
+            >
+              Обновлён {formatDate(highlight.reanchored_at)}
+              {highlight.reanchored_by_name && (
+                <span style={{ color: colors.textSecondary }}> · {highlight.reanchored_by_name}</span>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Дивайдер отделяет справку от деструктивной кнопки — как разделитель
+            в шапке панели (1×24, краёв не касается). */}
+        <div style={{ width: '1px', height: '24px', background: colors.border, flexShrink: 0 }} />
         <button
           onClick={() => setConfirmOpen(o => !o)}
+          title="Удалить выделение"
           style={{
-            width: '100%',
-            padding: '8px',
+            width: '34px',
+            height: '34px',
             borderRadius: radii.md,
             border: `1px solid rgba(239,68,68,0.2)`,
             background: 'rgba(239,68,68,0.05)',
             color: colors.statusLost,
-            fontSize: '13px',
             cursor: 'pointer',
-            fontFamily: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
             transition: 'all 0.15s',
           }}
           onMouseEnter={e => {
@@ -959,7 +1229,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
           onMouseUp={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
         >
-          Удалить выделение
+          <TrashIcon size={16} />
         </button>
       </div>
       </div>

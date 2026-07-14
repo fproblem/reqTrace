@@ -7,6 +7,7 @@ import { HighlightLayer, highlightDomOrder, compareByDomThenAnchor } from '../co
 import type { HighlightRenderReport } from '../components/PageView/HighlightLayer';
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
+import { sortedTests } from '../components/PageView/testOrder';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -36,7 +37,7 @@ function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderRep
 export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
-  const { showToast, showUndoToast, dismissToast } = useToast();
+  const { showToast, showPromptToast, dismissToast } = useToast();
   // Точки статусов в дереве считаются по привязкам страницы. Само дерево
   // перечитывается только при навигации — после действий, меняющих статусы
   // или состав привязок (актуализация, удаление, авто-«Утрачено»), его нужно
@@ -89,7 +90,30 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     }
   }, [pageId, showToast]);
 
-  useEffect(() => { loadPage(); }, [loadPage]);
+  // Загрузка при навигации. Диплинк ?highlight=<id> (кнопка «Скопировать
+  // ссылку» в панели) применяется ровно здесь — к привязкам, пришедшим для
+  // ЭТОЙ навигации, а не к остаткам прошлой страницы в состоянии: открываем
+  // панель и подскролливаем к выделению, как после «Привязать тесты».
+  // Повторные loadPage (добавление теста и т.п.) диплинк не переприменяют.
+  useEffect(() => {
+    void loadPage().then(hls => {
+      if (!hls) return;
+      const id = new URLSearchParams(window.location.search).get('highlight');
+      if (!id) return;
+      const target = hls.find(h => h.id === id);
+      if (!target) {
+        showToast('warning', 'Привязка по ссылке не найдена', 'Возможно, её удалили после того, как ссылку скопировали');
+        return;
+      }
+      setSelectedHighlight(target);
+      pendingScrollHighlightRef.current = target.id;
+    });
+  }, [loadPage, showToast]);
+
+  // Предложение «Закрепить текущую версию?» (тост после актуализации последней
+  // outdated-привязки) адресовано конкретной странице — при уходе с неё тост
+  // гасится, иначе «Закрепить» сработал бы по чужому pageId.
+  const baselinePromptRef = useRef<number | null>(null);
 
   // Переход на другую страницу через дерево НЕ размонтирует компонент —
   // в маршруте меняется только :pageId. Выделение прошлой страницы сбрасываем,
@@ -99,6 +123,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     setSelectedHighlight(null);
     dismissSelection();
     setRenderReport(null);
+    if (baselinePromptRef.current != null) {
+      dismissToast(baselinePromptRef.current);
+      baselinePromptRef.current = null;
+    }
     // Контейнер контента прошлой страницы больше не годится: если по пути
     // ContentRenderer размонтировался (виртуальная страница, «Изменения»),
     // в состоянии остаётся оторванный div со старым контентом, и слой успевал
@@ -186,6 +214,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     try {
       await api.setBaseline(pageId);
       await loadPage();
+      showToast('success', 'Версия закреплена', 'Изменения страницы теперь считаются от текущей версии');
     } catch (e: any) {
       showToast('error', 'Не удалось закрепить baseline', e.message);
     }
@@ -317,7 +346,23 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         // Обход по статусу остаётся ручным (плашка статуса/чипы), а завершение
         // обхода отмечаем тостом.
         if (!refreshed.some(h => h.status === 'outdated')) {
-          showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
+          // Все привязки проверены — удобный момент закрепить проверенную
+          // версию как baseline, мягко побуждаем. Тост с отсчётом: дотикал
+          // или «Не сейчас» — ничего не происходит. Если baseline уже стоит
+          // на текущем снимке, закреплять нечего — обычный тост, как раньше.
+          const baselineCurrent = !page?.current_snapshot ||
+            page.baseline?.snapshot_id === page.current_snapshot.id;
+          if (baselineCurrent) {
+            showToast('success', 'Все привязки проверены', 'Выделений в статусе «Требует проверки» не осталось');
+          } else {
+            baselinePromptRef.current = showPromptToast('success', 'Все привязки проверены', {
+              message: 'Закрепить текущую версию страницы?',
+              seconds: 10,
+              acceptLabel: 'Закрепить',
+              declineLabel: 'Не сейчас',
+              onAccept: () => void handleSetBaseline(),
+            });
+          }
         }
       }
     } catch (e: any) {
@@ -325,52 +370,24 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     }
   };
 
-  // Отложенное удаление выделения: с экрана оно исчезает сразу, но DELETE
-  // уходит на сервер только когда undo-тост дотикал до конца. «Отменить»
-  // просто перечитывает привязки — сервер ещё ничего не удалял. Одновременно
-  // живёт одно отложенное удаление: новое немедленно коммитит предыдущее.
-  const pendingDeleteRef = useRef<{ toastId: number; commit: () => void } | null>(null);
-
+  // Удаление мгновенное (v1.6.0): подтверждение уже спросила карточка в панели.
+  // Прежний undo-таймер (v1.5.4) держал привязку живой на сервере ещё 5 секунд,
+  // и любой перезапрос списка в это окно воскрешал её в UI — а новое выделение
+  // на освободившемся тексте пересекалось с «зомби»-диапазоном.
   const handleDeleteHighlight = async (highlightId: string) => {
-    if (pendingDeleteRef.current) {
-      const prev = pendingDeleteRef.current;
-      pendingDeleteRef.current = null;
-      dismissToast(prev.toastId);
-      prev.commit();
-    }
-
     setSelectedHighlight(null);
     setHighlights(prev => prev.filter(h => h.id !== highlightId));
-
-    const restore = async () => {
-      pendingDeleteRef.current = null;
+    try {
+      await api.deleteHighlight(highlightId);
+      refreshTree();
+    } catch (e: any) {
+      showToast('error', 'Не удалось удалить привязку', e.message);
       try {
-        const refreshed = await api.listHighlights(pageId!);
-        setHighlights(refreshed);
-      } catch (e: any) {
-        showToast('error', 'Не удалось восстановить привязку', e.message);
+        setHighlights(await api.listHighlights(pageId!));
+      } catch {
+        // Сервер недоступен — вернуть актуальный список всё равно нечем.
       }
-    };
-
-    const commit = () => {
-      pendingDeleteRef.current = null;
-      api.deleteHighlight(highlightId)
-        .then(() => refreshTree())
-        .catch((e: any) => {
-          showToast('error', 'Не удалось удалить привязку', e.message);
-          void restore();
-        });
-    };
-
-    // Без message: про удаление связей с тестами уже предупредила карточка
-    // подтверждения в панели — в тосте хватает заголовка.
-    const toastId = showUndoToast('warning', 'Выделение удалено', {
-      seconds: 5,
-      actionLabel: 'Отменить',
-      onExpire: commit,
-      onAction: restore,
-    });
-    pendingDeleteRef.current = { toastId, commit };
+    }
   };
 
   const handleDeletePage = async () => {
@@ -587,6 +604,27 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     ? Math.round((coveredCount / highlights.length) * 100)
     : 0;
 
+  // Чип «Покрытие: N%» при неполном покрытии ходит по привязкам БЕЗ тестов
+  // по кругу (механика чипов статусов): дыры покрытия ищутся кликами, а не
+  // глазами. Утраченная без тестов на странице не отрисована — только панель,
+  // без подскролла, как у чипа «утрачено».
+  const uncoveredCount = highlights.length - coveredCount;
+  const jumpToUncovered = () => {
+    const ordered = highlights
+      .filter(h => h.tests.length === 0)
+      .sort(compareByDomThenAnchor(highlightDomOrder()));
+    if (ordered.length === 0) return;
+    const currentIdx = selectedHighlight
+      ? ordered.findIndex(h => h.id === selectedHighlight.id)
+      : -1;
+    const target = ordered[(currentIdx + 1) % ordered.length];
+    if (target.status === 'lost') {
+      setSelectedHighlight(target);
+    } else {
+      handleHighlightClick(target);
+    }
+  };
+
   // Счётчики статусов в шапке. Показываем только те, у которых есть привязки —
   // как было раньше с чипами (нулевые статусы не выводим, ряд не «прыгает»).
   const statusCounters = ([
@@ -671,9 +709,15 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          {/* Coverage indicator */}
+          {/* Coverage indicator. Пока покрытие неполное, чип — кнопка: клик
+              циклит по привязкам без тестов (jumpToUncovered). При 100% жать
+              некуда — остаётся справочным, как раньше (cursor: help). */}
           <div
-            title={`Покрытие требований тестами: доля привязок, к которым привязан хотя бы один тест — ${coveredCount} из ${highlights.length}`}
+            onClick={uncoveredCount > 0 ? jumpToUncovered : undefined}
+            title={
+              `Покрытие требований тестами: доля привязок, к которым привязан хотя бы один тест — ${coveredCount} из ${highlights.length}` +
+              (uncoveredCount > 0 ? '. Клик — перейти к привязке без тестов' : '')
+            }
             style={{
               padding: '9px 10px',
               borderRadius: radii.pill,
@@ -681,11 +725,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               fontSize: '13px',
               fontWeight: 600,
               color: colors.textSecondary,
-              cursor: 'help',
+              cursor: uncoveredCount > 0 ? 'pointer' : 'help',
               transition: 'background 0.15s',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+            onMouseDown={uncoveredCount > 0
+              ? e => { e.currentTarget.style.background = 'rgba(0,0,0,0.11)'; }
+              : undefined}
+            onMouseUp={uncoveredCount > 0
+              ? e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; }
+              : undefined}
           >
             Покрытие: {coveragePercent}%
           </div>
@@ -1028,7 +1078,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                       </div>
                       {h.tests.length > 0 && (
                         <div style={{ fontSize: '12px', color: colors.textSecondary }}>
-                          Тесты: {h.tests.map(t => t.test_key).join(', ')}
+                          Тесты: {sortedTests(h.tests).map(t => t.test_key).join(', ')}
                         </div>
                       )}
                     </div>
@@ -1058,8 +1108,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         />
       </div>
 
-      {/* Selection popup */}
-      {selection && viewMode === 'coverage' && (
+      {/* Selection popup. Координаты живые: хук пересчитывает их от Selection
+          при прокрутке/ресайзе, кнопка едет вместе с текстом; выделение за
+          видимой областью контента прячет попап (hidden), не гася выделение. */}
+      {selection && !selection.hidden && viewMode === 'coverage' && (
         <div style={{
           position: 'fixed',
           left: selection.x,
@@ -1067,8 +1119,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           transform: 'translate(-50%, -100%)',
           zIndex: 1000,
         }}>
+          {/* preventDefault на mousedown — клик не должен снять выделение
+              раньше, чем сработает onClick. Ховер/пресс — ступени той же
+              зелени вниз от базового greenDark (#3F9E27 — пресс примари-кнопок). */}
           <button
-            onMouseDown={e => e.preventDefault()}
+            onMouseDown={e => { e.preventDefault(); e.currentTarget.style.background = '#358A1F'; }}
+            onMouseUp={e => { e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = colors.greenDark; }}
             onClick={handleCreateHighlight}
             style={{
               padding: '8px 16px',
@@ -1080,8 +1138,12 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               fontWeight: 600,
               cursor: 'pointer',
               fontFamily: 'inherit',
-              boxShadow: shadows.panel,
+              // shadows.panel (как у попапа удаления) на маленькой зелёной
+              // пилюле не читается — те же слои, но плотнее + контактная тень:
+              // кнопка «парит» над контентом.
+              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.12)',
               whiteSpace: 'nowrap',
+              transition: 'background 0.15s',
             }}
           >
             Привязать тесты

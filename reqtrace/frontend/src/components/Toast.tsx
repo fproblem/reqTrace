@@ -4,16 +4,16 @@ import { XIcon } from './Modal';
 
 type ToastType = 'error' | 'success' | 'warning';
 
-/** Тост с обратным отсчётом и кнопкой отмены (отложенные действия).
- *  Живёт ровно `seconds` секунд с анимированным таймером и прогресс-баром:
- *  дотикал до конца — onExpire (действие совершается), нажали кнопку —
- *  onAction (действие отменяется). Обычного крестика у такого тоста нет:
- *  закрытие было бы неоднозначным (совершить или отменить?). */
-interface ToastUndo {
+/** Тост-предложение с обратным отсчётом (наследник undo-тоста удаления
+ *  привязок v1.5.4–v1.5.9). Живёт ровно `seconds` секунд с анимированным
+ *  таймером: дотикал до конца или нажали кнопку отказа — НИЧЕГО не происходит,
+ *  тост просто исчезает; нажали кнопку согласия — onAccept. Обычного крестика
+ *  нет: явный отказ — это кнопка declineLabel. */
+interface ToastPrompt {
   seconds: number;
-  actionLabel: string;
-  onAction: () => void;
-  onExpire: () => void;
+  acceptLabel: string;
+  declineLabel: string;
+  onAccept: () => void;
 }
 
 interface Toast {
@@ -21,14 +21,14 @@ interface Toast {
   type: ToastType;
   title: string;
   message?: string;
-  undo?: ToastUndo;
+  prompt?: ToastPrompt;
 }
 
 interface ToastContextValue {
   showToast: (type: ToastType, title: string, message?: string) => void;
   /** Возвращает id — им можно снять тост досрочно через dismissToast
-   *  (onExpire при этом НЕ вызывается — вызывающий сам решает судьбу действия). */
-  showUndoToast: (type: ToastType, title: string, opts: ToastUndo & { message?: string }) => number;
+   *  (например, при уходе со страницы, к которой относилось предложение). */
+  showPromptToast: (type: ToastType, title: string, opts: ToastPrompt & { message?: string }) => number;
   dismissToast: (id: number) => void;
 }
 
@@ -144,9 +144,9 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
   const style = typeStyles[toast.type];
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const undo = toast.undo;
-  const [secondsLeft, setSecondsLeft] = useState(undo?.seconds ?? 0);
-  // Гарантия «ровно один исход»: либо onExpire, либо onAction.
+  const prompt = toast.prompt;
+  const [secondsLeft, setSecondsLeft] = useState(prompt?.seconds ?? 0);
+  // Гарантия «ровно один исход»: согласие, отказ или тихое угасание.
   const firedRef = useRef(false);
 
   const dismissAnimated = () => {
@@ -156,32 +156,37 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
 
   // Обычный тост — стандартное время жизни.
   useEffect(() => {
-    if (undo) return;
+    if (prompt) return;
     timerRef.current = setTimeout(dismissAnimated, TOAST_DURATION);
     return () => clearTimeout(timerRef.current);
   }, [toast.id]);
 
-  // Undo-тост — цепочка секундных тиков: 7 → … → 1 → onExpire.
-  // Внешний dismissToast(id) размонтирует тост, cleanup снимет таймер и
-  // onExpire не сработает — досрочную судьбу действия решает вызывающий.
+  // Промпт-тост — цепочка секундных тиков: N → … → 1 → тихое угасание
+  // (действие НЕ совершается: предложением просто не воспользовались).
+  // Внешний dismissToast(id) размонтирует тост, cleanup снимет таймер.
   useEffect(() => {
-    if (!undo || firedRef.current) return;
+    if (!prompt || firedRef.current) return;
     const t = setTimeout(() => {
       if (secondsLeft > 1) {
         setSecondsLeft(secondsLeft - 1);
       } else {
         firedRef.current = true;
-        undo.onExpire();
         dismissAnimated();
       }
     }, 1000);
     return () => clearTimeout(t);
   }, [secondsLeft]);
 
-  const handleUndo = () => {
-    if (!undo || firedRef.current) return;
+  const handleAccept = () => {
+    if (!prompt || firedRef.current) return;
     firedRef.current = true;
-    undo.onAction();
+    prompt.onAccept();
+    dismissAnimated();
+  };
+
+  const handleDecline = () => {
+    if (firedRef.current) return;
+    firedRef.current = true;
     dismissAnimated();
   };
 
@@ -200,11 +205,16 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         boxShadow: shadows.panel,
         display: 'flex',
         gap: '12px',
-        // Undo-тост — одна строка (текст | кольцо | дивайдер | кнопка), всё
+        // Промпт-тост — одна строка (текст | кольцо | дивайдер | кнопки), всё
         // по центру; у обычного тоста иконка и крестик сидят на первой строке.
-        alignItems: undo ? 'center' : 'flex-start',
-        maxWidth: '420px',
-        width: '100%',
+        // Ширина промпта — по содержимому (fit-content + нерастяжимый текст),
+        // иначе колонка текста растягивалась и между ней и кольцом отсчёта
+        // повисала пустота. Потолок 535 замерен headless-Chrome: колонке
+        // достаётся ~194px — заголовок «Все привязки проверены» (178px) живёт
+        // в одну строку с запасом на платформенные шрифты, вопрос переносится.
+        alignItems: prompt ? 'center' : 'flex-start',
+        maxWidth: prompt ? '535px' : '420px',
+        width: prompt ? 'fit-content' : '100%',
         opacity: exiting ? 0 : 1,
         transform: exiting ? 'translateX(40px)' : 'translateX(0)',
         transition: 'opacity 0.3s, transform 0.3s',
@@ -227,8 +237,9 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
         <TypeIcon type={toast.type} />
       </div>
 
-      {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Content. У промпта текст не тянется на свободное место (см. width
+          корня) — только ужимается с переносом, когда упёрся в потолок. */}
+      <div style={{ flex: prompt ? '0 1 auto' : 1, minWidth: 0 }}>
         <div style={{
           fontSize: '14px',
           fontWeight: 600,
@@ -251,14 +262,15 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
 
       </div>
 
-      {/* Правый кластер undo-тоста: кольцо отсчёта | дивайдер | «Отменить» —
-          одна группа «отмена по таймеру», выровнена по центру строки.
-          Крестика у undo-тоста нет: закрытие было бы неоднозначным. */}
-      {undo && (
+      {/* Правый кластер промпт-тоста: кольцо отсчёта | дивайдер | «отказ» |
+          «согласие» — одна группа, выровнена по центру строки. Согласие —
+          залитая зелёная кнопка (как «Добавить» в панели), отказ — нейтральная
+          пилюля. Крестика нет: явный отказ — это кнопка. */}
+      {prompt && (
         <>
           <CountdownRing
             secondsLeft={secondsLeft}
-            total={undo.seconds}
+            total={prompt.seconds}
             color={style.titleColor}
           />
           <div style={{
@@ -268,7 +280,7 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
             flexShrink: 0,
           }} />
           <button
-            onClick={handleUndo}
+            onClick={handleDecline}
             style={{
               padding: '6px 16px',
               borderRadius: radii.pill,
@@ -295,11 +307,33 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
             onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
             onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
           >
-            {undo.actionLabel}
+            {prompt.declineLabel}
+          </button>
+          <button
+            onClick={handleAccept}
+            style={{
+              padding: '6px 16px',
+              borderRadius: radii.pill,
+              border: 'none',
+              background: colors.greenAccent,
+              color: '#fff',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+            onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
+            onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
+          >
+            {prompt.acceptLabel}
           </button>
         </>
       )}
-      {!undo && (
+      {!prompt && (
         <button
           onClick={handleDismiss}
           title="Закрыть"
@@ -346,12 +380,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts(prev => [...prev, { id, type, title, message }]);
   }, []);
 
-  const showUndoToast = useCallback((
-    type: ToastType, title: string, opts: ToastUndo & { message?: string },
+  const showPromptToast = useCallback((
+    type: ToastType, title: string, opts: ToastPrompt & { message?: string },
   ) => {
     const id = nextId.current++;
-    const { message, ...undo } = opts;
-    setToasts(prev => [...prev, { id, type, title, message, undo }]);
+    const { message, ...prompt } = opts;
+    setToasts(prev => [...prev, { id, type, title, message, prompt }]);
     return id;
   }, []);
 
@@ -360,7 +394,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showToast, showUndoToast, dismissToast }}>
+    <ToastContext.Provider value={{ showToast, showPromptToast, dismissToast }}>
       {children}
 
       {/* Toast container */}
@@ -372,6 +406,9 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           zIndex: 9999,
           display: 'flex',
           flexDirection: 'column',
+          // К правому краю: промпт-тост уже обычных, и при дефолтном stretch
+          // одновременно видимые тосты разной ширины расползались бы от него.
+          alignItems: 'flex-end',
           gap: '8px',
           pointerEvents: 'auto',
         }}>

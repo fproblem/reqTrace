@@ -1005,13 +1005,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               fontFamily: 'inherit',
               outline: 'none',
               boxSizing: 'border-box',
-              transition: 'border-color 0.15s',
+              transition: 'border-color 0.15s, box-shadow 0.15s',
             }}
-            // Фокус — стандарт полей ReqTrace: рамка 1px зеленеет (greenAccent),
-            // как у поиска в дереве, поля добавления страницы и Select.
-            // Кольца-обводки пробовали и убрали — таких рамок в приложении нет.
-            onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
-            onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+            // Фокус — стандарт полей ReqTrace: рамка зеленеет + тонкое
+            // фокус-кольцо (shadows.focusRing, референс — поля Confluence).
+            onFocus={e => {
+              e.currentTarget.style.borderColor = colors.greenAccent;
+              e.currentTarget.style.boxShadow = shadows.focusRing;
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.boxShadow = 'none';
+            }}
           />
           <button
             onClick={handleAdd}

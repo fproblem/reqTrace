@@ -8,7 +8,7 @@ import { Select } from '../Select';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { ChevronRightIcon, CrossIcon, DocumentIcon, PlusIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
-import { colors, radii } from '../../styles/tokens';
+import { colors, radii, shadows } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
@@ -426,13 +426,21 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               fontFamily: 'inherit',
               outline: 'none',
               boxSizing: 'border-box',
-              transition: 'border-color 0.15s',
+              transition: 'border-color 0.15s, box-shadow 0.15s',
               background: searchDisabled ? 'rgba(0, 0, 0, 0.05)' : colors.white,
               color: searchDisabled ? colors.textTertiary : colors.textPrimary,
               cursor: searchDisabled ? 'not-allowed' : 'text',
             }}
-            onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
-            onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+            // Единый фокус полей: зелёная рамка + тонкое кольцо (shadows.focusRing),
+            // как у поля ключа теста в панели выделения.
+            onFocus={e => {
+              e.currentTarget.style.borderColor = colors.greenAccent;
+              e.currentTarget.style.boxShadow = shadows.focusRing;
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.boxShadow = 'none';
+            }}
           />
           {searchQuery && (
             <button

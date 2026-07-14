@@ -39,6 +39,9 @@ export const shadows = {
   card: '0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
   cardHover: '0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06)',
   panel: '0 4px 24px rgba(0, 0, 0, 0.08)',
+  // Фокус-кольцо полей (как у полей Confluence, но в фирменной зелени):
+  // рамка поля при фокусе зеленеет до greenAccent, кольцо — тонкое, 2px.
+  focusRing: '0 0 0 2px rgba(122, 224, 90, 0.35)',
 };
 
 export const fonts = {

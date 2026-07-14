@@ -528,7 +528,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      {/* Контент — flex-колонка ради подвала: мета прижимается к низу
+          (marginTop: auto у её дивайдера), пока контента мало, и естественно
+          уходит в скролл после тестов, когда его много. У всех детей
+          flexShrink: 0 — иначе при переполнении flex сжимал бы дивайдеры и
+          строки вместо скролла. */}
+      <div style={{
+        padding: '20px',
+        flex: 1,
+        overflowY: 'auto',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -543,6 +555,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             gap: '8px',
             padding: '10px 12px',
             marginBottom: '16px',
+            flexShrink: 0,
             borderRadius: radii.sm,
             border: `1px solid rgba(239,68,68,0.3)`,
             background: 'rgba(239,68,68,0.06)',
@@ -576,6 +589,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           borderRadius: radii.md,
           border: `1px solid ${statusInfo.color}33`,
           overflow: 'hidden',
+          flexShrink: 0,
         }}>
 
         {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
@@ -744,10 +758,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* Дивайдер-секция: группа привязки (статус + цитата + актуализация)
             отделена от тестов. Полная ширина панели (минус-поля гасят паддинг
             контента) — линия читается как у шапки и футера. */}
-        <div style={{ height: '1px', background: colors.border, margin: '20px -20px' }} />
+        <div style={{ height: '1px', background: colors.border, margin: '20px -20px', flexShrink: 0 }} />
 
         {/* Tests */}
-        <div style={{ marginBottom: '6px' }}>
+        <div style={{ marginBottom: '6px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
               Привязанные тесты
@@ -866,9 +880,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           )}
         </div>
 
-        {/* Add test form */}
+        {/* Add test form. marginBottom — гарантированный зазор до подвала с
+            метой, когда контент высокий и auto-отступ дивайдера схлопнулся. */}
         <div style={{
-          display: 'flex', gap: '8px',
+          display: 'flex', gap: '8px', marginBottom: '20px', flexShrink: 0,
         }}>
           <input
             ref={testInputRef}
@@ -923,13 +938,25 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
         </div>
 
-        {/* Дивайдер-секция: тесты | мета (кто и когда создал/актуализировал). */}
-        <div style={{ height: '1px', background: colors.border, margin: '20px -20px' }} />
+        {/* Подвал панели: мета (кто и когда создал/актуализировал) прижата к
+            низу — marginTop: auto съедает свободное место над дивайдером.
+            Когда контент выше области, auto-отступ схлопывается в 0 и подвал
+            обычным образом следует за тестами в скролле. */}
+        <div style={{
+          height: '1px',
+          background: colors.border,
+          marginTop: 'auto',
+          marginRight: '-20px',
+          marginBottom: '20px',
+          marginLeft: '-20px',
+          flexShrink: 0,
+        }} />
 
         {/* Meta info */}
         <div style={{
           fontSize: '12px', color: colors.textTertiary,
           display: 'flex', flexDirection: 'column', gap: '10px',
+          flexShrink: 0,
         }}>
           <div>
             <div style={{ fontWeight: 600, marginBottom: '2px' }}>Создано:</div>

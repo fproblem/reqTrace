@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
-import { LinkIcon, QuoteIcon, StatusAlertIcon } from '../icons';
+import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
 import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
@@ -70,18 +70,7 @@ const STATUS_ICON_KIND: Record<string, 'ok' | 'warning' | 'error'> = {
   lost: 'error',
 };
 
-// Корзина для карточки подтверждения удаления (feather trash-2).
-const TrashIcon: React.FC = () => (
-  <svg
-    width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}
-  >
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    <line x1="10" y1="11" x2="10" y2="17" />
-    <line x1="14" y1="11" x2="14" y2="17" />
-  </svg>
-);
+// Корзина — библиотечная TrashIcon (см. импорт): своя копия больше не нужна.
 
 // Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
@@ -327,9 +316,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     if (hasNext) onNavigate(sorted[currentIndex + 1]);
   };
 
+  // Компактный формат под строку футера: «13.07.2026, 23:31» — полнословная
+  // версия («13 июл. 2026 г., 23:31») не оставляла места имени автора.
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('ru-RU', {
-      day: 'numeric', month: 'short', year: 'numeric',
+      day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
 
@@ -528,19 +519,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      {/* Контент — flex-колонка ради подвала: мета прижимается к низу
-          (marginTop: auto у её дивайдера), пока контента мало, и естественно
-          уходит в скролл после тестов, когда его много. У всех детей
-          flexShrink: 0 — иначе при переполнении flex сжимал бы дивайдеры и
-          строки вместо скролла. */}
-      <div style={{
-        padding: '20px',
-        flex: 1,
-        overflowY: 'auto',
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -558,7 +537,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             gap: '8px',
             padding: '10px 12px',
             marginBottom: '16px',
-            flexShrink: 0,
             borderRadius: radii.sm,
             border: `1px solid rgba(239,68,68,0.3)`,
             background: 'rgba(239,68,68,0.06)',
@@ -580,7 +558,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           borderRadius: radii.md,
           border: `1px solid ${statusInfo.color}33`,
           overflow: 'hidden',
-          flexShrink: 0,
         }}>
 
         {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
@@ -768,10 +745,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* Дивайдер-секция: группа привязки (статус + цитата + актуализация)
             отделена от тестов. В пределах контентных полей, краёв панели не
             касается — как вертикальный разделитель в шапке. */}
-        <div style={{ height: '1px', background: colors.border, margin: '20px 0', flexShrink: 0 }} />
+        <div style={{ height: '1px', background: colors.border, margin: '20px 0' }} />
 
         {/* Tests */}
-        <div style={{ marginBottom: '6px', flexShrink: 0 }}>
+        <div style={{ marginBottom: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
               Привязанные тесты
@@ -890,11 +867,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           )}
         </div>
 
-        {/* Add test form. marginBottom — гарантированный зазор до подвала с
-            метой, когда контент высокий и auto-отступ дивайдера схлопнулся. */}
-        <div style={{
-          display: 'flex', gap: '8px', marginBottom: '20px', flexShrink: 0,
-        }}>
+        {/* Add test form */}
+        <div style={{ display: 'flex', gap: '8px' }}>
           <input
             ref={testInputRef}
             type="text"
@@ -948,61 +922,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
         </div>
 
-        {/* Подвал панели: мета (кто и когда создал/актуализировал) прижата к
-            низу — marginTop: auto съедает свободное место над дивайдером.
-            Когда контент выше области, auto-отступ схлопывается в 0 и подвал
-            обычным образом следует за тестами в скролле. */}
-        <div style={{
-          height: '1px',
-          background: colors.border,
-          marginTop: 'auto',
-          marginBottom: '20px',
-          flexShrink: 0,
-        }} />
-
-        {/* Meta info */}
-        <div style={{
-          fontSize: '12px', color: colors.textTertiary,
-          display: 'flex', flexDirection: 'column', gap: '10px',
-          flexShrink: 0,
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: '2px' }}>Создано:</div>
-            <div>
-              {formatDate(highlight.created_at)}
-              {highlight.created_by_name && (
-                <span style={{ color: colors.textSecondary }}> — {highlight.created_by_name}</span>
-              )}
-            </div>
-          </div>
-          {highlight.reanchored_at && (
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: '2px' }}>Актуализировано:</div>
-              <div>
-                {formatDate(highlight.reanchored_at)}
-                {highlight.reanchored_by_name && (
-                  <span style={{ color: colors.textSecondary }}> — {highlight.reanchored_by_name}</span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
       </div>
 
-      {/* Футер с удалением — прижат к низу панели и отделён от контента
-          линией, как шапка: деструктивное действие не смешивается с работой
-          над привязкой. Клик открывает компактный поповер-подтверждение
-          (стиль меню «⋮»); после подтверждения удаление мгновенное. */}
+      {/* Футер: слева — компактная мета (кто и когда создал/актуализировал,
+          по строке на событие, длинное — в эллипсис с полным текстом в title),
+          справа — корзина 34×34 (стиль кнопок шапки, красные тона). Клик по
+          корзине открывает поповер-подтверждение; удаление мгновенное. */}
       <div
         ref={confirmRef}
         style={{
-          // Зеркало шапки: фиксированные 64px (с бордером), кнопка 44px
-          // отцентрована — та же вертикальная сетка, что у элементов контента.
+          // Зеркало шапки: фиксированные 64px (с бордером) — та же сетка.
           height: '64px',
           padding: '0 20px',
           display: 'flex',
           alignItems: 'center',
+          gap: '12px',
           borderTop: `1px solid ${colors.border}`,
           flexShrink: 0,
           position: 'relative',
@@ -1037,7 +971,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               justifyContent: 'center',
               margin: '0 auto 12px',
             }}>
-              <TrashIcon />
+              <TrashIcon size={20} />
             </div>
             <div style={{
               fontSize: '14px',
@@ -1111,19 +1045,49 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             </div>
           </div>
         )}
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: '11px',
+          color: colors.textTertiary,
+          lineHeight: 1.55,
+        }}>
+          <div
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={`Создано ${formatDate(highlight.created_at)}${highlight.created_by_name ? ` — ${highlight.created_by_name}` : ''}`}
+          >
+            Создано {formatDate(highlight.created_at)}
+            {highlight.created_by_name && (
+              <span style={{ color: colors.textSecondary }}> — {highlight.created_by_name}</span>
+            )}
+          </div>
+          {highlight.reanchored_at && (
+            <div
+              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title={`Актуализировано ${formatDate(highlight.reanchored_at)}${highlight.reanchored_by_name ? ` — ${highlight.reanchored_by_name}` : ''}`}
+            >
+              Актуализировано {formatDate(highlight.reanchored_at)}
+              {highlight.reanchored_by_name && (
+                <span style={{ color: colors.textSecondary }}> — {highlight.reanchored_by_name}</span>
+              )}
+            </div>
+          )}
+        </div>
         <button
           onClick={() => setConfirmOpen(o => !o)}
+          title="Удалить выделение"
           style={{
-            width: '100%',
-            height: '44px',
-            padding: 0,
+            width: '34px',
+            height: '34px',
             borderRadius: radii.md,
             border: `1px solid rgba(239,68,68,0.2)`,
             background: 'rgba(239,68,68,0.05)',
             color: colors.statusLost,
-            fontSize: '13px',
             cursor: 'pointer',
-            fontFamily: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
             transition: 'all 0.15s',
           }}
           onMouseEnter={e => {
@@ -1137,7 +1101,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
           onMouseUp={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
         >
-          Удалить выделение
+          <TrashIcon size={16} />
         </button>
       </div>
       </div>

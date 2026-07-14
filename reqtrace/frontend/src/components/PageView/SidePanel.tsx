@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { XIcon } from '../Modal';
@@ -279,6 +279,18 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     return parts && parts.length ? parts : null;
   }, [highlight]);
 
+  // Фейд-подсказка прокрутки у длинной цитаты: жёсткий обрез на maxHeight не
+  // намекал, что внутри есть ещё текст. Градиент виден, пока скролл цитаты
+  // не дошёл до конца (иначе затухала бы последняя строка).
+  const quoteScrollRef = useRef<HTMLDivElement>(null);
+  const [quoteFade, setQuoteFade] = useState(false);
+  const updateQuoteFade = useCallback(() => {
+    const el = quoteScrollRef.current;
+    if (!el) return;
+    setQuoteFade(el.scrollHeight - el.scrollTop - el.clientHeight > 2);
+  }, []);
+  useEffect(() => { updateQuoteFade(); }, [rendered, quoteDiffParts, updateQuoteFade]);
+
   if (!highlight) return <div style={shellStyle(false, false)} />;
 
   const sorted = sortedByPosition(allHighlights);
@@ -375,6 +387,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         display: 'flex',
         flexDirection: 'column',
       }}>
+      {/* Микро-стили панели: мягкое проявление контента при смене привязки
+          (key на контенте ниже) и крестик «Отвязать» только при наведении на
+          строку теста (или его фокусе с клавиатуры) — список в покое чище. */}
+      <style>{`
+        @keyframes sidepanel-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .sidepanel-content-in { animation: sidepanel-fade-in 0.13s ease-out; }
+        .test-row .test-row-remove { opacity: 0; transition: opacity 0.15s; }
+        .test-row:hover .test-row-remove,
+        .test-row .test-row-remove:focus-visible { opacity: 1; }
+        @media (prefers-reduced-motion: reduce) {
+          .sidepanel-content-in { animation: none; }
+        }
+      `}</style>
       {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
           (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
           ровно под «⋮», стрелка «вниз» — под «Обновить». Высота фиксированная
@@ -559,7 +587,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div
+        key={highlight.id}
+        className="sidepanel-content-in"
+        style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}
+      >
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -593,11 +625,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </div>
         )}
 
-        {/* Карточка привязки: рамка и линии между зонами — в цвете статуса. */}
+        {/* Карточка привязки: рамка и линии между зонами — в цвете статуса;
+            лёгкая тень приподнимает героя панели над служебными блоками. */}
         <div style={{
           borderRadius: radii.md,
           border: `1px solid ${statusInfo.color}33`,
           overflow: 'hidden',
+          boxShadow: shadows.card,
         }}>
 
         {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
@@ -672,15 +706,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           title={notOnPage ? undefined : 'Показать выделение на странице'}
           style={{
             background: colors.white,
-            padding: '12px 16px',
-            fontSize: '13px',
-            lineHeight: '1.5',
-            color: colors.textPrimary,
-            maxHeight: '150px',
-            overflow: 'auto',
             borderTop: `1px solid ${statusInfo.color}33`,
             cursor: notOnPage ? 'default' : 'pointer',
             transition: 'background 0.15s',
+            position: 'relative',
           }}
           onMouseEnter={e => {
             if (notOnPage) return;
@@ -693,14 +722,40 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           {/* «❝» — маркер дословной цитаты со страницы. Подстрочник у диффа
               убран (ревью): красное зачёркнутое / зелёное читается и без
               пояснения, а подпись висела не над цитатой, а над статусом. */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-            <QuoteIcon size={14} style={{ marginTop: '3px', color: colors.textTertiary }} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              {quoteDiffParts
-                ? <QuoteDiffView parts={quoteDiffParts} />
-                : highlight.text_content}
+          <div
+            ref={quoteScrollRef}
+            onScroll={updateQuoteFade}
+            style={{
+              padding: '12px 16px',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              color: colors.textPrimary,
+              maxHeight: '150px',
+              overflow: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <QuoteIcon size={14} style={{ marginTop: '3px', color: colors.textTertiary }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                {quoteDiffParts
+                  ? <QuoteDiffView parts={quoteDiffParts} />
+                  : highlight.text_content}
+              </div>
             </div>
           </div>
+          {/* Градиент поверх нижнего края — «там ещё есть»; гаснет у конца
+              прокрутки, чтобы не туманить последнюю строку. */}
+          {quoteFade && (
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: '18px',
+              background: `linear-gradient(to bottom, rgba(255,255,255,0), ${colors.white})`,
+              pointerEvents: 'none',
+            }} />
+          )}
         </div>
 
         {/* Reanchor — нижняя строка карточки, продолжает блок «статус +
@@ -718,7 +773,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               0%, 100% { background-color: ${colors.statusOutdated}0F; }
               50% { background-color: ${colors.statusOutdated}33; }
             }
-            .reanchor-pulse { animation: reanchor-pulse 0.8s ease-in-out 2; }
+            .reanchor-pulse { animation: reanchor-pulse 0.6s ease-in-out 2; }
             @media (prefers-reduced-motion: reduce) {
               .reanchor-pulse { animation: none; }
             }
@@ -808,7 +863,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* Tests */}
         <div style={{ marginBottom: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textSecondary }}>
+            {/* Капитель секционного ярлыка: типографская иерархия — ярлык
+                тише контента, который он подписывает. */}
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: colors.textSecondary,
+            }}>
               Привязанные тесты
             </span>
             {/* Число — нейтральной пилюлей, а не «(2)» в скобках; без цветового
@@ -843,6 +906,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 return (
                 <div
                   key={test.id}
+                  className="test-row"
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -867,17 +931,29 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                       </span>
                     )}
                     {jiraBaseUrl ? (
+                      // Фирменный зелёный вместо веб-синего (#2563EB был
+                      // единственным элементом вне палитры ReqTrace); ховер —
+                      // темнее ступенью + подчёркивание: ссылка остаётся ссылкой.
                       <a
                         href={`${jiraBaseUrl}/browse/${test.test_key}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                          color: '#2563EB',
+                          color: colors.greenDark,
                           textDecoration: 'none',
                           fontWeight: 500,
                           fontSize: '13px',
+                          transition: 'color 0.15s',
                         }}
                         onClick={e => e.stopPropagation()}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.color = '#3F9E27';
+                          e.currentTarget.style.textDecoration = 'underline';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.color = colors.greenDark;
+                          e.currentTarget.style.textDecoration = 'none';
+                        }}
                       >
                         {test.test_key}
                       </a>
@@ -895,9 +971,12 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                       </span>
                     )}
                   </div>
-                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный ховер */}
+                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
+                      ховер; виден только при наведении на строку (.test-row) —
+                      список в покое без колонки крестиков. */}
                   <button
                     onClick={() => onRemoveTest(test.id)}
+                    className="test-row-remove"
                     style={{
                       width: '26px', height: '26px', borderRadius: radii.sm,
                       border: 'none', background: 'transparent', cursor: 'pointer',
@@ -944,6 +1023,17 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               fontFamily: 'inherit',
               outline: 'none',
               boxSizing: 'border-box',
+              transition: 'border-color 0.15s, box-shadow 0.15s',
+            }}
+            // Видимый фокус (в поле автофокус — приглашение печатать должно
+            // быть заметным): серые рамка и кольцо, в гамме блока тестов.
+            onFocus={e => {
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,0,0,0.05)';
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.boxShadow = 'none';
             }}
           />
           <button

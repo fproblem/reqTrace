@@ -137,7 +137,7 @@ export const Select: React.FC<{
           width: '100%',
           padding: s.padding,
           borderRadius: s.radius,
-          border: `1px solid ${open ? colors.greenDark : colors.border}`,
+          border: `1px solid ${open ? colors.focusBorder : colors.border}`,
           background: colors.white,
           fontSize: s.fontSize,
           fontFamily: 'inherit',
@@ -155,11 +155,11 @@ export const Select: React.FC<{
         onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = colors.border; }}
         // Единый фокус полей приложения: greenDark + кольцо shadows.focusRing.
         onFocus={e => {
-          e.currentTarget.style.borderColor = colors.greenDark;
+          e.currentTarget.style.borderColor = colors.focusBorder;
           e.currentTarget.style.boxShadow = shadows.focusRing;
         }}
         onBlur={e => {
-          e.currentTarget.style.borderColor = open ? colors.greenDark : colors.border;
+          e.currentTarget.style.borderColor = open ? colors.focusBorder : colors.border;
           e.currentTarget.style.boxShadow = 'none';
         }}
       >

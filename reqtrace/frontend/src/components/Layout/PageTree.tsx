@@ -434,7 +434,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
             // Единый фокус полей: рамка greenDark + тонкое кольцо
             // (shadows.focusRing), как у поля ключа теста в панели выделения.
             onFocus={e => {
-              e.currentTarget.style.borderColor = colors.greenDark;
+              e.currentTarget.style.borderColor = colors.focusBorder;
               e.currentTarget.style.boxShadow = shadows.focusRing;
             }}
             onBlur={e => {
@@ -507,7 +507,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
                 transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
               onFocus={e => {
-                e.currentTarget.style.borderColor = colors.greenDark;
+                e.currentTarget.style.borderColor = colors.focusBorder;
                 e.currentTarget.style.boxShadow = shadows.focusRing;
               }}
               onBlur={e => {

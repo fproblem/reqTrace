@@ -14,6 +14,9 @@ export const colors = {
 
   border: 'rgba(0, 0, 0, 0.07)',
   borderHover: 'rgba(0, 0, 0, 0.12)',
+  // Рамка поля в фокусе: полупрозрачный greenDark — сплошной звенел неоном
+  // (подбор по 5 вариантам на макете, v1.6.0). Пара к shadows.focusRing.
+  focusBorder: 'rgba(77, 184, 48, 0.55)',
 
   cardBg: 'rgba(255, 255, 255, 0.8)',
   cardBgSolid: '#FFFFFF',
@@ -40,9 +43,9 @@ export const shadows = {
   cardHover: '0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06)',
   panel: '0 4px 24px rgba(0, 0, 0, 0.08)',
   // Фокус-кольцо полей (как у полей Confluence, но в фирменной зелени):
-  // рамка поля при фокусе зеленеет до greenDark, кольцо — тонкое, 2px.
-  // greenAccent на рамке пробовали — неоново рядом с приглушёнными тонами.
-  focusRing: '0 0 0 2px rgba(77, 184, 48, 0.18)',
+  // рамка поля при фокусе — colors.focusBorder, кольцо — тонкое, 2px.
+  // greenAccent и сплошной greenDark на рамке пробовали — неоново.
+  focusRing: '0 0 0 2px rgba(77, 184, 48, 0.12)',
 };
 
 export const fonts = {

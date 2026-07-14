@@ -1007,10 +1007,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               boxSizing: 'border-box',
               transition: 'border-color 0.15s',
             }}
-            // Видимый фокус — по-ReqTrace'овски тихо: та же рамка 1px, только
-            // темнее соседних полей (borderHover). Колец-обводок в приложении
-            // нет нигде — пробовали и убрали.
-            onFocus={e => { e.currentTarget.style.borderColor = colors.borderHover; }}
+            // Фокус — стандарт полей ReqTrace: рамка 1px зеленеет (greenAccent),
+            // как у поиска в дереве, поля добавления страницы и Select.
+            // Кольца-обводки пробовали и убрали — таких рамок в приложении нет.
+            onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
             onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
           />
           <button

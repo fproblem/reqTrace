@@ -873,9 +873,78 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             )}
           </div>
 
+          {/* Add test form — закреплена НАД списком: добавить следующий тест
+              можно не прокручивая длинный список, а свежепривязанный ключ
+              появляется прямо под полем. */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+            <input
+              ref={testInputRef}
+              type="text"
+              value={testKey}
+              onChange={e => setTestKey(e.target.value)}
+              placeholder="PROJECT-123"
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              style={{
+                flex: 1,
+                height: '44px',
+                padding: '0 12px',
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                fontSize: '13px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+              }}
+              // Фокус — стандарт полей ReqTrace: рамка зеленеет (focusBorder,
+              // полупрозрачный greenDark) + тонкое кольцо (shadows.focusRing,
+              // референс — поля Confluence, оттенки подобраны по макету).
+              onFocus={e => {
+                e.currentTarget.style.borderColor = colors.focusBorder;
+                e.currentTarget.style.boxShadow = shadows.focusRing;
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            />
+            <button
+              onClick={handleAdd}
+              disabled={!testKey.trim() || adding}
+              style={{
+                height: '44px',
+                padding: '0 14px',
+                borderRadius: radii.md,
+                border: 'none',
+                background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: testKey.trim() && !adding ? 'pointer' : 'default',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = testKey.trim() ? colors.greenAccent : '#E5E7EB';
+              }}
+              onMouseDown={e => {
+                if (testKey.trim() && !adding) e.currentTarget.style.background = '#3F9E27';
+              }}
+              onMouseUp={e => {
+                if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
+              }}
+            >
+              {adding ? '...' : 'Добавить'}
+            </button>
+          </div>
+
           {noTests ? (
             <div style={{ fontSize: '13px', color: colors.textTertiary, fontStyle: 'italic' }}>
-              Тестов пока нет — привяжите первый в поле ниже
+              Тестов пока нет — привяжите первый
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -988,73 +1057,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               })}
             </div>
           )}
-        </div>
-
-        {/* Add test form */}
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input
-            ref={testInputRef}
-            type="text"
-            value={testKey}
-            onChange={e => setTestKey(e.target.value)}
-            placeholder="PROJECT-123"
-            onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            style={{
-              flex: 1,
-              height: '44px',
-              padding: '0 12px',
-              borderRadius: radii.md,
-              border: `1px solid ${colors.border}`,
-              fontSize: '13px',
-              fontFamily: 'inherit',
-              outline: 'none',
-              boxSizing: 'border-box',
-              transition: 'border-color 0.15s, box-shadow 0.15s',
-            }}
-            // Фокус — стандарт полей ReqTrace: рамка зеленеет (focusBorder,
-            // полупрозрачный greenDark) + тонкое кольцо (shadows.focusRing,
-            // референс — поля Confluence, оттенки подобраны по макету).
-            onFocus={e => {
-              e.currentTarget.style.borderColor = colors.focusBorder;
-              e.currentTarget.style.boxShadow = shadows.focusRing;
-            }}
-            onBlur={e => {
-              e.currentTarget.style.borderColor = colors.border;
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          />
-          <button
-            onClick={handleAdd}
-            disabled={!testKey.trim() || adding}
-            style={{
-              height: '44px',
-              padding: '0 14px',
-              borderRadius: radii.md,
-              border: 'none',
-              background: testKey.trim() ? colors.greenAccent : '#E5E7EB',
-              color: '#fff',
-              fontWeight: 600,
-              fontSize: '13px',
-              cursor: testKey.trim() && !adding ? 'pointer' : 'default',
-              fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => {
-              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = testKey.trim() ? colors.greenAccent : '#E5E7EB';
-            }}
-            onMouseDown={e => {
-              if (testKey.trim() && !adding) e.currentTarget.style.background = '#3F9E27';
-            }}
-            onMouseUp={e => {
-              if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
-            }}
-          >
-            {adding ? '...' : 'Добавить'}
-          </button>
         </div>
 
       </div>

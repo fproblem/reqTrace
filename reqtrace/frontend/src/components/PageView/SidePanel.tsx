@@ -756,9 +756,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
 
         {/* Дивайдер-секция: группа привязки (статус + цитата + актуализация)
-            отделена от тестов. Полная ширина панели (минус-поля гасят паддинг
-            контента) — линия читается как у шапки и футера. */}
-        <div style={{ height: '1px', background: colors.border, margin: '20px -20px', flexShrink: 0 }} />
+            отделена от тестов. В пределах контентных полей, краёв панели не
+            касается — как вертикальный разделитель в шапке. */}
+        <div style={{ height: '1px', background: colors.border, margin: '20px 0', flexShrink: 0 }} />
 
         {/* Tests */}
         <div style={{ marginBottom: '6px', flexShrink: 0 }}>
@@ -946,9 +946,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           height: '1px',
           background: colors.border,
           marginTop: 'auto',
-          marginRight: '-20px',
           marginBottom: '20px',
-          marginLeft: '-20px',
           flexShrink: 0,
         }} />
 

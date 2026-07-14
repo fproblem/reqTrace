@@ -40,8 +40,9 @@ export const shadows = {
   cardHover: '0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06)',
   panel: '0 4px 24px rgba(0, 0, 0, 0.08)',
   // Фокус-кольцо полей (как у полей Confluence, но в фирменной зелени):
-  // рамка поля при фокусе зеленеет до greenAccent, кольцо — тонкое, 2px.
-  focusRing: '0 0 0 2px rgba(122, 224, 90, 0.35)',
+  // рамка поля при фокусе зеленеет до greenDark, кольцо — тонкое, 2px.
+  // greenAccent на рамке пробовали — неоново рядом с приглушёнными тонами.
+  focusRing: '0 0 0 2px rgba(77, 184, 48, 0.18)',
 };
 
 export const fonts = {

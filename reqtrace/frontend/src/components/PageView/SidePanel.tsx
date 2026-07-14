@@ -1007,10 +1007,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               boxSizing: 'border-box',
               transition: 'border-color 0.15s, box-shadow 0.15s',
             }}
-            // Фокус — стандарт полей ReqTrace: рамка зеленеет + тонкое
-            // фокус-кольцо (shadows.focusRing, референс — поля Confluence).
+            // Фокус — стандарт полей ReqTrace: рамка зеленеет (greenDark,
+            // приглушённый) + тонкое кольцо (shadows.focusRing, референс —
+            // поля Confluence).
             onFocus={e => {
-              e.currentTarget.style.borderColor = colors.greenAccent;
+              e.currentTarget.style.borderColor = colors.greenDark;
               e.currentTarget.style.boxShadow = shadows.focusRing;
             }}
             onBlur={e => {

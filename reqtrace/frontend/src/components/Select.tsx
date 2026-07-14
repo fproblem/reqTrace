@@ -137,7 +137,7 @@ export const Select: React.FC<{
           width: '100%',
           padding: s.padding,
           borderRadius: s.radius,
-          border: `1px solid ${open ? colors.greenAccent : colors.border}`,
+          border: `1px solid ${open ? colors.greenDark : colors.border}`,
           background: colors.white,
           fontSize: s.fontSize,
           fontFamily: 'inherit',
@@ -149,12 +149,19 @@ export const Select: React.FC<{
           gap: '8px',
           outline: 'none',
           boxSizing: 'border-box',
-          transition: 'border-color 0.15s',
+          transition: 'border-color 0.15s, box-shadow 0.15s',
         }}
         onMouseEnter={e => { if (!open) e.currentTarget.style.borderColor = colors.borderHover; }}
         onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = colors.border; }}
-        onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
-        onBlur={e => { e.currentTarget.style.borderColor = open ? colors.greenAccent : colors.border; }}
+        // Единый фокус полей приложения: greenDark + кольцо shadows.focusRing.
+        onFocus={e => {
+          e.currentTarget.style.borderColor = colors.greenDark;
+          e.currentTarget.style.boxShadow = shadows.focusRing;
+        }}
+        onBlur={e => {
+          e.currentTarget.style.borderColor = open ? colors.greenDark : colors.border;
+          e.currentTarget.style.boxShadow = 'none';
+        }}
       >
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {selected?.label ?? ''}

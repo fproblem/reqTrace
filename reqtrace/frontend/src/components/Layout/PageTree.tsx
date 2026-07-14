@@ -431,10 +431,10 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               color: searchDisabled ? colors.textTertiary : colors.textPrimary,
               cursor: searchDisabled ? 'not-allowed' : 'text',
             }}
-            // Единый фокус полей: зелёная рамка + тонкое кольцо (shadows.focusRing),
-            // как у поля ключа теста в панели выделения.
+            // Единый фокус полей: рамка greenDark + тонкое кольцо
+            // (shadows.focusRing), как у поля ключа теста в панели выделения.
             onFocus={e => {
-              e.currentTarget.style.borderColor = colors.greenAccent;
+              e.currentTarget.style.borderColor = colors.greenDark;
               e.currentTarget.style.boxShadow = shadows.focusRing;
             }}
             onBlur={e => {
@@ -504,10 +504,16 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
                 fontFamily: 'inherit',
                 outline: 'none',
                 boxSizing: 'border-box',
-                transition: 'border-color 0.15s',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
-              onFocus={e => { e.currentTarget.style.borderColor = colors.greenAccent; }}
-              onBlur={e => { e.currentTarget.style.borderColor = colors.border; }}
+              onFocus={e => {
+                e.currentTarget.style.borderColor = colors.greenDark;
+                e.currentTarget.style.boxShadow = shadows.focusRing;
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.boxShadow = 'none';
+              }}
             />
             {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
             {candidateProjects.length > 1 && (

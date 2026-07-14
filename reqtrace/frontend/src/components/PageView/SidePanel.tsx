@@ -57,10 +57,25 @@ interface SidePanelProps {
   onNavigate: (highlight: Highlight) => void;
 }
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  active: { label: 'Актуально', color: colors.statusActive },
-  outdated: { label: 'Требует проверки', color: colors.statusOutdated },
-  lost: { label: 'Утрачено', color: colors.statusLost },
+// hint — определение статуса для тултипа шапки карточки: модель привязок
+// должна объясняться сама, без чтения документации (формулировки — по
+// правилам anchoring-plan-v1.5.9).
+const statusLabels: Record<string, { label: string; color: string; hint: string }> = {
+  active: {
+    label: 'Актуально',
+    color: colors.statusActive,
+    hint: 'Актуально: текст выделения подтверждён человеком и после этого не менялся',
+  },
+  outdated: {
+    label: 'Требует проверки',
+    color: colors.statusOutdated,
+    hint: 'Требует проверки: привязка ещё не подтверждена или текст под ней изменился — проверьте и нажмите «Актуализировать»',
+  },
+  lost: {
+    label: 'Утрачено',
+    color: colors.statusLost,
+    hint: 'Утрачено: выделенный текст удалён со страницы, статус окончательный — тесты сохранены для перепривязки',
+  },
 };
 
 // Знак статуса привязки → вид общего StatusAlertIcon (галочка/«!»/крестик).
@@ -220,6 +235,31 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [rendered, confirmOpen, testKey, allHighlights, onNavigate]);
+
+  // Одноразовый пульс «Актуализировать» в момент, когда у outdated-привязки
+  // появился ПЕРВЫЙ тест: кнопка ожила — остался один шаг. Сигнал привязан к
+  // событию перехода (не к состоянию), затухает за ~1с и не возвращается —
+  // постоянное напоминание мозолило бы глаза при серийной работе.
+  const [reanchorPulse, setReanchorPulse] = useState(false);
+  const prevTestsRef = useRef<{ id: string; count: number } | null>(null);
+  useEffect(() => {
+    if (!rendered) {
+      prevTestsRef.current = null;
+      return;
+    }
+    const prev = prevTestsRef.current;
+    prevTestsRef.current = { id: rendered.id, count: rendered.tests.length };
+    // Смена привязки — не событие «тест добавили», мигать нечему.
+    if (!prev || prev.id !== rendered.id) {
+      setReanchorPulse(false);
+      return;
+    }
+    if (prev.count === 0 && rendered.tests.length > 0 && rendered.status === 'outdated') {
+      setReanchorPulse(true);
+      const t = setTimeout(() => setReanchorPulse(false), 1000);
+      return () => clearTimeout(t);
+    }
+  }, [rendered]);
 
   // Дальше рисуем rendered: во время анимации закрытия activeHighlight уже
   // null, а панель ещё должна показывать последнее выделение. Когда показывать
@@ -565,7 +605,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             одностатусных и шеврон как намёк на переход. */}
         <div
           onClick={statusNavigable ? handleNextOfStatus : undefined}
-          title={statusNavigable ? 'Перейти к следующему выделению с этим статусом' : undefined}
+          title={statusNavigable
+            ? `${statusInfo.hint}. Клик — к следующему выделению с этим статусом`
+            : statusInfo.hint}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -667,7 +709,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             текст — «актуальное» выделение без единого теста вводило бы в
             заблуждение. Привязали первый тест — кнопка оживает. */}
         {highlight.status === 'outdated' && onReanchor && (
+          <>
+          {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
+              ховер-манипуляции фоном на время проигрывания, а reduced-motion
+              отключается медиа-запросом. */}
+          <style>{`
+            @keyframes reanchor-pulse {
+              0%, 100% { background-color: ${colors.statusOutdated}0F; }
+              50% { background-color: ${colors.statusOutdated}4D; }
+            }
+            .reanchor-pulse { animation: reanchor-pulse 0.45s ease-in-out 2; }
+            @media (prefers-reduced-motion: reduce) {
+              .reanchor-pulse { animation: none; }
+            }
+          `}</style>
           <button
+            className={reanchorPulse ? 'reanchor-pulse' : undefined}
             // Не disabled-атрибут, а охрана в onClick: disabled глушит события
             // мыши, и у недоступной кнопки не работали ни title, ни курсор —
             // а «почему нельзя нажать» важнее всего именно у недоступной.
@@ -720,6 +777,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           >
             {reanchoring ? 'Актуализация...' : 'Актуализировать'}
           </button>
+          </>
         )}
 
         {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
@@ -772,7 +830,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
           {noTests ? (
             <div style={{ fontSize: '13px', color: colors.textTertiary, fontStyle: 'italic' }}>
-              Нет привязанных тестов
+              Тестов пока нет — привяжите первый в поле ниже
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

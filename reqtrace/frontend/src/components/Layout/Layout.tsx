@@ -358,10 +358,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 display: 'flex', alignItems: 'center', gap: '8px',
                 // 174×35 — фактические размеры сегмент-контрола
                 // «Покрытие|Изменения» (замер headless-мокапом): профиль стоит
-                // ровно над ним и совпадает по габаритам, длинное имя — в
-                // эллипсис.
+                // ровно над ним и совпадает по габаритам. Аватар с именем — по
+                // центру чипа (короткое имя не оставляет перекос вправо),
+                // длинное имя — в эллипсис.
+                justifyContent: 'center',
                 height: '35px', width: '174px', boxSizing: 'border-box',
-                padding: '0 12px 0 4px', borderRadius: radii.pill,
+                padding: '0 10px', borderRadius: radii.pill,
                 // Рамка и белый фон — как у остальных кнопок баров: без них
                 // чип читался просто как имя, а не как кнопка.
                 border: `1px solid ${isSettings ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
@@ -403,7 +405,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <span style={{
                 fontSize: '13px', fontWeight: 600,
                 color: isSettings ? colors.greenDark : colors.textPrimary,
-                flex: 1, minWidth: 0, textAlign: 'left',
+                minWidth: 0,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {user.name}

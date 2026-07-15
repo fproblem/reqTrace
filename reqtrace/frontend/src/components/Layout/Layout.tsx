@@ -356,10 +356,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               title={`Профиль и проекты${user.email ? `\n${user.email}` : ''}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
-                // 35px — фактическая высота сегмент-контрола «Покрытие|Изменения»
-                // (9px паддинги + строка 12px + рамка): профиль стоит ровно над
-                // ним и совпадает по размеру.
-                height: '35px', boxSizing: 'border-box',
+                // 174×35 — фактические размеры сегмент-контрола
+                // «Покрытие|Изменения» (замер headless-мокапом): профиль стоит
+                // ровно над ним и совпадает по габаритам, длинное имя — в
+                // эллипсис.
+                height: '35px', width: '174px', boxSizing: 'border-box',
                 padding: '0 12px 0 4px', borderRadius: radii.pill,
                 // Рамка и белый фон — как у остальных кнопок баров: без них
                 // чип читался просто как имя, а не как кнопка.
@@ -402,6 +403,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <span style={{
                 fontSize: '13px', fontWeight: 600,
                 color: isSettings ? colors.greenDark : colors.textPrimary,
+                flex: 1, minWidth: 0, textAlign: 'left',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {user.name}
               </span>

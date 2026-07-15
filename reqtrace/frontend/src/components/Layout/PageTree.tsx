@@ -13,7 +13,9 @@ import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
-function highlightMatch(text: string, query: string): React.ReactNode {
+// Подсветка совпадения с поисковым запросом (жёлтая подложка). Экспорт —
+// её же использует поиск ключей на экране «Тесты».
+export function highlightMatch(text: string, query: string): React.ReactNode {
   const q = query.trim().toLowerCase();
   if (!q) return text;
   const idx = text.toLowerCase().indexOf(q);

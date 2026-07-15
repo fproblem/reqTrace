@@ -24,13 +24,22 @@ from app.models.page import Page
 from app.models.project import Project, ProjectCredential
 from app.models.snapshot import PageSnapshot
 from app.models.user import User
-from app.project_access import connection_for, get_my_credential, normalize_base_url
+from app.project_access import (
+    connection_for,
+    get_my_credential,
+    normalize_base_url,
+    require_project_access,
+)
 from app.schemas.project import (
     CredentialCheckResult,
     CredentialsUpsert,
     ProjectCreate,
     ProjectListItem,
+    ProjectTestIndex,
+    ProjectTestsStats,
     ProjectUpdate,
+    TestIndexEntry,
+    TestLinkRef,
 )
 from app.services import confluence
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
@@ -101,6 +110,159 @@ async def list_projects(
     my_creds = {c.project_id: c for c in creds_result.scalars().all()}
 
     return [_item(p, my_creds.get(p.id)) for p in projects]
+
+
+def _excerpt(text: str, limit: int = 140) -> str:
+    """Обрезанная цитата для списков: полный текст реверс-индексу не нужен."""
+    text = text or ""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _norm_key(key: str) -> str:
+    """Ключи аппер-кейсятся при вводе, но старые данные могли сохраниться
+    иначе — агрегируем по нормализованной форме."""
+    return (key or "").strip().upper()
+
+
+@router.get("/stats", response_model=list[ProjectTestsStats])
+async def projects_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Сводка по проектам пользователя — ярус выбора экрана «Тесты».
+
+    Видимость — как у дерева страниц: обычные проекты со статусом ok плюс
+    личный демо-проект. Всё считается по локальной БД (агрегация в Python —
+    объёмы малые, зато запросы простые и тестируемые).
+    """
+    memberships = await db.execute(
+        select(Project)
+        .join(ProjectCredential, ProjectCredential.project_id == Project.id)
+        .where(
+            ProjectCredential.user_id == current_user.id,
+            ProjectCredential.status == "ok",
+            Project.is_demo == False,  # noqa: E712
+        )
+        .order_by(Project.name)
+    )
+    projects: list[Project] = list(memberships.scalars().all())
+    demo_result = await db.execute(
+        select(Project).where(
+            Project.is_demo == True, Project.created_by == current_user.id  # noqa: E712
+        )
+    )
+    projects += list(demo_result.scalars().all())
+    if not projects:
+        return []
+
+    project_ids = [p.id for p in projects]
+    page_rows = (await db.execute(
+        select(Page.id, Page.project_id).where(Page.project_id.in_(project_ids))
+    )).all()
+    page_project = {page_id: project_id for page_id, project_id in page_rows}
+
+    hl_rows = []
+    if page_project:
+        hl_rows = (await db.execute(
+            select(Highlight.id, Highlight.page_id, Highlight.status)
+            .where(Highlight.page_id.in_(list(page_project)))
+        )).all()
+    hl_project = {hl_id: page_project[page_id] for hl_id, page_id, _ in hl_rows}
+
+    link_rows = []
+    if hl_project:
+        link_rows = (await db.execute(
+            select(HighlightTest.highlight_id, HighlightTest.test_key)
+            .where(HighlightTest.highlight_id.in_(list(hl_project)))
+        )).all()
+
+    stats = {
+        p.id: ProjectTestsStats(project_id=p.id, project_name=p.name, is_demo=p.is_demo)
+        for p in projects
+    }
+    for _, project_id in page_rows:
+        stats[project_id].pages += 1
+    for _, page_id, status in hl_rows:
+        s = stats[page_project[page_id]]
+        s.highlights += 1
+        if status == "active":
+            s.active += 1
+        elif status == "outdated":
+            s.outdated += 1
+        elif status == "lost":
+            s.lost += 1
+    covered: set = set()
+    keys_by_project: dict = {}
+    for hl_id, key in link_rows:
+        covered.add(hl_id)
+        keys_by_project.setdefault(hl_project[hl_id], set()).add(_norm_key(key))
+    for hl_id in covered:
+        stats[hl_project[hl_id]].covered += 1
+    for project_id, keys in keys_by_project.items():
+        stats[project_id].tests = len(keys)
+
+    return [stats[p.id] for p in projects]
+
+
+@router.get("/{project_id}/tests", response_model=ProjectTestIndex)
+async def project_test_index(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Реверс-индекс тестов проекта: ключ → привязки (страница, статус, цитата).
+
+    Доступ — как к контенту проекта (членство ok; чужое демо «не существует»).
+    Ключи агрегируются по нормализованной форме; порядок ключей и привязок —
+    дело фронта (натуральная сортировка уже живёт там, testOrder.ts).
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_access(db, project, current_user)
+
+    page_rows = (await db.execute(
+        select(Page.id, Page.title).where(Page.project_id == project.id)
+    )).all()
+    page_title = {page_id: title for page_id, title in page_rows}
+
+    hl_rows = []
+    if page_title:
+        hl_rows = (await db.execute(
+            select(Highlight.id, Highlight.page_id, Highlight.status, Highlight.text_content)
+            .where(Highlight.page_id.in_(list(page_title)))
+        )).all()
+    hl_by_id = {hl_id: (page_id, status, text) for hl_id, page_id, status, text in hl_rows}
+
+    link_rows = []
+    if hl_by_id:
+        link_rows = (await db.execute(
+            select(HighlightTest.id, HighlightTest.highlight_id, HighlightTest.test_key)
+            .where(HighlightTest.highlight_id.in_(list(hl_by_id)))
+        )).all()
+
+    entries: dict[str, list[TestLinkRef]] = {}
+    for link_id, hl_id, key in link_rows:
+        page_id, status, text = hl_by_id[hl_id]
+        entries.setdefault(_norm_key(key), []).append(TestLinkRef(
+            link_id=link_id,
+            highlight_id=hl_id,
+            page_id=page_id,
+            page_title=page_title[page_id],
+            status=status,
+            excerpt=_excerpt(text),
+        ))
+
+    tests = [
+        TestIndexEntry(key=key, links=sorted(links, key=lambda l: (l.page_title, l.excerpt)))
+        for key, links in sorted(entries.items())
+    ]
+    return ProjectTestIndex(
+        project_id=project.id,
+        project_name=project.name,
+        jira_base_url=project.jira_base_url,
+        tests=tests,
+    )
 
 
 @router.post("", response_model=ProjectListItem, status_code=201)

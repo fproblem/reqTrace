@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { PageTree } from './PageTree';
-import { LogoutIcon } from '../icons';
+import { BellIcon, ClipboardCheckIcon, LogoutIcon } from '../icons';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -157,6 +157,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, []);
 
   const isSettings = location.pathname === '/settings';
+  const isTests = location.pathname === '/tests' || location.pathname.startsWith('/tests/');
   // During a drag the contents follow the cursor zone (tree once width >= MIN_WIDTH),
   // while the width tracks the cursor smoothly. Outside a drag they follow the
   // committed state. Release commits the dragged width as-is (no snap-back → no bounce).
@@ -305,14 +306,64 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             поэтому вход туда живёт под лицом пользователя, а не отдельной
             кнопкой. «Выйти» — кнопка-иконка в общем стиле кнопок баров. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          {/* Раздел «Тесты» — реверс-индекс «тест → требования». Полноценная
+              кнопка с текстом (не квадратик): раздел новый, его нужно найти.
+              Серая в покое, зелёная — когда раздел открыт (как профиль-чип). */}
+          {user && (
+            <button
+              onClick={() => navigate('/tests')}
+              title="Тесты проектов: какие требования держит каждый тест"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                height: '34px', padding: '0 14px',
+                borderRadius: radii.md,
+                // Белая, как остальные кнопки баров (чип версии, «Выйти»):
+                // серая заливка выбивалась из общей гаммы кнопок шапки.
+                border: `1px solid ${isTests ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
+                background: isTests ? colors.greenLight : colors.white,
+                color: isTests ? colors.greenDark : colors.textSecondary,
+                fontSize: '13px', fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                if (isTests) return;
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                if (isTests) return;
+                e.currentTarget.style.background = colors.white;
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+              onMouseDown={e => { if (!isTests) e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+              onMouseUp={e => { if (!isTests) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+            >
+              <ClipboardCheckIcon size={15} />
+              Тесты
+            </button>
+          )}
+          {/* Дивайдер отделяет разделы приложения от персонального кластера —
+              как разделители в шапках панели и страницы. */}
+          {user && (
+            <div style={{ width: '1px', height: '24px', background: colors.border, flexShrink: 0 }} />
+          )}
           {user && (
             <button
               onClick={() => navigate('/settings')}
               title={`Профиль и проекты${user.email ? `\n${user.email}` : ''}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
-                height: '34px', boxSizing: 'border-box',
-                padding: '0 12px 0 4px', borderRadius: radii.pill,
+                // 174×35 — фактические размеры сегмент-контрола
+                // «Покрытие|Изменения» (замер headless-мокапом): профиль стоит
+                // ровно над ним и совпадает по габаритам. Аватар с именем — по
+                // центру чипа (короткое имя не оставляет перекос вправо),
+                // длинное имя — в эллипсис.
+                justifyContent: 'center',
+                height: '35px', width: '174px', boxSizing: 'border-box',
+                padding: '0 10px', borderRadius: radii.pill,
                 // Рамка и белый фон — как у остальных кнопок баров: без них
                 // чип читался просто как имя, а не как кнопка.
                 border: `1px solid ${isSettings ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
@@ -354,12 +405,36 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <span style={{
                 fontSize: '13px', fontWeight: 600,
                 color: isSettings ? colors.greenDark : colors.textPrimary,
+                minWidth: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {user.name}
               </span>
             </button>
           )}
 
+          {/* Колокольчик — замах на систему оповещений и дайджестов: место
+              застолблено уже сейчас, кнопка сознательно НЕАКТИВНАЯ на вид
+              (приглушена, без ховера и клика) — тултип обещает будущее. */}
+          {user && (
+            <button
+              title="Уведомления и дайджесты — скоро"
+              aria-disabled
+              style={{
+                width: '34px', height: '34px', padding: 0,
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                background: colors.white,
+                color: colors.textTertiary,
+                opacity: 0.55,
+                cursor: 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <BellIcon size={16} />
+            </button>
+          )}
           {user && (
             <button
               onClick={() => { void logout(); }}

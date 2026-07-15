@@ -41,3 +41,45 @@ class ProjectListItem(BaseModel):
 class CredentialCheckResult(BaseModel):
     status: str                            # ok | invalid
     last_check_at: datetime
+
+
+# --- Экран «Тесты» (v1.6.1): реверс-индекс «ключ → привязки» ---
+
+class ProjectTestsStats(BaseModel):
+    """Сводка проекта для яруса выбора на экране «Тесты».
+
+    Считается целиком по локальной БД — походов в Confluence нет, поэтому
+    доступна и при недоступном Confluence (лишь бы креды были ok).
+    """
+    project_id: UUID
+    project_name: str
+    is_demo: bool = False
+    pages: int = 0
+    highlights: int = 0
+    covered: int = 0    # привязок с хотя бы одним тестом
+    tests: int = 0      # различных ключей (нормализованных)
+    active: int = 0
+    outdated: int = 0
+    lost: int = 0
+
+
+class TestLinkRef(BaseModel):
+    """Одна привязка ключа: где живёт и в каком статусе."""
+    link_id: UUID
+    highlight_id: UUID
+    page_id: UUID
+    page_title: str
+    status: str
+    excerpt: str        # цитата, обрезанная на сервере — полная не нужна списку
+
+
+class TestIndexEntry(BaseModel):
+    key: str
+    links: list[TestLinkRef]
+
+
+class ProjectTestIndex(BaseModel):
+    project_id: UUID
+    project_name: str
+    jira_base_url: Optional[str] = None   # для ссылок ключей в Jira
+    tests: list[TestIndexEntry]

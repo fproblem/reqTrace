@@ -1120,19 +1120,20 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           zIndex: 1000,
         }}>
           {/* preventDefault на mousedown — клик не должен снять выделение
-              раньше, чем сработает onClick. Ховер/пресс — ступени той же
-              зелени вниз от базового greenDark (#3F9E27 — пресс примари-кнопок). */}
+              раньше, чем сработает onClick. База — greenAccent, как у активного
+              сегмента «Покрытие» (greenDark на кнопке читался чужим оттенком);
+              ховер/пресс — ступени примари-кнопок (greenDark → #3F9E27). */}
           <button
-            onMouseDown={e => { e.preventDefault(); e.currentTarget.style.background = '#358A1F'; }}
-            onMouseUp={e => { e.currentTarget.style.background = '#3F9E27'; }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#3F9E27'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = colors.greenDark; }}
+            onMouseDown={e => { e.preventDefault(); e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
+            onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+            onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
             onClick={handleCreateHighlight}
             style={{
               padding: '8px 16px',
               borderRadius: radii.pill,
               border: 'none',
-              background: colors.greenDark,
+              background: colors.greenAccent,
               color: '#fff',
               fontSize: '13px',
               fontWeight: 600,

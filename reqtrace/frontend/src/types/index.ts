@@ -153,3 +153,39 @@ export interface DiffResponse {
   baseline_version: number;
   current_version: number;
 }
+
+// --- Экран «Тесты» (v1.6.1): реверс-индекс «ключ → привязки» ---
+
+export interface ProjectTestsStats {
+  project_id: string;
+  project_name: string;
+  is_demo: boolean;
+  pages: number;
+  highlights: number;
+  covered: number;
+  tests: number;
+  active: number;
+  outdated: number;
+  lost: number;
+}
+
+export interface TestLinkRef {
+  link_id: string;
+  highlight_id: string;
+  page_id: string;
+  page_title: string;
+  status: 'active' | 'outdated' | 'lost';
+  excerpt: string;
+}
+
+export interface TestIndexEntry {
+  key: string;
+  links: TestLinkRef[];
+}
+
+export interface ProjectTestIndex {
+  project_id: string;
+  project_name: string;
+  jira_base_url: string | null;
+  tests: TestIndexEntry[];
+}

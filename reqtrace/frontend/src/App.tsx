@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { PageDetailPage } from './pages/PageDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TestsPage } from './pages/TestsPage';
+import { ProjectTestsPage } from './pages/ProjectTestsPage';
 import { Layout } from './components/Layout/Layout';
 import { ToastProvider } from './components/Toast';
 import { TreeRefreshProvider } from './hooks/useTreeRefresh';
@@ -52,6 +54,8 @@ function AppContent() {
             } />
             <Route path="/pages/:pageId" element={<PageDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/tests" element={<TestsPage />} />
+            <Route path="/tests/:projectId" element={<ProjectTestsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>

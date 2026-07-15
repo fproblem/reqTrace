@@ -577,5 +577,82 @@ class TestDemoPages(ProjectTestBase):
         self.assertNotIn(demo, self.session.deleted)
 
 
+class TestTestsScreenEndpoints(ProjectTestBase):
+    """Экран «Тесты» (v1.6.1): сводка проектов и реверс-индекс ключей.
+
+    FakeSession не интерпретирует WHERE — скоуп «только ok-проекты» зашит в
+    сам запрос членств; здесь проверяется агрегация и контроль доступа.
+    """
+
+    def test_stats_aggregates_counts(self):
+        project = make_project(created_by=self.user.id)
+        pg1, pg2, pg3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        h1, h2, h3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        self.session.execute_results = [
+            [project],   # членства со статусом ok
+            [],          # демо-проекта нет
+            FakeResult([(pg1, project.id), (pg2, project.id), (pg3, project.id)]),
+            FakeResult([(h1, pg1, "active"), (h2, pg1, "outdated"), (h3, pg2, "lost")]),
+            # REQ-1 привязан дважды в разных написаниях — это ОДИН тест
+            FakeResult([(h1, "REQ-1"), (h1, "req-1 "), (h2, "REQ-2")]),
+        ]
+        resp = self.client.get("/api/projects/stats")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        [s] = resp.json()
+        self.assertEqual(s["pages"], 3)
+        self.assertEqual(s["highlights"], 3)
+        self.assertEqual(s["active"], 1)
+        self.assertEqual(s["outdated"], 1)
+        self.assertEqual(s["lost"], 1)
+        self.assertEqual(s["covered"], 2)   # у h3 тестов нет
+        self.assertEqual(s["tests"], 2)     # REQ-1 (нормализован) и REQ-2
+
+    def test_stats_empty_without_projects(self):
+        self.session.execute_results = [[], []]
+        resp = self.client.get("/api/projects/stats")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
+
+    def test_test_index_aggregates_normalizes_and_truncates(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        long_text = "х" * 200
+        pg1, pg2 = uuid.uuid4(), uuid.uuid4()
+        h1, h2 = uuid.uuid4(), uuid.uuid4()
+        l1, l2, l3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        self.session.execute_results = [
+            FakeResult(cred),   # членство ok
+            FakeResult([(pg1, "Оплата"), (pg2, "Возвраты")]),
+            FakeResult([(h1, pg1, "active", long_text), (h2, pg2, "lost", "коротко")]),
+            # req-1 в двух написаниях склеивается в REQ-1
+            FakeResult([(l1, h1, "req-1"), (l2, h2, "REQ-1"), (l3, h2, "REQ-2")]),
+        ]
+        resp = self.client.get(f"/api/projects/{project.id}/tests")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        self.assertEqual([t["key"] for t in data["tests"]], ["REQ-1", "REQ-2"])
+        req1 = data["tests"][0]
+        # привязки отсортированы по названию страницы
+        self.assertEqual([l["page_title"] for l in req1["links"]], ["Возвраты", "Оплата"])
+        long_link = req1["links"][1]
+        self.assertEqual(len(long_link["excerpt"]), 140)
+        self.assertTrue(long_link["excerpt"].endswith("…"))
+        self.assertEqual(req1["links"][0]["status"], "lost")
+
+    def test_test_index_requires_membership(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(None)]   # кред нет
+        resp = self.client.get(f"/api/projects/{project.id}/tests")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_test_index_foreign_demo_is_404(self):
+        project = make_project(is_demo=True)   # created_by — чужой
+        self.session.objects[(Project, project.id)] = project
+        resp = self.client.get(f"/api/projects/{project.id}/tests")
+        self.assertEqual(resp.status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

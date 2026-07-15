@@ -950,9 +950,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {tests.map(test => {
                 // Ключ непохож на PROJECT-123 — вероятная опечатка и битая
-                // ссылка в Jira. Строка целиком в янтаре (рамка + заливка, как
-                // у плашки «Требует проверки»), значок-пояснение — В НАЧАЛЕ
-                // строки; помечаются и давние опечатки, не только свежий ввод.
+                // ссылка в Jira: значок-пояснение в начале строки, ключ — не
+                // ссылка. Сама строка обычная: янтарные рамку и заливку
+                // пробовали (v1.6.0) и убрали — целиком крашеная строка
+                // перегружала список, значка достаточно.
                 const nonstandard = !isLikelyJiraKey(test.test_key);
                 return (
                 <div
@@ -965,8 +966,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     height: '44px',
                     padding: '0 12px',
                     borderRadius: radii.md,
-                    border: `1px solid ${nonstandard ? 'rgba(245,158,11,0.3)' : colors.border}`,
-                    background: nonstandard ? 'rgba(245,158,11,0.06)' : colors.white,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.white,
                   }}
                 >
                   {/* Ключ — ссылка только когда есть адрес Jira И формат похож

@@ -317,8 +317,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 display: 'flex', alignItems: 'center', gap: '8px',
                 height: '34px', padding: '0 14px',
                 borderRadius: radii.md,
+                // Белая, как остальные кнопки баров (чип версии, «Выйти»):
+                // серая заливка выбивалась из общей гаммы кнопок шапки.
                 border: `1px solid ${isTests ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
-                background: isTests ? colors.greenLight : 'rgba(0,0,0,0.03)',
+                background: isTests ? colors.greenLight : colors.white,
                 color: isTests ? colors.greenDark : colors.textSecondary,
                 fontSize: '13px', fontWeight: 600,
                 cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
@@ -326,18 +328,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               }}
               onMouseEnter={e => {
                 if (isTests) return;
-                e.currentTarget.style.background = 'rgba(0,0,0,0.07)';
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
                 e.currentTarget.style.borderColor = colors.borderHover;
                 e.currentTarget.style.color = colors.textPrimary;
               }}
               onMouseLeave={e => {
                 if (isTests) return;
-                e.currentTarget.style.background = 'rgba(0,0,0,0.03)';
+                e.currentTarget.style.background = colors.white;
                 e.currentTarget.style.borderColor = colors.border;
                 e.currentTarget.style.color = colors.textSecondary;
               }}
-              onMouseDown={e => { if (!isTests) e.currentTarget.style.background = 'rgba(0,0,0,0.10)'; }}
-              onMouseUp={e => { if (!isTests) e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; }}
+              onMouseDown={e => { if (!isTests) e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+              onMouseUp={e => { if (!isTests) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
             >
               <ClipboardCheckIcon size={15} />
               Тесты
@@ -354,7 +356,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               title={`Профиль и проекты${user.email ? `\n${user.email}` : ''}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
-                height: '34px', boxSizing: 'border-box',
+                // 35px — фактическая высота сегмент-контрола «Покрытие|Изменения»
+                // (9px паддинги + строка 12px + рамка): профиль стоит ровно над
+                // ним и совпадает по размеру.
+                height: '35px', boxSizing: 'border-box',
                 padding: '0 12px 0 4px', borderRadius: radii.pill,
                 // Рамка и белый фон — как у остальных кнопок баров: без них
                 // чип читался просто как имя, а не как кнопка.

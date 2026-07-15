@@ -3,6 +3,7 @@ import type {
   Highlight, TestLink, DiffResponse, BaselineInfo,
   ProjectTree, TreeSyncResult,
   Project, CredentialCheckResult,
+  ProjectTestsStats, ProjectTestIndex,
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -220,6 +221,13 @@ export const api = {
   // Diff
   getDiff: (pageId: string) =>
     request<DiffResponse>(`/pages/${pageId}/diff`),
+
+  // Экран «Тесты» (v1.6.1): сводка проектов и реверс-индекс ключей
+  getProjectsStats: () =>
+    request<ProjectTestsStats[]>('/projects/stats'),
+
+  getProjectTests: (projectId: string) =>
+    request<ProjectTestIndex>(`/projects/${projectId}/tests`),
 
   // Projects (v1.5.1): личные креды, живая проверка подключения
   listProjects: () =>

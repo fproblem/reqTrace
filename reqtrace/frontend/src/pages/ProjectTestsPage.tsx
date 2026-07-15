@@ -6,12 +6,13 @@
 //
 // Поиск и фильтр живут в URL (?q=, ?f=): возврат со страницы привязки и F5
 // не сбрасывают контекст.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry } from '../types';
 import { useToast } from '../components/Toast';
 import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
+import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -59,6 +60,12 @@ export const ProjectTestsPage: React.FC = () => {
   const [data, setData] = useState<ProjectTestIndex | null>(null);
   const [failed, setFailed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Пульс строки-«точки интереса» (?key=): только по ПРИБЫТИИ на экран —
+  // переход по ссылке или возврат со страницы привязки. Обычное раскрытие
+  // строк не мигает: ключ прибытия фиксируется на монтировании и гасится
+  // после первого применения.
+  const [pulseKey, setPulseKey] = useState<string | null>(null);
+  const arrivalKeyRef = useRef<string | null>(searchParams.get('key'));
 
   const q = searchParams.get('q') ?? '';
   const filter = (searchParams.get('f') ?? 'all') as FilterKey;
@@ -87,13 +94,48 @@ export const ProjectTestsPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [projectId, showToast]);
 
+  // Применение ключа прибытия: данные пришли → строка раскрыта, подкручена
+  // в центр и коротко пульсирует (той же анимацией, что «Актуализировать»
+  // в панели, но в зелени — это точка интереса, а не предупреждение).
+  useEffect(() => {
+    const key = arrivalKeyRef.current;
+    if (!data || !key) return;
+    arrivalKeyRef.current = null;
+    if (!data.tests.some(t => t.key === key)) return;
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    setPulseKey(key);
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-test-key="${CSS.escape(key)}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    const t = setTimeout(() => setPulseKey(null), 1700);
+    return () => clearTimeout(t);
+  }, [data]);
+
+  const allRows = useMemo(
+    () => (data ? data.tests.map(entry => ({ entry, ...derive(entry) })) : []),
+    [data],
+  );
+
+  // Счётчики в фильтрах: масштаб проблем виден до клика, ноль честно говорит
+  // «сюда ходить незачем».
+  const filterCounts = useMemo<Record<FilterKey, number>>(() => ({
+    all: allRows.length,
+    lost: allRows.filter(r => r.counts.lost > 0).length,
+    outdated: allRows.filter(r => r.counts.outdated > 0).length,
+    nonstandard: allRows.filter(r => r.nonstandard).length,
+  }), [allRows]);
+
   // Порядок строк: несущие больше всего привязок — сверху, внутри равных —
   // натуральный порядок ключей (REQ-9 выше REQ-10, testOrder.ts).
   const rows = useMemo(() => {
-    if (!data) return [];
     const needle = q.trim().toUpperCase();
-    return data.tests
-      .map(entry => ({ entry, ...derive(entry) }))
+    return allRows
       .filter(r => !needle || r.entry.key.includes(needle))
       .filter(r => {
         if (filter === 'lost') return r.counts.lost > 0;
@@ -103,7 +145,7 @@ export const ProjectTestsPage: React.FC = () => {
       })
       .sort((a, b) =>
         b.entry.links.length - a.entry.links.length || compareTestKeys(a.entry.key, b.entry.key));
-  }, [data, q, filter]);
+  }, [allRows, q, filter]);
 
   const summary = useMemo(() => {
     if (!data) return null;
@@ -116,13 +158,19 @@ export const ProjectTestsPage: React.FC = () => {
     return { tests: data.tests.length, links, pages: pages.size };
   }, [data]);
 
+  // Раскрытие пишет ключ в URL (?key=) как «точку интереса»: возврат со
+  // страницы привязки откроет экран на этом же тесте, а адрес из строки
+  // браузера можно отправить коллеге. Закрытие своей строки точку снимает.
   const toggle = (key: string) => {
+    const opening = !expanded.has(key);
     setExpanded(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+    if (opening) setParam('key', key);
+    else if (searchParams.get('key') === key) setParam('key', '');
   };
 
   if (failed) {
@@ -206,11 +254,25 @@ export const ProjectTestsPage: React.FC = () => {
                 e.currentTarget.style.borderColor = colors.border;
               }}
             >
-              {f.label}
+              {f.label} ({filterCounts[f.key]})
             </button>
           );
         })}
       </div>
+
+      {/* Пульс строки-«точки интереса» — та же механика, что у кнопки
+          «Актуализировать» в панели (0.8s × 2, класс не инлайн — анимация
+          перебивает ховер-фон, reduced-motion отключается медиа-запросом). */}
+      <style>{`
+        @keyframes tests-row-pulse {
+          0%, 100% { background-color: ${colors.white}; }
+          50% { background-color: ${colors.greenAccent}2E; }
+        }
+        .tests-row-pulse { animation: tests-row-pulse 0.8s ease-in-out 2; }
+        @media (prefers-reduced-motion: reduce) {
+          .tests-row-pulse { animation: none; }
+        }
+      `}</style>
 
       <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '16px' }}>
         Всего: {summary.tests} {plural(summary.tests, ['тест', 'теста', 'тестов'])}
@@ -239,6 +301,8 @@ export const ProjectTestsPage: React.FC = () => {
             return (
               <div
                 key={entry.key}
+                data-test-key={entry.key}
+                className={pulseKey === entry.key ? 'tests-row-pulse' : undefined}
                 style={{
                   border: `1px solid ${colors.border}`,
                   borderRadius: radii.md,
@@ -286,11 +350,11 @@ export const ProjectTestsPage: React.FC = () => {
                         e.currentTarget.style.textDecoration = 'none';
                       }}
                     >
-                      {entry.key}
+                      {highlightMatch(entry.key, q)}
                     </a>
                   ) : (
                     <span style={{ color: colors.textPrimary, fontWeight: 600, fontSize: '14px', flexShrink: 0 }}>
-                      {entry.key}
+                      {highlightMatch(entry.key, q)}
                     </span>
                   )}
                   <span style={{ fontSize: '13px', color: colors.textSecondary, flexShrink: 0 }}>
@@ -336,7 +400,16 @@ export const ProjectTestsPage: React.FC = () => {
                       return (
                         <div
                           key={link.link_id}
-                          onClick={() => navigate(`/pages/${link.page_id}?highlight=${link.highlight_id}`)}
+                          onClick={() => {
+                            // Точка интереса — именно ЭТОТ ключ (открытых строк
+                            // может быть несколько): возврат назад вернёт к нему.
+                            // replaceState, а не setSearchParams: два роутерных
+                            // перехода в одном тике гоняются между собой.
+                            const next = new URLSearchParams(searchParams);
+                            next.set('key', entry.key);
+                            window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
+                            navigate(`/pages/${link.page_id}?highlight=${link.highlight_id}`);
+                          }}
                           title="Открыть страницу на этом выделении"
                           style={{
                             display: 'flex', alignItems: 'center', gap: '12px',

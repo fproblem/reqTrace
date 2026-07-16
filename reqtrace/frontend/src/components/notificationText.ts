@@ -49,6 +49,8 @@ export function notificationBody(e: NotificationEntry): string {
   }
   if (e.skipped_reason === 'no_valid_credentials') {
     parts.push('Прогон прерван: закончились работающие подключения');
+  } else if (e.skipped_reason === 'confluence_unreachable') {
+    parts.push('Прогон прерван: Confluence стал недоступен, доберём при появлении связи');
   }
   return parts.join('. ');
 }

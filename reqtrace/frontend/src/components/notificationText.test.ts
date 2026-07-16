@@ -62,6 +62,14 @@ describe('notificationBody: дайджест', () => {
     );
   });
 
+  it('дайджест прерванного сетью прогона называет причину', () => {
+    const e = entry({ to_outdated: 2, skipped_reason: 'confluence_unreachable' });
+    expect(notificationBody(e)).toBe(
+      'Привязки: 2 → «Требует проверки». '
+      + 'Прогон прерван: Confluence стал недоступен, доберём при появлении связи',
+    );
+  });
+
   it('сообщает об ошибках страниц и прерванном прогоне', () => {
     const e = entry({
       pages_changed: 2, pages_failed: 2, skipped_reason: 'no_valid_credentials',

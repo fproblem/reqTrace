@@ -416,6 +416,35 @@ class RunProjectTest(RunProjectBase):
         self.assertEqual(run.pages_changed, 0)
         self.assertEqual(len(run.cred_issues), 1)
 
+    def test_network_death_midrun_stops_run_as_unreachable(self):
+        """Связь оборвалась посреди прогона: контрольный пинг падает —
+        оставшиеся страницы не перебираются (каждая ждала бы таймаут),
+        прогон уходит в skipped/unreachable, его дотянет почасовой добор."""
+        cred = self.add_cred()
+        p1 = self.add_page(title="А")
+        p2 = self.add_page(title="Б")
+        h1 = uuid.uuid4()
+        self.session.execute_results = [
+            [cred],
+            [(p1.id, p1.title), (p2.id, p2.title)],
+            [(h1, "active")],  # «до» p1; fetch умрёт по сети
+        ]
+        with patch(CHECK_CONNECTION, new=AsyncMock(
+                 side_effect=[None, Exception("сеть умерла")])), \
+             patch(SYNC_TREE, new=AsyncMock(return_value=TreeSyncStats())), \
+             patch(REFRESH, new=AsyncMock(side_effect=HTTPException(
+                 status_code=502, detail="Failed to fetch from Confluence: timeout"))) as refresh:
+            run_id = self.run_job()
+
+        run = self.journal(run_id)
+        self.assertEqual(run.status, "skipped")
+        self.assertEqual(run.details["skipped_reason"], "confluence_unreachable")
+        self.assertEqual(run.pages_failed, 1)
+        # Ко второй странице не ходили.
+        refresh.assert_awaited_once()
+        # Креды не тронуты: сеть — не их вина.
+        self.assertEqual(cred.status, "ok")
+
     def test_single_page_error_does_not_break_the_run(self):
         cred = self.add_cred()
         p1 = self.add_page(title="А")

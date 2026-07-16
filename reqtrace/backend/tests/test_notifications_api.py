@@ -244,6 +244,25 @@ class SkippedRunsTest(NotificationsBase):
         )
 
 
+class InterruptedRunTest(NotificationsBase):
+    def test_network_interrupted_run_still_delivers_digest(self):
+        """Связь оборвалась посреди прогона (v1.6.4): найденные до обрыва
+        переходы уже применены к привязкам, добор их повторно «не увидит» —
+        дайджест обязан выйти из той же строки журнала, вместе с «не выполнено»."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        run = make_run(
+            project, status="skipped", to_outdated=2, pages_total=9, pages_changed=1,
+            details={"skipped_reason": "confluence_unreachable", "pages": []},
+        )
+        data = self.get_entries([cred], [(run, project.name)])
+        kinds = sorted(e["kind"] for e in data["entries"])
+        self.assertEqual(kinds, ["digest", "run_skipped"])
+        digest = next(e for e in data["entries"] if e["kind"] == "digest")
+        self.assertEqual(digest["to_outdated"], 2)
+        self.assertEqual(digest["skipped_reason"], "confluence_unreachable")
+
+
 class SeenTest(NotificationsBase):
     def test_entries_older_than_mark_are_read(self):
         self.user.notifications_seen_at = NOW + timedelta(hours=6)

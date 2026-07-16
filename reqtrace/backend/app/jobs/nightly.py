@@ -157,6 +157,25 @@ async def _recheck_credentials(
     return usable, issues, unreachable
 
 
+async def _confluence_alive(project: Project, cred: ProjectCredential) -> bool:
+    """Контрольный пинг после неудачи страницы: жив ли Confluence целиком.
+
+    Отличает «умерла сеть/VPN посреди прогона» (перебирать оставшиеся страницы
+    бессмысленно — каждая умрёт по таймауту) от проблемы конкретной страницы
+    (удалена, битый контент — едем дальше). Отказ кред и нечитаемый пароль —
+    это НЕ «сеть умерла»: сервер отвечает.
+    """
+    try:
+        await confluence.check_connection(connection_for(project, cred))
+        return True
+    except ConfluenceAuthError:
+        return True
+    except HTTPException:
+        return True
+    except Exception:
+        return False
+
+
 async def _refresh_one_page(session_factory, project: Project, cred_id, page_id) -> dict:
     """Refresh одной страницы в собственной сессии.
 
@@ -312,6 +331,18 @@ async def run_project(
                 details_pages.append({
                     "page_id": str(page_id), "title": page_title, "error": result["error"],
                 })
+                # Сеть могла умереть посреди прогона: контрольный пинг — если
+                # Confluence недоступен целиком, оставшиеся страницы перебирать
+                # бессмысленно (каждая ждала бы таймаут). Прерываемся как
+                # unreachable — почасовой добор попробует, когда связь вернётся.
+                if not await _confluence_alive(project, usable[0]):
+                    logger.warning(
+                        "nightly: «%s» — Confluence стал недоступен посреди прогона, прерываюсь",
+                        project.name,
+                    )
+                    skipped_reason = "confluence_unreachable"
+                    stopped_early = True
+                    break
                 continue
 
             if result["changed"]:
@@ -329,7 +360,12 @@ async def run_project(
                     "affected_tests": result["affected_tests"],
                 })
 
-    if stopped_early:
+    if skipped_reason == "confluence_unreachable":
+        # Сеть умерла (до или посреди прогона): «сделанным на сегодня» прогон
+        # не считается — почасовой добор попробует ещё раз. Найденные до
+        # обрыва переходы уже в журнале, дайджест их не потеряет.
+        status = "skipped"
+    elif stopped_early:
         status = "partial"
     elif skipped_reason:
         status = "skipped"

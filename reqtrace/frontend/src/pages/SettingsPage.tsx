@@ -873,11 +873,9 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
   const handleRunNow = async () => {
     try {
       await api.refreshProjectNow(project.id);
+      // Без тоста об успехе: раскрывшийся колокольчик сам показывает
+      // «Обновляем…» и итог, а тост его только загораживал.
       window.dispatchEvent(new Event('reqtrace:refresh-run'));
-      showToast(
-        'success', 'Прогон запущен',
-        `Страницы «${project.name}» обновляются — прогресс и итог видны у колокольчика в шапке`,
-      );
     } catch (e: any) {
       if (e?.status === 409) {
         showToast('warning', 'Прогон уже идёт', e.message);

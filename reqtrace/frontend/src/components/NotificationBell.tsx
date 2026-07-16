@@ -159,74 +159,29 @@ export const NotificationBell: React.FC = () => {
     : colors.statusOutdated;
 
   const resultInfo = result ? runResultText(result) : null;
-  const pillVisible = running.length > 0 || resultInfo !== null;
+  const statusVisible = running.length > 0 || resultInfo !== null;
 
   return (
-    <div ref={wrapRef} style={{
-      position: 'relative', flexShrink: 0,
-      display: 'flex', alignItems: 'center',
-    }}>
-      {/* Пилюля-индикатор прогона: плавно выезжает влево от колокольчика,
-          крутит лоадер, по завершении несколько секунд показывает итог.
-          Клик — открыть панель уведомлений (там подробности). */}
-      <div style={{
-        maxWidth: pillVisible ? '260px' : '0px',
-        opacity: pillVisible ? 1 : 0,
-        marginRight: pillVisible ? '6px' : '0px',
-        overflow: 'hidden',
-        flexShrink: 0,
-        transition: 'max-width 0.25s ease, opacity 0.2s ease, margin-right 0.25s ease',
-      }}>
-        <button
-          onClick={toggle}
-          title={running.length > 0
-            ? 'Идёт прогон обновления — открыть уведомления'
-            : 'Итог прогона — открыть уведомления'}
-          style={{
-            height: '34px', display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '0 12px', borderRadius: radii.md, boxSizing: 'border-box',
-            border: `1px solid ${colors.border}`, background: colors.white,
-            whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit',
-            color: colors.textSecondary,
-          }}
-        >
-          {running.length > 0 ? (
-            <>
-              <RefreshIcon size={14} spinning />
-              <span style={{
-                fontSize: '12px', fontWeight: 500,
-                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '196px',
-              }}>
-                {running.length === 1
-                  ? `Обновляем «${running[0].project_name}»…`
-                  : `Обновляем проекты: ${running.length}…`}
-              </span>
-            </>
-          ) : resultInfo && (
-            <span style={{
-              fontSize: '12px', fontWeight: 600,
-              overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '232px',
-              color: resultInfo.tone === 'warn' ? colors.statusOutdated
-                : resultInfo.tone === 'ok' ? colors.statusActive
-                : colors.textSecondary,
-            }}>
-              {resultInfo.text}
-            </span>
-          )}
-        </button>
-      </div>
-
+    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
+      {/* Одна кнопка-капсула: статус прогона раскрывает КОЛОКОЛЬЧИК влево —
+          происходящее принадлежит дайджесту, а не выглядит отдельным
+          случайным уведомлением. В покое капсула сложена в квадрат 34px,
+          неотличимый от прежней кнопки. */}
       <button
         onClick={toggle}
-        title="Уведомления: дайджест ночных обновлений"
+        title={running.length > 0
+          ? 'Идёт прогон обновления — открыть уведомления'
+          : resultInfo
+            ? 'Итог прогона — открыть уведомления'
+            : 'Уведомления: дайджест ночных обновлений'}
         aria-expanded={open}
         style={{
-          width: '34px', height: '34px', padding: 0,
+          height: '34px', padding: '0 8px', boxSizing: 'border-box',
           borderRadius: radii.md,
           border: `1px solid ${open ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
           background: open ? colors.greenLight : colors.white,
           color: open ? colors.greenDark : colors.textSecondary,
-          cursor: 'pointer',
+          cursor: 'pointer', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative',
           transition: 'all 0.15s',
@@ -244,6 +199,38 @@ export const NotificationBell: React.FC = () => {
           e.currentTarget.style.color = colors.textSecondary;
         }}
       >
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          maxWidth: statusVisible ? '240px' : '0px',
+          opacity: statusVisible ? 1 : 0,
+          marginRight: statusVisible ? '8px' : '0px',
+          overflow: 'hidden', whiteSpace: 'nowrap',
+          transition: 'max-width 0.25s ease, opacity 0.2s ease, margin-right 0.25s ease',
+        }}>
+          {running.length > 0 ? (
+            <>
+              <RefreshIcon size={14} spinning />
+              <span style={{
+                fontSize: '12px', fontWeight: 500,
+                overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {running.length === 1
+                  ? `Обновляем «${running[0].project_name}»…`
+                  : `Обновляем проекты: ${running.length}…`}
+              </span>
+            </>
+          ) : resultInfo && (
+            <span style={{
+              fontSize: '12px', fontWeight: 600,
+              overflow: 'hidden', textOverflow: 'ellipsis',
+              color: resultInfo.tone === 'warn' ? colors.statusOutdated
+                : resultInfo.tone === 'ok' ? colors.statusActive
+                : colors.textSecondary,
+            }}>
+              {resultInfo.text}
+            </span>
+          )}
+        </span>
         <BellIcon size={16} />
         {badgeCount > 0 && (
           <span style={{

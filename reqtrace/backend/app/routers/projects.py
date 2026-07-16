@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user
 from app.crypto import decrypt_secret, encrypt_secret
 from app.database import get_db
+from app.jobs.scheduler import start_manual_run
 from app.models.baseline import Baseline
 from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
@@ -215,6 +216,27 @@ async def projects_stats(
     for project_id, finished_at in run_rows:
         stats[project_id].last_auto_refresh_at = finished_at
 
+    # Последняя попытка любого исхода (v1.6.4): не удалась — карточка
+    # предупредит, что свежесть застыла не просто так (VPN/сеть/креды).
+    attempt_rows = (await db.execute(
+        select(
+            RefreshRun.project_id, RefreshRun.status,
+            RefreshRun.details, RefreshRun.finished_at,
+        )
+        .where(
+            RefreshRun.project_id.in_(project_ids),
+            RefreshRun.finished_at.isnot(None),
+        )
+        .distinct(RefreshRun.project_id)
+        .order_by(RefreshRun.project_id, RefreshRun.finished_at.desc())
+    )).all()
+    for project_id, status, details, finished_at in attempt_rows:
+        stats[project_id].last_attempt_at = finished_at
+        if status == "skipped":
+            reason = (details or {}).get("skipped_reason")
+            if reason in ("confluence_unreachable", "no_valid_credentials"):
+                stats[project_id].last_attempt_reason = reason
+
     return [stats[p.id] for p in projects]
 
 
@@ -277,6 +299,29 @@ async def project_test_index(
         jira_base_url=project.jira_base_url,
         tests=tests,
     )
+
+
+@router.post("/{project_id}/refresh-run", status_code=202)
+async def refresh_project_now(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ручной прогон проекта (v1.6.4): «Обновить страницы сейчас» с карточки.
+
+    Полный прогон (перепроверка кред → sync-tree → refresh) стартует фоном,
+    итог придёт в журнал/колокольчик; кредам инициатора — приоритет. Доступ —
+    участникам с рабочим подключением. 409 — какой-то прогон уже идёт
+    (ночной, добор или чей-то ручной): второй параллельный не запускаем.
+    """
+    project = await _get_regular_project(db, project_id)
+    await require_project_access(db, project, current_user)
+    if not await start_manual_run(project.id, prefer_user_id=current_user.id):
+        raise HTTPException(
+            status_code=409,
+            detail="Прогон обновления уже идёт — попробуйте через пару минут",
+        )
+    return {"started": True}
 
 
 @router.post("", response_model=ProjectListItem, status_code=201)

@@ -64,6 +64,12 @@ class ProjectTestsStats(BaseModel):
     # Когда автообновление в последний раз проверяло проект (v1.6.2):
     # finished_at последнего успешного прогона; None — ещё ни разу (или демо).
     last_auto_refresh_at: Optional[datetime] = None
+    # Последняя попытка (любой исход, v1.6.4): если last_attempt_reason
+    # заполнен (confluence_unreachable | no_valid_credentials) — последний
+    # прогон не удался, и карточка честно предупреждает, что данные
+    # несвежие не просто так.
+    last_attempt_at: Optional[datetime] = None
+    last_attempt_reason: Optional[str] = None
 
 
 class TestLinkRef(BaseModel):

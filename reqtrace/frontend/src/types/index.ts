@@ -169,6 +169,11 @@ export interface ProjectTestsStats {
   lost: number;
   /** Когда автообновление в последний раз проверяло проект (v1.6.2); null — ещё ни разу. */
   last_auto_refresh_at?: string | null;
+  /** Последняя попытка любого исхода (v1.6.4); reason заполнен
+   *  (confluence_unreachable | no_valid_credentials) — попытка не удалась,
+   *  и свежесть застыла не просто так. */
+  last_attempt_at?: string | null;
+  last_attempt_reason?: string | null;
 }
 
 // --- Уведомления (v1.6.3): дайджест ночных прогонов ---
@@ -189,11 +194,45 @@ export interface NotificationEntry {
   affected_tests: string[];
   /** confluence_unreachable | no_valid_credentials (у digest — если прогон прерван). */
   skipped_reason?: string | null;
+  /** run_skipped — состояние «проект не обновляется»: длина серии неудачных
+   *  попыток (почасовое самолечение схлопывается в одну живую строку). */
+  attempts?: number;
+  /** Начало серии неудач; happened_at — её последняя попытка. */
+  first_attempt_at?: string | null;
 }
 
 export interface NotificationsResponse {
   unseen_count: number;
   entries: NotificationEntry[];
+}
+
+/** Прогон, идущий прямо сейчас (индикатор у колокольчика, v1.6.4). */
+export interface RunningRun {
+  id: string;
+  project_id: string;
+  project_name: string;
+  trigger: string;
+  started_at: string;
+}
+
+/** Итог последнего завершённого прогона — показывается индикатором пару
+ *  секунд, даже когда бейджу загораться не от чего. */
+export interface FinishedRunSummary {
+  id: string;
+  project_id: string;
+  project_name: string;
+  status: string;
+  finished_at: string;
+  pages_changed: number;
+  pages_failed: number;
+  to_outdated: number;
+  to_lost: number;
+  skipped_reason?: string | null;
+}
+
+export interface RefreshStatusResponse {
+  running: RunningRun[];
+  last_finished?: FinishedRunSummary | null;
 }
 
 export interface TestLinkRef {

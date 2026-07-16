@@ -24,7 +24,7 @@ refresh-конвейера; джоба лишь считает переходы 
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -41,6 +41,30 @@ from app.services import confluence, page_service, tree_sync
 from app.services.confluence import ConfluenceAuthError
 
 logger = logging.getLogger(__name__)
+
+
+def pick_retry_projects(rows, now_utc: datetime, retry_after_minutes: int = 60) -> list:
+    """Проекты для самолечебного добора (v1.6.4).
+
+    rows — (project_id, status, started_at, finished_at) за СЕГОДНЯШНИЙ
+    локальный день. Добираем проект, если попытки за сегодня были, ни одна
+    не успешна (ok/partial с finished_at), а последняя — старше
+    retry_after_minutes (свежая, возможно, ещё идёт; лок и так не пустит).
+    Проекты вовсе без попыток — забота основного суточного прогона.
+    """
+    by_project: dict = {}
+    for project_id, status, started_at, finished_at in rows:
+        by_project.setdefault(project_id, []).append((status, started_at, finished_at))
+
+    result = []
+    for project_id, attempts in by_project.items():
+        if any(s in ("ok", "partial") and f is not None for s, _, f in attempts):
+            continue
+        starts = [st for _, st, _ in attempts if st is not None]
+        if starts and now_utc - max(starts) < timedelta(minutes=retry_after_minutes):
+            continue
+        result.append(project_id)
+    return result
 
 
 def status_transitions(before: dict, after: dict) -> tuple[list, list]:
@@ -133,6 +157,25 @@ async def _recheck_credentials(
     return usable, issues, unreachable
 
 
+async def _confluence_alive(project: Project, cred: ProjectCredential) -> bool:
+    """Контрольный пинг после неудачи страницы: жив ли Confluence целиком.
+
+    Отличает «умерла сеть/VPN посреди прогона» (перебирать оставшиеся страницы
+    бессмысленно — каждая умрёт по таймауту) от проблемы конкретной страницы
+    (удалена, битый контент — едем дальше). Отказ кред и нечитаемый пароль —
+    это НЕ «сеть умерла»: сервер отвечает.
+    """
+    try:
+        await confluence.check_connection(connection_for(project, cred))
+        return True
+    except ConfluenceAuthError:
+        return True
+    except HTTPException:
+        return True
+    except Exception:
+        return False
+
+
 async def _refresh_one_page(session_factory, project: Project, cred_id, page_id) -> dict:
     """Refresh одной страницы в собственной сессии.
 
@@ -169,11 +212,15 @@ async def _refresh_one_page(session_factory, project: Project, cred_id, page_id)
         }
 
 
-async def run_project(session_factory, project: Project, *, trigger: str) -> uuid.UUID:
+async def run_project(
+    session_factory, project: Project, *, trigger: str, prefer_user_id=None
+) -> uuid.UUID:
     """Прогон одного проекта: креды → sync-tree → refresh страниц; журналирует.
 
-    Возвращает id строки журнала. Строка создаётся сразу (маркер «прогон
-    идёт»); смерть процесса оставит её без finished_at — честный след.
+    prefer_user_id — чьи креды пробовать первыми: ручной прогон (v1.6.4) идёт
+    от имени нажавшего — он дал согласие кликом. Возвращает id строки журнала.
+    Строка создаётся сразу (маркер «прогон идёт»); смерть процесса оставит её
+    без finished_at — честный след.
     """
     async with session_factory() as db:
         run = RefreshRun(project_id=project.id, trigger=trigger)
@@ -201,6 +248,9 @@ async def run_project(session_factory, project: Project, *, trigger: str) -> uui
             )
             .order_by(ProjectCredential.last_check_at.desc().nulls_last())
         )).scalars().all())
+        if prefer_user_id is not None:
+            # Стабильная сортировка: инициатор первым, порядок остальных цел.
+            creds.sort(key=lambda c: c.user_id != prefer_user_id)
 
         if not creds:
             skipped_reason = "no_credentials"
@@ -281,6 +331,18 @@ async def run_project(session_factory, project: Project, *, trigger: str) -> uui
                 details_pages.append({
                     "page_id": str(page_id), "title": page_title, "error": result["error"],
                 })
+                # Сеть могла умереть посреди прогона: контрольный пинг — если
+                # Confluence недоступен целиком, оставшиеся страницы перебирать
+                # бессмысленно (каждая ждала бы таймаут). Прерываемся как
+                # unreachable — почасовой добор попробует, когда связь вернётся.
+                if not await _confluence_alive(project, usable[0]):
+                    logger.warning(
+                        "nightly: «%s» — Confluence стал недоступен посреди прогона, прерываюсь",
+                        project.name,
+                    )
+                    skipped_reason = "confluence_unreachable"
+                    stopped_early = True
+                    break
                 continue
 
             if result["changed"]:
@@ -298,7 +360,12 @@ async def run_project(session_factory, project: Project, *, trigger: str) -> uui
                     "affected_tests": result["affected_tests"],
                 })
 
-    if stopped_early:
+    if skipped_reason == "confluence_unreachable":
+        # Сеть умерла (до или посреди прогона): «сделанным на сегодня» прогон
+        # не считается — почасовой добор попробует ещё раз. Найденные до
+        # обрыва переходы уже в журнале, дайджест их не потеряет.
+        status = "skipped"
+    elif stopped_early:
         status = "partial"
     elif skipped_reason:
         status = "skipped"
@@ -355,6 +422,27 @@ async def run_sweep(*, trigger: str = "auto", session_factory=async_session) -> 
             await run_project(session_factory, project, trigger=trigger)
         except Exception:
             logger.exception("auto-refresh: прогон проекта «%s» упал", project.name)
+    return len(projects)
+
+
+async def run_projects(project_ids, *, trigger: str, session_factory=async_session) -> int:
+    """Прогон конкретных проектов (самолечебный добор v1.6.4) — с той же
+    изоляцией ошибок, что у run_sweep."""
+    ids = list(project_ids)
+    if not ids:
+        return 0
+    async with session_factory() as db:
+        projects = list((await db.execute(
+            select(Project)
+            .where(Project.id.in_(ids), Project.is_demo == False)  # noqa: E712
+            .order_by(Project.name)
+        )).scalars().all())
+
+    for project in projects:
+        try:
+            await run_project(session_factory, project, trigger=trigger)
+        except Exception:
+            logger.exception("auto-refresh: добор проекта «%s» упал", project.name)
     return len(projects)
 
 

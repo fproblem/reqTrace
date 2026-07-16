@@ -95,12 +95,14 @@ def make_cred(project, user, status="ok"):
     return cred
 
 
-def make_run(project, *, status="ok", finished_at=NOW, to_outdated=0, to_lost=0,
+def make_run(project, *, status="ok", finished_at=NOW, started_at=None,
+             to_outdated=0, to_lost=0,
              pages_total=0, pages_changed=0, pages_failed=0,
              details=None, cred_issues=None):
     run = RefreshRun(project_id=project.id, trigger="auto")
     run.id = uuid.uuid4()
     run.status = status
+    run.started_at = started_at or finished_at or NOW
     run.finished_at = finished_at
     run.pages_total = pages_total
     run.pages_changed = pages_changed
@@ -224,24 +226,151 @@ class VisibilityTest(NotificationsBase):
         self.assertEqual(data, {"unseen_count": 0, "entries": []})
 
 
-class SkippedRunsTest(NotificationsBase):
-    def test_unreachable_and_dead_creds_visible_no_credentials_hidden(self):
+class FailureStateTest(NotificationsBase):
+    """«Не выполнено» — состояние, а не событие: почасовое самолечение не
+    должно заваливать панель повторами и топить дайджесты изменений."""
+
+    def test_trailing_failures_collapse_into_single_live_entry(self):
         project = make_project()
         cred = make_cred(project, self.user)
         runs = [
             (make_run(project, status="skipped", finished_at=NOW,
                       details={"skipped_reason": "confluence_unreachable"}), project.name),
-            (make_run(project, status="skipped", finished_at=NOW - timedelta(days=1),
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=1),
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=2),
                       details={"skipped_reason": "no_valid_credentials"}), project.name),
-            (make_run(project, status="skipped", finished_at=NOW - timedelta(days=2),
-                      details={"skipped_reason": "no_credentials"}), project.name),
+            # Успешный прогон позади серии — её граница.
+            (make_run(project, finished_at=NOW - timedelta(hours=3)), project.name),
         ]
         data = self.get_entries([cred], runs)
+
+        [entry] = data["entries"]
+        self.assertEqual(entry["kind"], "run_skipped")
+        self.assertEqual(entry["attempts"], 3)
+        # Причина — от последней попытки; времена — границы серии.
+        self.assertEqual(entry["skipped_reason"], "confluence_unreachable")
+        self.assertTrue(entry["happened_at"].startswith("2026-07-16T00:12"))
+        self.assertTrue(entry["first_attempt_at"].startswith("2026-07-15T22:12"))
+
+    def test_success_breaks_streak_and_hides_stale_failures(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        runs = [
+            # Свежий тихий успех: состояние разрешилось, новостей нет.
+            (make_run(project, finished_at=NOW, pages_total=5), project.name),
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=1),
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=2),
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+        ]
+        data = self.get_entries([cred], runs)
+        self.assertEqual(data["entries"], [])
+        self.assertEqual(data["unseen_count"], 0)
+
+    def test_failures_behind_latest_digest_are_history(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        runs = [
+            (make_run(project, to_outdated=2, pages_total=5, finished_at=NOW), project.name),
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=1),
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+        ]
+        data = self.get_entries([cred], runs)
+        self.assertEqual([e["kind"] for e in data["entries"]], ["digest"])
+
+    def test_hidden_no_credentials_does_not_join_streak(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        runs = [
+            (make_run(project, status="skipped", finished_at=NOW,
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+            # no_credentials скрыт и серию разрывает.
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=1),
+                      details={"skipped_reason": "no_credentials"}), project.name),
+            (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=2),
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+        ]
+        data = self.get_entries([cred], runs)
+        [entry] = data["entries"]
+        self.assertEqual(entry["attempts"], 1)
+
+
+class FailureUnseenMarkerTest(unittest.TestCase):
+    """Бейдж напоминает о продолжающейся проблеме раз в день, не каждый добор."""
+
+    TZ = timezone.utc
+
+    def test_marker_is_first_attempt_of_today(self):
+        from app.routers.notifications import failure_unseen_marker
+        today = NOW.date()  # 2026-07-16
+        first_today = datetime(2026, 7, 16, 3, 12, tzinfo=timezone.utc)
+        finished_desc = [
+            datetime(2026, 7, 16, 8, 12, tzinfo=timezone.utc),
+            first_today,
+            datetime(2026, 7, 15, 22, 0, tzinfo=timezone.utc),  # вчера — не в счёт
+        ]
+        self.assertEqual(failure_unseen_marker(finished_desc, today, self.TZ), first_today)
+
+    def test_streak_without_todays_attempts_counts_from_its_start(self):
+        from app.routers.notifications import failure_unseen_marker
+        today = NOW.date()
+        finished_desc = [NOW - timedelta(days=1), NOW - timedelta(days=2)]
         self.assertEqual(
-            [(e["kind"], e["skipped_reason"]) for e in data["entries"]],
-            [("run_skipped", "confluence_unreachable"),
-             ("run_skipped", "no_valid_credentials")],
+            failure_unseen_marker(finished_desc, today, self.TZ),
+            NOW - timedelta(days=2),
         )
+
+
+class InterruptedRunTest(NotificationsBase):
+    def test_network_interrupted_run_still_delivers_digest(self):
+        """Связь оборвалась посреди прогона (v1.6.4): найденные до обрыва
+        переходы уже применены к привязкам, добор их повторно «не увидит» —
+        дайджест обязан выйти из той же строки журнала, вместе с «не выполнено»."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        run = make_run(
+            project, status="skipped", to_outdated=2, pages_total=9, pages_changed=1,
+            details={"skipped_reason": "confluence_unreachable", "pages": []},
+        )
+        data = self.get_entries([cred], [(run, project.name)])
+        kinds = sorted(e["kind"] for e in data["entries"])
+        self.assertEqual(kinds, ["digest", "run_skipped"])
+        digest = next(e for e in data["entries"] if e["kind"] == "digest")
+        self.assertEqual(digest["to_outdated"], 2)
+        self.assertEqual(digest["skipped_reason"], "confluence_unreachable")
+
+
+class RefreshStatusTest(NotificationsBase):
+    """Индикатор у колокольчика: что идёт сейчас и чем кончился последний."""
+
+    def test_running_and_last_finished(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        active = make_run(project, finished_at=None, started_at=NOW)
+        done = make_run(project, to_outdated=2, finished_at=NOW - timedelta(minutes=5))
+        self.session.execute_results = [
+            [cred],
+            FakeResult([(active, project.name)]),
+            FakeResult([(done, project.name)]),
+        ]
+        resp = self.client.get("/api/notifications/refresh-status")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+
+        [running] = data["running"]
+        self.assertEqual(running["project_name"], "Банк X")
+        self.assertEqual(running["trigger"], "auto")
+        self.assertEqual(data["last_finished"]["to_outdated"], 2)
+        self.assertEqual(data["last_finished"]["status"], "ok")
+
+    def test_without_ok_membership_status_is_empty(self):
+        project = make_project()
+        cred = make_cred(project, self.user, status="invalid")
+        self.session.execute_results = [[cred]]
+        resp = self.client.get("/api/notifications/refresh-status")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"running": [], "last_finished": None})
 
 
 class SeenTest(NotificationsBase):

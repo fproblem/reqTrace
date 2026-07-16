@@ -321,6 +321,15 @@ const KeyIcon: React.FC = () => (
   </svg>
 );
 
+// Стрелки синхронизации — для «Обновить страницы сейчас» (v1.6.4).
+const SyncNowIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
+    <polyline points="23 4 23 10 17 10" />
+    <polyline points="1 20 1 14 7 14" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
+
 const PencilIcon: React.FC = () => (
   <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
     <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
@@ -859,6 +868,23 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
     }
   };
 
+  // Ручной прогон (v1.6.4): фоновый запуск на бэке; событием ускоряем опрос
+  // колокольчика, чтобы готовый дайджест пришёл за секунды, а не через 10 минут.
+  const handleRunNow = async () => {
+    try {
+      await api.refreshProjectNow(project.id);
+      // Без тоста об успехе: раскрывшийся колокольчик сам показывает
+      // «Обновляем…» и итог, а тост его только загораживал.
+      window.dispatchEvent(new Event('reqtrace:refresh-run'));
+    } catch (e: any) {
+      if (e?.status === 409) {
+        showToast('warning', 'Прогон уже идёт', e.message);
+      } else {
+        showToast('error', 'Не удалось запустить прогон', e.message);
+      }
+    }
+  };
+
   // Пункты меню — как в меню действий страницы (иконка + текст, скругление, ховер).
   const menuItemStyle: React.CSSProperties = {
     display: 'flex',
@@ -968,6 +994,22 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 display: 'flex', flexDirection: 'column', gap: '2px',
               }}
             >
+              {/* Ручной прогон (v1.6.4): тот же полный прогон, что ночью, —
+                  спасение, когда в 03:00 не было VPN, а обновления нужны
+                  сейчас. Только при рабочем подключении. */}
+              {status === 'ok' && (
+                <button
+                  role="menuitem"
+                  title="Запустить полный прогон обновления по проекту прямо сейчас: страницы, дерево, статусы привязок"
+                  style={menuItemStyle}
+                  onClick={() => { setMenuOpen(false); void handleRunNow(); }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <SyncNowIcon />
+                  Обновить страницы сейчас
+                </button>
+              )}
               <button
                 role="menuitem"
                 style={menuItemStyle}
@@ -1022,17 +1064,17 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           Мой логин: {project.my_username}
           <span style={{ color: colors.textTertiary }}> · пароль (установлен)</span>
         </div>
-        {/* Прозрачность автообновления (v1.6.2): ночной прогон ходит в
+        {/* Прозрачность автообновления (v1.6.2): плановый прогон ходит в
             Confluence личными кредами участников — человек должен знать,
-            что его учётка может засветиться в аудите ночью. */}
+            что его учётка может засветиться в аудите и без его действий. */}
         {status === 'ok' && (
           <div
             style={{ color: colors.textTertiary }}
-            title={'Ночной прогон обновляет страницы и дерево проекта кредами одного из участников '
-              + 'с работающим подключением, а заодно перепроверяет сами подключения. '
-              + 'Чтения могут отображаться в журналах Confluence под вашей учёткой'}
+            title={'Плановый прогон (ночью и почасовым добором) обновляет страницы и дерево проекта '
+              + 'кредами одного из участников с работающим подключением, а заодно перепроверяет '
+              + 'сами подключения. Чтения могут отображаться в журналах Confluence под вашей учёткой'}
           >
-            Подключение участвует в ночном автообновлении проекта
+            Подключение участвует в плановом автообновлении проекта
           </div>
         )}
       </div>
@@ -1149,6 +1191,18 @@ export const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     load();
+  }, []);
+
+  // Прогон завершился (событие от колокольчика): статус подключений мог
+  // измениться (например, «Confluence был недоступен») — карточки и дерево
+  // не должны отставать от уведомления.
+  useEffect(() => {
+    const onRunFinished = () => {
+      void load();
+      refreshTree();
+    };
+    window.addEventListener('reqtrace:refresh-run-finished', onRunFinished);
+    return () => window.removeEventListener('reqtrace:refresh-run-finished', onRunFinished);
   }, []);
 
   if (loading) {

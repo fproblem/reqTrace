@@ -6,17 +6,35 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { NotificationEntry, NotificationsResponse } from '../types';
+import {
+  FinishedRunSummary, NotificationEntry, NotificationsResponse, RunningRun,
+} from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
 import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, SyncIcon } from './icons';
+import { XIcon } from './Modal';
+import { RefreshIcon } from './RefreshIcon';
 import { formatCheckedAt } from '../pages/TestsPage';
 import {
   notificationBody, notificationLink, notificationTint, notificationTitle,
+  runResultText,
 } from './notificationText';
 
 // Ночной цикл событий — бейдж меняется раз в сутки; интервал нужен только
 // вкладкам-долгожителям, чтобы утренний дайджест появился без перезагрузки.
 const POLL_MS = 10 * 60 * 1000;
+// Живой статус прогонов (пилюля-индикатор): в покое изредка, во время
+// прогона — часто, чтобы завершение и итог показались за секунды.
+const STATUS_POLL_IDLE_MS = 30_000;
+const STATUS_POLL_ACTIVE_MS = 5_000;
+// Сколько держать итог прогона в пилюле после завершения.
+const RESULT_SHOW_MS = 6_000;
+
+// Индикатор увидит каждый участник проекта с открытым ReqTrace — появление
+// и исчезновение должны быть спокойными; уважение к reduced-motion как у
+// каскада дерева (TreeReveal).
+const REDUCED_MOTION = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const KIND_ICONS: Record<NotificationEntry['kind'], React.FC<IconProps>> = {
   digest: SyncIcon,
@@ -42,6 +60,80 @@ export const NotificationBell: React.FC = () => {
   useEffect(() => {
     void load();
     const timer = setInterval(() => { void load(); }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  // Живой статус прогонов (v1.6.4): пилюля «Обновляем…» слева от колокольчика.
+  // Показывает ЛЮБОЙ идущий прогон моих проектов — ночной, почасовой добор,
+  // ручной (свой или коллеги), — а после завершения на несколько секунд
+  // отдаёт итог, даже когда бейджу загораться не от чего («изменений нет»,
+  // «Confluence недоступен»).
+  const [running, setRunning] = useState<RunningRun[]>([]);
+  const [result, setResult] = useState<FinishedRunSummary | null>(null);
+  const runningIdsRef = useRef<string[]>([]);
+  const watchedRef = useRef<Set<string>>(new Set());
+  const resultTimerRef = useRef<number | undefined>(undefined);
+  const lastStatusRef = useRef<React.ReactNode>(null);
+  const prevFinishedRef = useRef<string | null | undefined>(undefined);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const s = await api.getRefreshStatus();
+      const ids = s.running.map(r => r.id);
+      ids.forEach(id => watchedRef.current.add(id));
+      const finished = s.last_finished ?? null;
+      // Переход «крутилось → закончилось». Молниеносный прогон (мгновенная
+      // ошибка сети) мог не попасть ни в один опрос running — его ловим по
+      // смене «последнего завершённого» (undefined = первый опрос, база).
+      const watchedDone = runningIdsRef.current.some(id => !ids.includes(id));
+      const lastChanged = prevFinishedRef.current !== undefined
+        && finished !== null && finished.id !== prevFinishedRef.current;
+      if (watchedDone || lastChanged) {
+        void load();
+        // Карточки профиля и «Тестов» перечитывают свои данные сами — статус
+        // подключений и свежесть не должны отставать от уведомления.
+        window.dispatchEvent(new Event('reqtrace:refresh-run-finished'));
+        if (finished && (lastChanged || watchedRef.current.has(finished.id))) {
+          setResult(finished);
+          window.clearTimeout(resultTimerRef.current);
+          resultTimerRef.current = window.setTimeout(() => setResult(null), RESULT_SHOW_MS);
+        }
+      }
+      prevFinishedRef.current = finished ? finished.id : null;
+      runningIdsRef.current = ids;
+      setRunning(s.running);
+    } catch {
+      // Индикатор не шумит: сетевые сбои молча, 401 обработает AuthContext.
+    }
+  }, [load]);
+
+  useEffect(() => {
+    void loadStatus();
+    const timer = setInterval(
+      () => { void loadStatus(); },
+      running.length > 0 ? STATUS_POLL_ACTIVE_MS : STATUS_POLL_IDLE_MS,
+    );
+    return () => clearInterval(timer);
+  }, [loadStatus, running.length]);
+
+  useEffect(() => () => window.clearTimeout(resultTimerRef.current), []);
+
+  // Ручной прогон (v1.6.4): после «Обновить страницы сейчас» с карточки
+  // проекта опрашиваем чаще, чтобы готовый дайджест пришёл за секунды.
+  const fastUntilRef = useRef(0);
+  useEffect(() => {
+    const onManualRun = () => {
+      fastUntilRef.current = Date.now() + 20 * 60 * 1000;
+      void load();
+      void loadStatus();
+    };
+    window.addEventListener('reqtrace:refresh-run', onManualRun);
+    return () => window.removeEventListener('reqtrace:refresh-run', onManualRun);
+  }, [load, loadStatus]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (Date.now() < fastUntilRef.current) void load();
+    }, 20_000);
     return () => clearInterval(timer);
   }, [load]);
 
@@ -85,19 +177,60 @@ export const NotificationBell: React.FC = () => {
     ? colors.statusLost
     : colors.statusOutdated;
 
+  const resultInfo = result ? runResultText(result) : null;
+  const statusVisible = running.length > 0 || resultInfo !== null;
+
+  // Содержимое статуса запоминается: при сворачивании старый текст должен
+  // спокойно погаснуть под закрывающейся шириной, а не исчезнуть скачком,
+  // оставив капсулу схлопываться пустой.
+  const statusContent = running.length > 0 ? (
+    <>
+      <RefreshIcon size={14} spinning />
+      <span style={{
+        fontSize: '12px', fontWeight: 500,
+        overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {running.length === 1
+          ? `Обновляем «${running[0].project_name}»…`
+          : `Обновляем проекты: ${running.length}…`}
+      </span>
+    </>
+  ) : resultInfo ? (
+    <span style={{
+      fontSize: '12px', fontWeight: 600,
+      overflow: 'hidden', textOverflow: 'ellipsis',
+      color: resultInfo.tone === 'warn' ? colors.statusOutdated
+        : resultInfo.tone === 'ok' ? colors.statusActive
+        : colors.textSecondary,
+    }}>
+      {resultInfo.text}
+    </span>
+  ) : null;
+  if (statusContent !== null) {
+    lastStatusRef.current = statusContent;
+  }
+
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
+      {/* Одна кнопка-капсула: статус прогона раскрывает КОЛОКОЛЬЧИК влево —
+          происходящее принадлежит дайджесту, а не выглядит отдельным
+          случайным уведомлением. В покое капсула сложена в квадрат 34px,
+          неотличимый от прежней кнопки. */}
       <button
         onClick={toggle}
-        title="Уведомления: дайджест ночных обновлений"
+        title={running.length > 0
+          ? 'Идёт прогон обновления — открыть уведомления'
+          : resultInfo
+            ? 'Итог прогона — открыть уведомления'
+            : 'Уведомления: дайджест обновлений ваших проектов'}
         aria-expanded={open}
         style={{
-          width: '34px', height: '34px', padding: 0,
+          height: '34px', padding: '0 8px', boxSizing: 'border-box',
           borderRadius: radii.md,
           border: `1px solid ${open ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
           background: open ? colors.greenLight : colors.white,
           color: open ? colors.greenDark : colors.textSecondary,
-          cursor: 'pointer',
+          cursor: 'pointer', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative',
           transition: 'all 0.15s',
@@ -115,6 +248,32 @@ export const NotificationBell: React.FC = () => {
           e.currentTarget.style.color = colors.textSecondary;
         }}
       >
+        {/* Спокойное раскрытие: grid-колонка 0fr↔1fr (как TreeReveal в
+            дереве, только горизонтально) анимируется ровно к фактической
+            ширине содержимого — без обрыва движения, который давал max-width.
+            Текст проявляется чуть позже ширины, а гаснуть начинает первым. */}
+        <span style={{
+          display: 'grid',
+          gridTemplateColumns: statusVisible ? '1fr' : '0fr',
+          transition: REDUCED_MOTION ? undefined : 'grid-template-columns 0.5s ease-in-out',
+        }}>
+          <span style={{
+            overflow: 'hidden', minWidth: 0,
+            display: 'flex', alignItems: 'center',
+          }}>
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              paddingRight: '8px', whiteSpace: 'nowrap', maxWidth: '240px',
+              opacity: statusVisible ? 1 : 0,
+              transition: REDUCED_MOTION ? undefined
+                : statusVisible
+                  ? 'opacity 0.3s ease 0.15s'
+                  : 'opacity 0.25s ease',
+            }}>
+              {statusContent ?? lastStatusRef.current}
+            </span>
+          </span>
+        </span>
         <BellIcon size={16} />
         {badgeCount > 0 && (
           <span style={{
@@ -146,16 +305,42 @@ export const NotificationBell: React.FC = () => {
           }}
         >
           <div style={{
-            padding: '6px 10px 10px',
+            display: 'flex', alignItems: 'flex-start', gap: '8px',
+            padding: '6px 6px 10px 10px',
             borderBottom: `1px solid ${colors.border}`,
             marginBottom: '6px',
           }}>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.textPrimary }}>
-              Уведомления
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: colors.textPrimary }}>
+                Уведомления
+              </div>
+              <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '2px' }}>
+                Дайджест обновлений ваших проектов
+              </div>
             </div>
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '2px' }}>
-              Дайджест ночных обновлений ваших проектов
-            </div>
+            {/* Крестик закрытия — хороший тон всех модалок ReqTrace. */}
+            <button
+              onClick={() => setOpen(false)}
+              title="Закрыть"
+              style={{
+                width: '28px', height: '28px', padding: 0,
+                border: 'none', borderRadius: radii.sm,
+                background: 'transparent', color: colors.textTertiary,
+                cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = colors.textTertiary;
+              }}
+            >
+              <XIcon />
+            </button>
           </div>
 
           {data === null ? (
@@ -167,7 +352,7 @@ export const NotificationBell: React.FC = () => {
               padding: '16px 10px', fontSize: '13px',
               color: colors.textSecondary, lineHeight: 1.55,
             }}>
-              Пока тихо: ночные прогоны не находили изменений в ваших проектах.
+              Пока тихо: плановые прогоны не находили изменений в ваших проектах.
               Когда требования изменятся, дайджест появится здесь
             </div>
           ) : (

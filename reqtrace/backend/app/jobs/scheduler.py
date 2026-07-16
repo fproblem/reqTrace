@@ -17,7 +17,8 @@ from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.database import async_session, engine
-from app.jobs.nightly import run_sweep
+from app.jobs.nightly import pick_retry_projects, run_project, run_projects, run_sweep
+from app.models.project import Project
 from app.models.refresh_run import RefreshRun
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
 # Ключ advisory-lock прогона — произвольная константа, общая для всех инстансов.
 ADVISORY_LOCK_KEY = 931_337_101
+# Самолечение (v1.6.4): как часто добирать проекты без успешного прогона.
+RETRY_AFTER_MINUTES = 60
 
 
 def parse_hhmm(value: str) -> dtime:
@@ -71,12 +74,13 @@ async def _last_auto_start() -> datetime | None:
         return result.scalar()
 
 
-async def run_sweep_locked(*, trigger: str) -> bool:
-    """Прогон под session-level advisory-lock; False — лок занят другим процессом.
+async def _run_locked(runner) -> bool:
+    """Выполнить runner под session-level advisory-lock; False — лок занят.
 
-    Лок держится на отдельном соединении всё время обхода (при смерти
+    Лок держится на отдельном соединении всё время работы (при смерти
     процесса Postgres снимет его сам); pg_advisory_xact_lock не подходит —
-    прогон коммитит много раз.
+    прогон коммитит много раз. Лок общий для всех видов прогонов: ночной,
+    добор и ручной никогда не идут одновременно.
     """
     async with engine.connect() as conn:
         got = (await conn.execute(
@@ -84,13 +88,79 @@ async def run_sweep_locked(*, trigger: str) -> bool:
         )).scalar()
         await conn.commit()  # закрыть транзакцию: session-lock живёт вне её
         if not got:
-            logger.info("auto-refresh: лок занят — прогон уже идёт в другом процессе")
+            logger.info("auto-refresh: лок занят — прогон уже идёт")
             return False
         try:
-            await run_sweep(trigger=trigger)
+            await runner()
         finally:
             await conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": ADVISORY_LOCK_KEY})
             await conn.commit()
+    return True
+
+
+async def run_sweep_locked(*, trigger: str) -> bool:
+    return await _run_locked(lambda: run_sweep(trigger=trigger))
+
+
+async def _retry_candidates(now_utc: datetime) -> list:
+    """Проекты для самолечебного добора: попытки за сегодняшний ЛОКАЛЬНЫЙ день
+    были, успешной нет, последняя — старше RETRY_AFTER_MINUTES."""
+    tz = _zone(settings.AUTO_REFRESH_TZ)
+    local_now = now_utc.astimezone(tz)
+    day_start = datetime.combine(local_now.date(), dtime(0, 0), tzinfo=tz).astimezone(timezone.utc)
+    async with async_session() as db:
+        rows = (await db.execute(
+            select(
+                RefreshRun.project_id, RefreshRun.status,
+                RefreshRun.started_at, RefreshRun.finished_at,
+            ).where(RefreshRun.started_at >= day_start)
+        )).all()
+    return pick_retry_projects(rows, now_utc, RETRY_AFTER_MINUTES)
+
+
+# Фоновые задачи ручных прогонов: create_task держит только слабую ссылку —
+# без своей коллекции задачу мог бы собрать GC на середине прогона.
+_MANUAL_TASKS: set = set()
+
+
+async def start_manual_run(project_id, *, prefer_user_id) -> bool:
+    """Ручной прогон одного проекта (v1.6.4, кнопка «Обновить страницы сейчас»).
+
+    Запускается фоном — HTTP-запрос не ждёт минуты прогона; лок берётся до
+    ответа, чтобы честно вернуть False («уже идёт») вместо тихой очереди.
+    Прогон идёт кредами инициатора в первую очередь (он дал согласие кликом).
+    """
+    conn = await engine.connect()
+    got = (await conn.execute(
+        text("SELECT pg_try_advisory_lock(:key)"), {"key": ADVISORY_LOCK_KEY}
+    )).scalar()
+    await conn.commit()
+    if not got:
+        await conn.close()
+        return False
+
+    async def _run() -> None:
+        try:
+            async with async_session() as db:
+                project = await db.get(Project, project_id)
+            if project is not None and not project.is_demo:
+                await run_project(
+                    async_session, project, trigger="manual", prefer_user_id=prefer_user_id
+                )
+        except Exception:
+            logger.exception("manual-run: прогон проекта %s упал", project_id)
+        finally:
+            try:
+                await conn.execute(
+                    text("SELECT pg_advisory_unlock(:key)"), {"key": ADVISORY_LOCK_KEY}
+                )
+                await conn.commit()
+            finally:
+                await conn.close()
+
+    task = asyncio.create_task(_run())
+    _MANUAL_TASKS.add(task)
+    task.add_done_callback(_MANUAL_TASKS.discard)
     return True
 
 
@@ -112,18 +182,26 @@ async def auto_refresh_loop() -> None:
         try:
             now = datetime.now(timezone.utc)
             today_local = now.astimezone(_zone(settings.AUTO_REFRESH_TZ)).date()
-            if last_sweep_date == today_local:
-                continue
-            if not is_run_due(
+
+            # 1) Основной суточный прогон по расписанию.
+            if last_sweep_date != today_local and is_run_due(
                 now,
                 at=settings.AUTO_REFRESH_AT,
                 tz_name=settings.AUTO_REFRESH_TZ,
                 last_start_utc=await _last_auto_start(),
             ):
-                continue
-            logger.info("auto-refresh: старт ночного прогона")
-            await run_sweep_locked(trigger="auto")
-            last_sweep_date = today_local
+                logger.info("auto-refresh: старт ночного прогона")
+                await run_sweep_locked(trigger="auto")
+                last_sweep_date = today_local
+
+            # 2) Самолечение (v1.6.4): Confluence мог быть недоступен в 03:00
+            # (например, выключен VPN на машине с бэкендом) — раз в час
+            # добираем проекты, оставшиеся без успешного прогона за сегодня.
+            # Дайджест приедет сам, как только связь появится.
+            retry_ids = await _retry_candidates(now)
+            if retry_ids:
+                logger.info("auto-refresh: самолечебный добор %d проектов", len(retry_ids))
+                await _run_locked(lambda: run_projects(retry_ids, trigger="retry"))
         except asyncio.CancelledError:
             raise
         except Exception:

@@ -47,7 +47,12 @@ codegraph status                                 # состояние индек
 - `routers/` — HTTP API: `auth, users, pages, highlights, diff, projects`.
   ⚠ `routers/pages.py` — самый крупный (~880 строк), тянет почти все модели и сервисы.
 - `services/` — логика: `confluence` (интеграция с Confluence API),
-  `diff_engine` (diff текста), `highlight_projection` (перенос подсветок на изменённый текст).
+  `diff_engine` (diff текста), `highlight_projection` (перенос подсветок на изменённый текст),
+  `tree_sync` (сверка дерева со спейсами — общая для эндпоинта sync-tree и ночной джобы).
+- `jobs/` — фоновые задачи (v1.6.2): `nightly` — ночной прогон автообновления
+  (перепроверка кред → sync-tree → refresh страниц, журнал `refresh_runs`),
+  `scheduler` — asyncio-задача в lifespan (`AUTO_REFRESH_*` в `.env`).
+  Дизайн — `auto-refresh-plan-v1.6.md` в корне; тесты — `tests/test_nightly_refresh.py`.
 - `schemas/` — Pydantic-схемы запросов/ответов.
 - `models/` — ORM (SQLAlchemy): `user, page, snapshot, baseline, highlight, highlight_test, project`.
 - `database.py`, `config.py` — фундамент. ⚠ `database.py` импортируют ~13 модулей.

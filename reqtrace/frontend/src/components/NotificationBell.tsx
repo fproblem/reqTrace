@@ -28,6 +28,13 @@ const STATUS_POLL_ACTIVE_MS = 5_000;
 // Сколько держать итог прогона в пилюле после завершения.
 const RESULT_SHOW_MS = 6_000;
 
+// Индикатор увидит каждый участник проекта с открытым ReqTrace — появление
+// и исчезновение должны быть спокойными; уважение к reduced-motion как у
+// каскада дерева (TreeReveal).
+const REDUCED_MOTION = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 const KIND_ICONS: Record<NotificationEntry['kind'], React.FC<IconProps>> = {
   digest: SyncIcon,
   cred_invalid: LockIcon,
@@ -65,6 +72,7 @@ export const NotificationBell: React.FC = () => {
   const runningIdsRef = useRef<string[]>([]);
   const watchedRef = useRef<Set<string>>(new Set());
   const resultTimerRef = useRef<number | undefined>(undefined);
+  const lastStatusRef = useRef<React.ReactNode>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -161,6 +169,36 @@ export const NotificationBell: React.FC = () => {
   const resultInfo = result ? runResultText(result) : null;
   const statusVisible = running.length > 0 || resultInfo !== null;
 
+  // Содержимое статуса запоминается: при сворачивании старый текст должен
+  // спокойно погаснуть под закрывающейся шириной, а не исчезнуть скачком,
+  // оставив капсулу схлопываться пустой.
+  const statusContent = running.length > 0 ? (
+    <>
+      <RefreshIcon size={14} spinning />
+      <span style={{
+        fontSize: '12px', fontWeight: 500,
+        overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {running.length === 1
+          ? `Обновляем «${running[0].project_name}»…`
+          : `Обновляем проекты: ${running.length}…`}
+      </span>
+    </>
+  ) : resultInfo ? (
+    <span style={{
+      fontSize: '12px', fontWeight: 600,
+      overflow: 'hidden', textOverflow: 'ellipsis',
+      color: resultInfo.tone === 'warn' ? colors.statusOutdated
+        : resultInfo.tone === 'ok' ? colors.statusActive
+        : colors.textSecondary,
+    }}>
+      {resultInfo.text}
+    </span>
+  ) : null;
+  if (statusContent !== null) {
+    lastStatusRef.current = statusContent;
+  }
+
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
       {/* Одна кнопка-капсула: статус прогона раскрывает КОЛОКОЛЬЧИК влево —
@@ -199,37 +237,31 @@ export const NotificationBell: React.FC = () => {
           e.currentTarget.style.color = colors.textSecondary;
         }}
       >
+        {/* Спокойное раскрытие: grid-колонка 0fr↔1fr (как TreeReveal в
+            дереве, только горизонтально) анимируется ровно к фактической
+            ширине содержимого — без обрыва движения, который давал max-width.
+            Текст проявляется чуть позже ширины, а гаснуть начинает первым. */}
         <span style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          maxWidth: statusVisible ? '240px' : '0px',
-          opacity: statusVisible ? 1 : 0,
-          marginRight: statusVisible ? '8px' : '0px',
-          overflow: 'hidden', whiteSpace: 'nowrap',
-          transition: 'max-width 0.25s ease, opacity 0.2s ease, margin-right 0.25s ease',
+          display: 'grid',
+          gridTemplateColumns: statusVisible ? '1fr' : '0fr',
+          transition: REDUCED_MOTION ? undefined : 'grid-template-columns 0.5s ease-in-out',
         }}>
-          {running.length > 0 ? (
-            <>
-              <RefreshIcon size={14} spinning />
-              <span style={{
-                fontSize: '12px', fontWeight: 500,
-                overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {running.length === 1
-                  ? `Обновляем «${running[0].project_name}»…`
-                  : `Обновляем проекты: ${running.length}…`}
-              </span>
-            </>
-          ) : resultInfo && (
+          <span style={{
+            overflow: 'hidden', minWidth: 0,
+            display: 'flex', alignItems: 'center',
+          }}>
             <span style={{
-              fontSize: '12px', fontWeight: 600,
-              overflow: 'hidden', textOverflow: 'ellipsis',
-              color: resultInfo.tone === 'warn' ? colors.statusOutdated
-                : resultInfo.tone === 'ok' ? colors.statusActive
-                : colors.textSecondary,
+              display: 'flex', alignItems: 'center', gap: '8px',
+              paddingRight: '8px', whiteSpace: 'nowrap', maxWidth: '240px',
+              opacity: statusVisible ? 1 : 0,
+              transition: REDUCED_MOTION ? undefined
+                : statusVisible
+                  ? 'opacity 0.3s ease 0.15s'
+                  : 'opacity 0.25s ease',
             }}>
-              {resultInfo.text}
+              {statusContent ?? lastStatusRef.current}
             </span>
-          )}
+          </span>
         </span>
         <BellIcon size={16} />
         {badgeCount > 0 && (

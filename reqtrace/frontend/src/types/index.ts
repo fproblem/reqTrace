@@ -171,6 +171,31 @@ export interface ProjectTestsStats {
   last_auto_refresh_at?: string | null;
 }
 
+// --- Уведомления (v1.6.3): дайджест ночных прогонов ---
+
+export interface NotificationEntry {
+  /** Стабильный ключ записи: "<run_id>:digest|cred|skip". */
+  id: string;
+  kind: 'digest' | 'cred_invalid' | 'run_skipped';
+  project_id: string;
+  project_name: string;
+  happened_at: string;
+  unseen: boolean;
+  pages_total: number;
+  pages_changed: number;
+  pages_failed: number;
+  to_outdated: number;
+  to_lost: number;
+  affected_tests: string[];
+  /** confluence_unreachable | no_valid_credentials (у digest — если прогон прерван). */
+  skipped_reason?: string | null;
+}
+
+export interface NotificationsResponse {
+  unseen_count: number;
+  entries: NotificationEntry[];
+}
+
 export interface TestLinkRef {
   link_id: string;
   highlight_id: string;

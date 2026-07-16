@@ -4,6 +4,7 @@ import type {
   ProjectTree, TreeSyncResult,
   Project, CredentialCheckResult,
   ProjectTestsStats, ProjectTestIndex,
+  NotificationsResponse,
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -221,6 +222,13 @@ export const api = {
   // Diff
   getDiff: (pageId: string) =>
     request<DiffResponse>(`/pages/${pageId}/diff`),
+
+  // Уведомления (v1.6.3): дайджест ночных прогонов + отметка «прочитано»
+  getNotifications: () =>
+    request<NotificationsResponse>('/notifications'),
+
+  markNotificationsSeen: () =>
+    request<void>('/notifications/seen', { method: 'POST' }),
 
   // Экран «Тесты» (v1.6.1): сводка проектов и реверс-индекс ключей
   getProjectsStats: () =>

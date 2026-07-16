@@ -167,6 +167,8 @@ export interface ProjectTestsStats {
   active: number;
   outdated: number;
   lost: number;
+  /** Когда автообновление в последний раз проверяло проект (v1.6.2); null — ещё ни разу. */
+  last_auto_refresh_at?: string | null;
 }
 
 export interface TestLinkRef {

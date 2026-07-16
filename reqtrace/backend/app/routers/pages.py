@@ -32,7 +32,7 @@ from app.schemas.page import (
     SnapshotInfo, BaselineInfo,
     TreeNodeItem, SpaceTreeResponse, ProjectTreeResponse, TreeSyncResult,
 )
-from app.services import confluence, page_service
+from app.services import confluence, page_service, tree_sync
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
 
 logger = logging.getLogger(__name__)
@@ -509,86 +509,19 @@ async def sync_tree(
 
     for project, cred in memberships.all():
         conn = connection_for(project, cred)
-
-        # Spaces that contain at least one tracked (real) page — virtual pages
-        # only ever exist alongside a tracked page in the same space.
-        spaces_result = await db.execute(
-            select(Page.space_key)
-            .where(
-                Page.project_id == project.id,
-                Page.is_virtual == False,  # noqa: E712
-                Page.space_key.isnot(None),
-            )
-            .distinct()
-        )
-        space_keys = [s for s in spaces_result.scalars().all() if s]
-
-        auth_failed = False
-        for space_key in space_keys:
-            try:
-                space_pages = await confluence.fetch_space_pages(space_key, conn)
-            except ConfluenceAuthError:
-                # Креды протухли — помечаем и идём к следующему проекту;
-                # замок появится при следующей загрузке дерева.
-                cred.status = "invalid"
-                cred.last_check_at = datetime.now(timezone.utc)
-                await db.flush()
-                auth_failed = True
-                break
-            except Exception as e:
-                logger.warning("sync-tree: failed to fetch space %s: %s — skipping", space_key, e)
-                continue
-
-            synced_spaces += 1
-            fresh = {sp.page_id: sp for sp in space_pages}
-
-            db_pages_result = await db.execute(
-                select(Page).where(
-                    Page.project_id == project.id,
-                    Page.space_key == space_key,
-                )
-            )
-            db_pages = db_pages_result.scalars().all()
-            db_cpids = {p.confluence_page_id for p in db_pages}
-
-            # 1. Update existing pages (re-parent + title); handle disappeared ones.
-            #    parent_confluence_page_id has no FK to other pages, so deleting a
-            #    stale virtual parent here never breaks its (already re-parented) children.
-            for page in db_pages:
-                sp = fresh.get(page.confluence_page_id)
-                if sp is not None:
-                    if page.parent_confluence_page_id != sp.parent_page_id:
-                        page.parent_confluence_page_id = sp.parent_page_id
-                        moved += 1
-                    if page.title != sp.title:
-                        page.title = sp.title
-                elif page.is_virtual:
-                    # Virtual placeholder gone from Confluence — safe to drop.
-                    await db.delete(page)
-                    removed += 1
-                else:
-                    # Tracked page with real data — keep it, just flag it.
-                    missing_tracked += 1
-
-            # 2. Create virtual pages for Confluence pages not yet known locally.
-            for cpid, sp in fresh.items():
-                if cpid not in db_cpids:
-                    db.add(Page(
-                        project_id=project.id,
-                        confluence_page_id=cpid,
-                        confluence_url=f"{project.confluence_base_url}/pages/viewpage.action?pageId={cpid}",
-                        title=sp.title,
-                        space_key=space_key,
-                        parent_confluence_page_id=sp.parent_page_id,
-                        is_virtual=True,
-                        added_by=current_user.id,
-                    ))
-                    added += 1
-
+        # Ядро сверки общее с ночным автообновлением (services/tree_sync).
+        stats = await tree_sync.sync_project_tree(db, project, conn, current_user.id)
+        synced_spaces += stats.spaces
+        moved += stats.moved
+        added += stats.added
+        removed += stats.removed
+        missing_tracked += stats.missing_tracked
+        if stats.auth_failed:
+            # Креды протухли — помечаем и идём к следующему проекту;
+            # замок появится при следующей загрузке дерева.
+            cred.status = "invalid"
+            cred.last_check_at = datetime.now(timezone.utc)
             await db.flush()
-
-        if auth_failed:
-            continue
 
     return TreeSyncResult(
         spaces=synced_spaces,

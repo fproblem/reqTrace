@@ -10,6 +10,17 @@ import { useToast } from '../components/Toast';
 import { ChevronRightIcon, ClipboardCheckIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 
+// Свежесть автообновления: человеческий формат «когда проверено».
+export function formatCheckedAt(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (days <= 0) return `сегодня в ${time}`;
+  if (days === 1) return `вчера в ${time}`;
+  return `${d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} в ${time}`;
+}
+
 // Склонения счётчиков: «1 тест, 2 теста, 5 тестов».
 export function plural(n: number, forms: [string, string, string]): string {
   const abs = Math.abs(n) % 100;
@@ -172,6 +183,27 @@ export const TestsPage: React.FC = () => {
                     {s.pages} {plural(s.pages, ['страница', 'страницы', 'страниц'])}
                   </span>
                 </div>
+
+                {/* Свежесть ночного автообновления (v1.6.2). Статусы на этом
+                    экране ровно настолько актуальны, насколько свеж последний
+                    прогон — дата отвечает на вопрос «можно ли им верить с утра».
+                    Янтарь — прогона не было дольше двух суток (или вовсе). */}
+                {!s.is_demo && (
+                  <div
+                    title="Когда ночное автообновление в последний раз проверяло страницы проекта"
+                    style={{
+                      fontSize: '12px',
+                      color: !s.last_auto_refresh_at
+                          || Date.now() - new Date(s.last_auto_refresh_at).getTime() > 48 * 3600 * 1000
+                        ? colors.statusOutdated
+                        : colors.textTertiary,
+                    }}
+                  >
+                    {s.last_auto_refresh_at
+                      ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
+                      : 'Автообновление ещё не проверяло проект'}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -22,7 +22,11 @@ class RefreshRun(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    trigger: Mapped[str] = mapped_column(String(16), nullable=False, server_default="auto")  # auto | cli
+    # auto — ночной прогон; retry — самолечебный добор (v1.6.4); manual —
+    # кнопка «Обновить страницы сейчас»; cli — python -m app.jobs.nightly.
+    # Ночное расписание (is_run_due) считает только auto — остальные
+    # триггеры следующую ночь не отменяют.
+    trigger: Mapped[str] = mapped_column(String(16), nullable=False, server_default="auto")
     # ok — все страницы обработаны без ошибок; partial — часть страниц не
     # удалась или прогон остановлен на середине (кончились рабочие креды);
     # skipped — не начинался (нет кред / Confluence недоступен); failed —

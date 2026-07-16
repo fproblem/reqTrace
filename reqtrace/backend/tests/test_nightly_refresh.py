@@ -25,7 +25,7 @@
 import asyncio
 import unittest
 import uuid
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 from cryptography.fernet import Fernet
@@ -33,7 +33,12 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.crypto import encrypt_secret
-from app.jobs.nightly import run_project, run_sweep, status_transitions
+from app.jobs.nightly import (
+    pick_retry_projects,
+    run_project,
+    run_sweep,
+    status_transitions,
+)
 from app.jobs.scheduler import is_run_due, parse_hhmm
 from app.models.page import Page
 from app.models.project import Project, ProjectCredential
@@ -238,8 +243,8 @@ class RunProjectBase(unittest.TestCase):
         self.session.objects[(Page, page.id)] = page
         return page
 
-    def run_job(self):
-        return asyncio.run(run_project(self.factory, self.project, trigger="auto"))
+    def run_job(self, **kwargs):
+        return asyncio.run(run_project(self.factory, self.project, trigger="auto", **kwargs))
 
     def journal(self, run_id) -> RefreshRun:
         return self.session.objects[(RefreshRun, run_id)]
@@ -441,6 +446,71 @@ class RunProjectTest(RunProjectBase):
         self.assertTrue(changed_entry["changed"])
         # Ошибка одной страницы — не повод трогать креды.
         self.assertIsNone(run.cred_issues)
+
+
+class PreferUserCredsTest(RunProjectBase):
+    def test_manual_run_tries_initiator_credentials_first(self):
+        cred1 = self.add_cred(username="colleague")
+        cred2 = self.add_cred(username="initiator")
+        page = self.add_page()
+        h1 = uuid.uuid4()
+        self.session.execute_results = [
+            [cred1, cred2],           # порядок «по свежести чека»
+            [(page.id, page.title)],
+            [(h1, "active")],
+            [(h1, "active")],
+        ]
+        with patch(CHECK_CONNECTION, new=AsyncMock()), \
+             patch(SYNC_TREE, new=AsyncMock(return_value=TreeSyncStats())), \
+             patch(REFRESH, new=AsyncMock(return_value=False)) as refresh:
+            self.run_job(prefer_user_id=cred2.user_id)
+
+        # Ручной прогон идёт кредами инициатора, хотя в списке он был вторым.
+        self.assertIs(refresh.await_args.args[3], cred2)
+
+
+class PickRetryProjectsTest(unittest.TestCase):
+    """Самолечебный добор (v1.6.4): кого пробовать ещё раз."""
+
+    NOW = datetime(2026, 7, 16, 9, 0, tzinfo=UTC)
+
+    def rows(self, *attempts):
+        return list(attempts)
+
+    def test_failed_project_with_stale_attempt_is_retried(self):
+        pid = uuid.uuid4()
+        rows = [(pid, "skipped", self.NOW - timedelta(hours=6), self.NOW - timedelta(hours=6))]
+        self.assertEqual(pick_retry_projects(rows, self.NOW), [pid])
+
+    def test_successful_today_is_left_alone(self):
+        pid = uuid.uuid4()
+        rows = [
+            (pid, "skipped", self.NOW - timedelta(hours=6), self.NOW - timedelta(hours=6)),
+            (pid, "ok", self.NOW - timedelta(hours=2), self.NOW - timedelta(hours=2)),
+        ]
+        self.assertEqual(pick_retry_projects(rows, self.NOW), [])
+
+    def test_partial_counts_as_success(self):
+        # partial = данные добыты (часть страниц упала) — почасовой добор
+        # не молотит проект, у которого просто битые страницы.
+        pid = uuid.uuid4()
+        rows = [(pid, "partial", self.NOW - timedelta(hours=3), self.NOW - timedelta(hours=3))]
+        self.assertEqual(pick_retry_projects(rows, self.NOW), [])
+
+    def test_recent_attempt_waits_its_hour(self):
+        pid = uuid.uuid4()
+        rows = [(pid, "skipped", self.NOW - timedelta(minutes=20), self.NOW - timedelta(minutes=20))]
+        self.assertEqual(pick_retry_projects(rows, self.NOW), [])
+
+    def test_crashed_unfinished_run_retried_after_pause(self):
+        # Строка без finished_at (процесс умер): статус по умолчанию skipped,
+        # успешной её считать нельзя — добор через час после старта.
+        pid = uuid.uuid4()
+        rows = [(pid, "skipped", self.NOW - timedelta(hours=2), None)]
+        self.assertEqual(pick_retry_projects(rows, self.NOW), [pid])
+
+    def test_project_without_attempts_is_main_sweep_business(self):
+        self.assertEqual(pick_retry_projects([], self.NOW), [])
 
 
 class RunSweepTest(unittest.TestCase):

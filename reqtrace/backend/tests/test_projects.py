@@ -657,5 +657,58 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         self.assertEqual(resp.status_code, 404)
 
 
+class TestManualRefreshRun(ProjectTestBase):
+    """Ручной прогон с карточки проекта (v1.6.4): POST /{id}/refresh-run.
+
+    Сам прогон здесь замокан (start_manual_run) — его поведение покрывает
+    test_nightly_refresh; тут — доступ и контракт 202/409.
+    """
+
+    START = "app.routers.projects.start_manual_run"
+
+    def test_member_starts_background_run(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(cred)]  # членство ok
+        with patch(self.START, new=AsyncMock(return_value=True)) as start:
+            resp = self.client.post(f"/api/projects/{project.id}/refresh-run")
+
+        self.assertEqual(resp.status_code, 202, resp.text)
+        self.assertEqual(resp.json(), {"started": True})
+        # Прогон идёт от имени нажавшего — его креды в приоритете.
+        start.assert_awaited_once_with(project.id, prefer_user_id=self.user.id)
+
+    def test_busy_lock_is_409(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(cred)]
+        with patch(self.START, new=AsyncMock(return_value=False)):
+            resp = self.client.post(f"/api/projects/{project.id}/refresh-run")
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn("уже идёт", resp.json()["detail"])
+
+    def test_non_member_is_403(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(None)]  # кред нет
+        with patch(self.START, new=AsyncMock(return_value=True)) as start:
+            resp = self.client.post(f"/api/projects/{project.id}/refresh-run")
+
+        self.assertEqual(resp.status_code, 403)
+        start.assert_not_awaited()
+
+    def test_demo_project_is_404(self):
+        project = make_project(is_demo=True, created_by=self.user.id)
+        self.session.objects[(Project, project.id)] = project
+        with patch(self.START, new=AsyncMock(return_value=True)) as start:
+            resp = self.client.post(f"/api/projects/{project.id}/refresh-run")
+
+        self.assertEqual(resp.status_code, 404)
+        start.assert_not_awaited()
+
+
 if __name__ == "__main__":
     unittest.main()

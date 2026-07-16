@@ -4,7 +4,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { PageTree } from './PageTree';
-import { BellIcon, ClipboardCheckIcon, LogoutIcon } from '../icons';
+import { ClipboardCheckIcon, LogoutIcon } from '../icons';
+import { NotificationBell } from '../NotificationBell';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -413,28 +414,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </button>
           )}
 
-          {/* Колокольчик — замах на систему оповещений и дайджестов: место
-              застолблено уже сейчас, кнопка сознательно НЕАКТИВНАЯ на вид
-              (приглушена, без ховера и клика) — тултип обещает будущее. */}
-          {user && (
-            <button
-              title="Уведомления и дайджесты — скоро"
-              aria-disabled
-              style={{
-                width: '34px', height: '34px', padding: 0,
-                borderRadius: radii.md,
-                border: `1px solid ${colors.border}`,
-                background: colors.white,
-                color: colors.textTertiary,
-                opacity: 0.55,
-                cursor: 'default',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <BellIcon size={16} />
-            </button>
-          )}
+          {/* Колокольчик уведомлений (жив с v1.6.3): бейдж непрочитанного +
+              панель с дайджестами ночных прогонов. Заглушка стояла с v1.6.1. */}
+          {user && <NotificationBell />}
           {user && (
             <button
               onClick={() => { void logout(); }}

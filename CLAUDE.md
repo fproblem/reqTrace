@@ -44,7 +44,7 @@ codegraph status                                 # состояние индек
 - `project_access.py` — доступ к проектам и походы в Confluence личными кредами
   (`require_page_access`, `connection_for`, `run_confluence`); `crypto.py` —
   шифрование паролей кред (Fernet, ключ `CREDENTIALS_KEY`).
-- `routers/` — HTTP API: `auth, users, pages, highlights, diff, projects`.
+- `routers/` — HTTP API: `auth, users, pages, highlights, diff, projects, notifications`.
   ⚠ `routers/pages.py` — самый крупный (~880 строк), тянет почти все модели и сервисы.
 - `services/` — логика: `confluence` (интеграция с Confluence API),
   `diff_engine` (diff текста), `highlight_projection` (перенос подсветок на изменённый текст),

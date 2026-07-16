@@ -876,7 +876,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
       window.dispatchEvent(new Event('reqtrace:refresh-run'));
       showToast(
         'success', 'Прогон запущен',
-        `Страницы «${project.name}» обновляются в фоне — итог придёт в колокольчик и на экран «Тесты»`,
+        `Страницы «${project.name}» обновляются — прогресс и итог видны у колокольчика в шапке`,
       );
     } catch (e: any) {
       if (e?.status === 409) {

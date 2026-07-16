@@ -1,9 +1,10 @@
-import { NotificationEntry } from '../types';
+import { FinishedRunSummary, NotificationEntry } from '../types';
 import {
   notificationBody,
   notificationLink,
   notificationTint,
   notificationTitle,
+  runResultText,
 } from './notificationText';
 
 function entry(over: Partial<NotificationEntry> = {}): NotificationEntry {
@@ -121,6 +122,42 @@ describe('notificationLink', () => {
   it('проблемы кред и пропуски ведут в профиль', () => {
     expect(notificationLink(entry({ kind: 'cred_invalid' }))).toBe('/settings');
     expect(notificationLink(entry({ kind: 'run_skipped' }))).toBe('/settings');
+  });
+});
+
+function finished(over: Partial<FinishedRunSummary> = {}): FinishedRunSummary {
+  return {
+    id: 'r1',
+    project_id: 'p1',
+    project_name: 'Платёжный шлюз',
+    status: 'ok',
+    finished_at: '2026-07-16T09:15:00Z',
+    pages_changed: 0,
+    pages_failed: 0,
+    to_outdated: 0,
+    to_lost: 0,
+    skipped_reason: null,
+    ...over,
+  };
+}
+
+describe('runResultText (пилюля-индикатор)', () => {
+  it('говорит итог даже там, где бейджу загораться не от чего', () => {
+    expect(runResultText(finished()))
+      .toEqual({ text: 'Готово — изменений нет', tone: 'quiet' });
+    expect(runResultText(finished({ pages_changed: 3 })))
+      .toEqual({ text: 'Готово: страницы изменились, привязки целы', tone: 'quiet' });
+    expect(runResultText(finished({ status: 'skipped', skipped_reason: 'confluence_unreachable' })))
+      .toEqual({ text: 'Не удалось: Confluence недоступен', tone: 'warn' });
+  });
+
+  it('находки и ошибки — коротко и с тоном', () => {
+    expect(runResultText(finished({ to_outdated: 2, to_lost: 1 })))
+      .toEqual({ text: 'Готово: 2 на проверку, 1 утрачена', tone: 'ok' });
+    expect(runResultText(finished({ pages_failed: 2 })))
+      .toEqual({ text: 'Готово, но 2 страницы не обновились', tone: 'warn' });
+    expect(runResultText(finished({ status: 'skipped', skipped_reason: 'no_valid_credentials' })))
+      .toEqual({ text: 'Не удалось: нет работающих подключений', tone: 'warn' });
   });
 });
 

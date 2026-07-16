@@ -6,17 +6,27 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { NotificationEntry, NotificationsResponse } from '../types';
+import {
+  FinishedRunSummary, NotificationEntry, NotificationsResponse, RunningRun,
+} from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
 import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, SyncIcon } from './icons';
+import { RefreshIcon } from './RefreshIcon';
 import { formatCheckedAt } from '../pages/TestsPage';
 import {
   notificationBody, notificationLink, notificationTint, notificationTitle,
+  runResultText,
 } from './notificationText';
 
 // Ночной цикл событий — бейдж меняется раз в сутки; интервал нужен только
 // вкладкам-долгожителям, чтобы утренний дайджест появился без перезагрузки.
 const POLL_MS = 10 * 60 * 1000;
+// Живой статус прогонов (пилюля-индикатор): в покое изредка, во время
+// прогона — часто, чтобы завершение и итог показались за секунды.
+const STATUS_POLL_IDLE_MS = 30_000;
+const STATUS_POLL_ACTIVE_MS = 5_000;
+// Сколько держать итог прогона в пилюле после завершения.
+const RESULT_SHOW_MS = 6_000;
 
 const KIND_ICONS: Record<NotificationEntry['kind'], React.FC<IconProps>> = {
   digest: SyncIcon,
@@ -45,6 +55,50 @@ export const NotificationBell: React.FC = () => {
     return () => clearInterval(timer);
   }, [load]);
 
+  // Живой статус прогонов (v1.6.4): пилюля «Обновляем…» слева от колокольчика.
+  // Показывает ЛЮБОЙ идущий прогон моих проектов — ночной, почасовой добор,
+  // ручной (свой или коллеги), — а после завершения на несколько секунд
+  // отдаёт итог, даже когда бейджу загораться не от чего («изменений нет»,
+  // «Confluence недоступен»).
+  const [running, setRunning] = useState<RunningRun[]>([]);
+  const [result, setResult] = useState<FinishedRunSummary | null>(null);
+  const runningIdsRef = useRef<string[]>([]);
+  const watchedRef = useRef<Set<string>>(new Set());
+  const resultTimerRef = useRef<number | undefined>(undefined);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const s = await api.getRefreshStatus();
+      const ids = s.running.map(r => r.id);
+      ids.forEach(id => watchedRef.current.add(id));
+      // Переход «крутилось → закончилось»: панель обновить сразу, итог — в пилюлю.
+      if (runningIdsRef.current.some(id => !ids.includes(id))) {
+        void load();
+        const finished = s.last_finished;
+        if (finished && watchedRef.current.has(finished.id)) {
+          setResult(finished);
+          window.clearTimeout(resultTimerRef.current);
+          resultTimerRef.current = window.setTimeout(() => setResult(null), RESULT_SHOW_MS);
+        }
+      }
+      runningIdsRef.current = ids;
+      setRunning(s.running);
+    } catch {
+      // Индикатор не шумит: сетевые сбои молча, 401 обработает AuthContext.
+    }
+  }, [load]);
+
+  useEffect(() => {
+    void loadStatus();
+    const timer = setInterval(
+      () => { void loadStatus(); },
+      running.length > 0 ? STATUS_POLL_ACTIVE_MS : STATUS_POLL_IDLE_MS,
+    );
+    return () => clearInterval(timer);
+  }, [loadStatus, running.length]);
+
+  useEffect(() => () => window.clearTimeout(resultTimerRef.current), []);
+
   // Ручной прогон (v1.6.4): после «Обновить страницы сейчас» с карточки
   // проекта опрашиваем чаще, чтобы готовый дайджест пришёл за секунды.
   const fastUntilRef = useRef(0);
@@ -52,10 +106,11 @@ export const NotificationBell: React.FC = () => {
     const onManualRun = () => {
       fastUntilRef.current = Date.now() + 20 * 60 * 1000;
       void load();
+      void loadStatus();
     };
     window.addEventListener('reqtrace:refresh-run', onManualRun);
     return () => window.removeEventListener('reqtrace:refresh-run', onManualRun);
-  }, [load]);
+  }, [load, loadStatus]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (Date.now() < fastUntilRef.current) void load();
@@ -103,8 +158,64 @@ export const NotificationBell: React.FC = () => {
     ? colors.statusLost
     : colors.statusOutdated;
 
+  const resultInfo = result ? runResultText(result) : null;
+  const pillVisible = running.length > 0 || resultInfo !== null;
+
   return (
-    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
+    <div ref={wrapRef} style={{
+      position: 'relative', flexShrink: 0,
+      display: 'flex', alignItems: 'center',
+    }}>
+      {/* Пилюля-индикатор прогона: плавно выезжает влево от колокольчика,
+          крутит лоадер, по завершении несколько секунд показывает итог.
+          Клик — открыть панель уведомлений (там подробности). */}
+      <div style={{
+        maxWidth: pillVisible ? '260px' : '0px',
+        opacity: pillVisible ? 1 : 0,
+        marginRight: pillVisible ? '6px' : '0px',
+        overflow: 'hidden',
+        flexShrink: 0,
+        transition: 'max-width 0.25s ease, opacity 0.2s ease, margin-right 0.25s ease',
+      }}>
+        <button
+          onClick={toggle}
+          title={running.length > 0
+            ? 'Идёт прогон обновления — открыть уведомления'
+            : 'Итог прогона — открыть уведомления'}
+          style={{
+            height: '34px', display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '0 12px', borderRadius: radii.md, boxSizing: 'border-box',
+            border: `1px solid ${colors.border}`, background: colors.white,
+            whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit',
+            color: colors.textSecondary,
+          }}
+        >
+          {running.length > 0 ? (
+            <>
+              <RefreshIcon size={14} spinning />
+              <span style={{
+                fontSize: '12px', fontWeight: 500,
+                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '196px',
+              }}>
+                {running.length === 1
+                  ? `Обновляем «${running[0].project_name}»…`
+                  : `Обновляем проекты: ${running.length}…`}
+              </span>
+            </>
+          ) : resultInfo && (
+            <span style={{
+              fontSize: '12px', fontWeight: 600,
+              overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '232px',
+              color: resultInfo.tone === 'warn' ? colors.statusOutdated
+                : resultInfo.tone === 'ok' ? colors.statusActive
+                : colors.textSecondary,
+            }}>
+              {resultInfo.text}
+            </span>
+          )}
+        </button>
+      </div>
+
       <button
         onClick={toggle}
         title="Уведомления: дайджест ночных обновлений"

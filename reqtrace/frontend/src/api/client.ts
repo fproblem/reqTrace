@@ -4,7 +4,7 @@ import type {
   ProjectTree, TreeSyncResult,
   Project, CredentialCheckResult,
   ProjectTestsStats, ProjectTestIndex,
-  NotificationsResponse,
+  NotificationsResponse, RefreshStatusResponse,
 } from '../types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -229,6 +229,10 @@ export const api = {
 
   markNotificationsSeen: () =>
     request<void>('/notifications/seen', { method: 'POST' }),
+
+  /** Живой статус прогонов: индикатор «обновляем…» у колокольчика (v1.6.4). */
+  getRefreshStatus: () =>
+    request<RefreshStatusResponse>('/notifications/refresh-status'),
 
   // Экран «Тесты» (v1.6.1): сводка проектов и реверс-индекс ключей
   getProjectsStats: () =>

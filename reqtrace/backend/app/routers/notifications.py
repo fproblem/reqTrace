@@ -26,7 +26,13 @@ from app.database import get_db
 from app.models.project import Project, ProjectCredential
 from app.models.refresh_run import RefreshRun
 from app.models.user import User
-from app.schemas.notification import NotificationEntry, NotificationsResponse
+from app.schemas.notification import (
+    FinishedRunSummary,
+    NotificationEntry,
+    NotificationsResponse,
+    RefreshStatusResponse,
+    RunningRun,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +217,80 @@ async def list_notifications(
     return NotificationsResponse(
         unseen_count=sum(1 for e in entries if e.unseen),
         entries=entries,
+    )
+
+
+@router.get("/refresh-status", response_model=RefreshStatusResponse)
+async def refresh_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Живой статус прогонов для индикатора у колокольчика.
+
+    running — прогоны моих проектов, идущие прямо сейчас (строка журнала без
+    finished_at; старше 3 часов — процесс умер, не «идёт»); last_finished —
+    итог последнего завершённого, чтобы индикатор показал результат даже
+    тихого или неудачного прогона. Запрос лёгкий — фронт опрашивает его
+    часто, пока крутится прогон.
+    """
+    creds_result = await db.execute(
+        select(ProjectCredential).where(ProjectCredential.user_id == current_user.id)
+    )
+    ok_ids = [c.project_id for c in creds_result.scalars().all() if c.status == "ok"]
+    if not ok_ids:
+        return RefreshStatusResponse(running=[], last_finished=None)
+
+    now = datetime.now(timezone.utc)
+    running_rows = (await db.execute(
+        select(RefreshRun, Project.name)
+        .join(Project, Project.id == RefreshRun.project_id)
+        .where(
+            RefreshRun.project_id.in_(ok_ids),
+            RefreshRun.finished_at.is_(None),
+            RefreshRun.started_at >= now - timedelta(hours=3),
+        )
+        .order_by(RefreshRun.started_at.desc())
+    )).all()
+
+    finished_rows = (await db.execute(
+        select(RefreshRun, Project.name)
+        .join(Project, Project.id == RefreshRun.project_id)
+        .where(
+            RefreshRun.project_id.in_(ok_ids),
+            RefreshRun.finished_at.isnot(None),
+        )
+        .order_by(RefreshRun.finished_at.desc())
+        .limit(1)
+    )).all()
+
+    last_finished = None
+    if finished_rows:
+        run, project_name = finished_rows[0]
+        last_finished = FinishedRunSummary(
+            id=run.id,
+            project_id=run.project_id,
+            project_name=project_name,
+            status=run.status,
+            finished_at=run.finished_at,
+            pages_changed=run.pages_changed,
+            pages_failed=run.pages_failed,
+            to_outdated=run.to_outdated,
+            to_lost=run.to_lost,
+            skipped_reason=_skip_reason(run),
+        )
+
+    return RefreshStatusResponse(
+        running=[
+            RunningRun(
+                id=run.id,
+                project_id=run.project_id,
+                project_name=project_name,
+                trigger=run.trigger,
+                started_at=run.started_at,
+            )
+            for run, project_name in running_rows
+        ],
+        last_finished=last_finished,
     )
 
 

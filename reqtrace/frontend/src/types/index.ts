@@ -201,6 +201,35 @@ export interface NotificationsResponse {
   entries: NotificationEntry[];
 }
 
+/** Прогон, идущий прямо сейчас (индикатор у колокольчика, v1.6.4). */
+export interface RunningRun {
+  id: string;
+  project_id: string;
+  project_name: string;
+  trigger: string;
+  started_at: string;
+}
+
+/** Итог последнего завершённого прогона — показывается индикатором пару
+ *  секунд, даже когда бейджу загораться не от чего. */
+export interface FinishedRunSummary {
+  id: string;
+  project_id: string;
+  project_name: string;
+  status: string;
+  finished_at: string;
+  pages_changed: number;
+  pages_failed: number;
+  to_outdated: number;
+  to_lost: number;
+  skipped_reason?: string | null;
+}
+
+export interface RefreshStatusResponse {
+  running: RunningRun[];
+  last_finished?: FinishedRunSummary | null;
+}
+
 export interface TestLinkRef {
   link_id: string;
   highlight_id: string;

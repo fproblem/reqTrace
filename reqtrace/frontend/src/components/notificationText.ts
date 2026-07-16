@@ -1,7 +1,7 @@
 // Тексты панели уведомлений (v1.6.3): бэкенд отдаёт структурированные записи
 // журнала прогонов, человеческие фразы собираются здесь — как humanizeError
 // в api/client.ts. Чистые функции, покрыты notificationText.test.ts.
-import { NotificationEntry } from '../types';
+import { FinishedRunSummary, NotificationEntry } from '../types';
 import { formatCheckedAt, plural } from '../pages/TestsPage';
 
 /** Сколько ключей тестов называем в дайджесте поимённо; остальные — «и ещё N». */
@@ -81,4 +81,37 @@ export function notificationTint(e: NotificationEntry): 'green' | 'amber' | 'red
   if (e.to_lost > 0 || e.pages_failed > 0) return 'red';
   if (e.to_outdated > 0) return 'amber';
   return 'green';
+}
+
+/** Краткий итог завершённого прогона для индикатора у колокольчика:
+ * говорит результат даже там, где бейджу загораться не от чего
+ * («изменений нет», «Confluence недоступен»). */
+export function runResultText(
+  run: FinishedRunSummary,
+): { text: string; tone: 'ok' | 'quiet' | 'warn' } {
+  if (run.status === 'skipped') {
+    return {
+      text: run.skipped_reason === 'no_valid_credentials'
+        ? 'Не удалось: нет работающих подключений'
+        : 'Не удалось: Confluence недоступен',
+      tone: 'warn',
+    };
+  }
+  const findings: string[] = [];
+  if (run.to_outdated > 0) findings.push(`${run.to_outdated} на проверку`);
+  if (run.to_lost > 0) {
+    findings.push(`${run.to_lost} ${plural(run.to_lost, ['утрачена', 'утрачены', 'утрачено'])}`);
+  }
+  if (findings.length > 0) return { text: `Готово: ${findings.join(', ')}`, tone: 'ok' };
+  if (run.pages_failed > 0) {
+    return {
+      text: `Готово, но ${run.pages_failed} ${plural(run.pages_failed,
+        ['страница не обновилась', 'страницы не обновились', 'страниц не обновились'])}`,
+      tone: 'warn',
+    };
+  }
+  if (run.pages_changed > 0) {
+    return { text: 'Готово: страницы изменились, привязки целы', tone: 'quiet' };
+  }
+  return { text: 'Готово — изменений нет', tone: 'quiet' };
 }

@@ -95,12 +95,14 @@ def make_cred(project, user, status="ok"):
     return cred
 
 
-def make_run(project, *, status="ok", finished_at=NOW, to_outdated=0, to_lost=0,
+def make_run(project, *, status="ok", finished_at=NOW, started_at=None,
+             to_outdated=0, to_lost=0,
              pages_total=0, pages_changed=0, pages_failed=0,
              details=None, cred_issues=None):
     run = RefreshRun(project_id=project.id, trigger="auto")
     run.id = uuid.uuid4()
     run.status = status
+    run.started_at = started_at or finished_at or NOW
     run.finished_at = finished_at
     run.pages_total = pages_total
     run.pages_changed = pages_changed
@@ -337,6 +339,38 @@ class InterruptedRunTest(NotificationsBase):
         digest = next(e for e in data["entries"] if e["kind"] == "digest")
         self.assertEqual(digest["to_outdated"], 2)
         self.assertEqual(digest["skipped_reason"], "confluence_unreachable")
+
+
+class RefreshStatusTest(NotificationsBase):
+    """Индикатор у колокольчика: что идёт сейчас и чем кончился последний."""
+
+    def test_running_and_last_finished(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        active = make_run(project, finished_at=None, started_at=NOW)
+        done = make_run(project, to_outdated=2, finished_at=NOW - timedelta(minutes=5))
+        self.session.execute_results = [
+            [cred],
+            FakeResult([(active, project.name)]),
+            FakeResult([(done, project.name)]),
+        ]
+        resp = self.client.get("/api/notifications/refresh-status")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+
+        [running] = data["running"]
+        self.assertEqual(running["project_name"], "Банк X")
+        self.assertEqual(running["trigger"], "auto")
+        self.assertEqual(data["last_finished"]["to_outdated"], 2)
+        self.assertEqual(data["last_finished"]["status"], "ok")
+
+    def test_without_ok_membership_status_is_empty(self):
+        project = make_project()
+        cred = make_cred(project, self.user, status="invalid")
+        self.session.execute_results = [[cred]]
+        resp = self.client.get("/api/notifications/refresh-status")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"running": [], "last_finished": None})
 
 
 class SeenTest(NotificationsBase):

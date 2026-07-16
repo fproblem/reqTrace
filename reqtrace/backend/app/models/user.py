@@ -21,3 +21,8 @@ class User(Base):
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Когда пользователь открывал колокольчик (v1.6.3): записи журнала новее
+    # этой отметки — «непрочитанные». Персональных строк-рассылок нет —
+    # уведомления считаются от журнала refresh_runs по членству.
+    notifications_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

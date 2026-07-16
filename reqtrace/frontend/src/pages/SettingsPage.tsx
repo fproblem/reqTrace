@@ -321,6 +321,15 @@ const KeyIcon: React.FC = () => (
   </svg>
 );
 
+// Стрелки синхронизации — для «Обновить страницы сейчас» (v1.6.4).
+const SyncNowIcon: React.FC = () => (
+  <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
+    <polyline points="23 4 23 10 17 10" />
+    <polyline points="1 20 1 14 7 14" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
+
 const PencilIcon: React.FC = () => (
   <svg {...featherProps} style={{ display: 'block', flexShrink: 0, color: colors.textSecondary }}>
     <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
@@ -859,6 +868,25 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
     }
   };
 
+  // Ручной прогон (v1.6.4): фоновый запуск на бэке; событием ускоряем опрос
+  // колокольчика, чтобы готовый дайджест пришёл за секунды, а не через 10 минут.
+  const handleRunNow = async () => {
+    try {
+      await api.refreshProjectNow(project.id);
+      window.dispatchEvent(new Event('reqtrace:refresh-run'));
+      showToast(
+        'success', 'Прогон запущен',
+        `Страницы «${project.name}» обновляются в фоне — итог придёт в колокольчик и на экран «Тесты»`,
+      );
+    } catch (e: any) {
+      if (e?.status === 409) {
+        showToast('warning', 'Прогон уже идёт', e.message);
+      } else {
+        showToast('error', 'Не удалось запустить прогон', e.message);
+      }
+    }
+  };
+
   // Пункты меню — как в меню действий страницы (иконка + текст, скругление, ховер).
   const menuItemStyle: React.CSSProperties = {
     display: 'flex',
@@ -968,6 +996,22 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 display: 'flex', flexDirection: 'column', gap: '2px',
               }}
             >
+              {/* Ручной прогон (v1.6.4): тот же полный прогон, что ночью, —
+                  спасение, когда в 03:00 не было VPN, а обновления нужны
+                  сейчас. Только при рабочем подключении. */}
+              {status === 'ok' && (
+                <button
+                  role="menuitem"
+                  title="Запустить полный прогон обновления по проекту прямо сейчас: страницы, дерево, статусы привязок"
+                  style={menuItemStyle}
+                  onClick={() => { setMenuOpen(false); void handleRunNow(); }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <SyncNowIcon />
+                  Обновить страницы сейчас
+                </button>
+              )}
               <button
                 role="menuitem"
                 style={menuItemStyle}

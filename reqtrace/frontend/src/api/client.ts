@@ -275,6 +275,13 @@ export const api = {
       method: 'POST',
     }),
 
+  /** Ручной прогон обновления проекта (v1.6.4): фоновый запуск на бэке,
+   *  итог придёт в журнал и колокольчик; 409 — прогон уже идёт. */
+  refreshProjectNow: (projectId: string) =>
+    request<{ started: boolean }>(`/projects/${projectId}/refresh-run`, {
+      method: 'POST',
+    }),
+
   disconnectProject: (projectId: string) =>
     request<void>(`/projects/${projectId}/credentials`, { method: 'DELETE' }),
 

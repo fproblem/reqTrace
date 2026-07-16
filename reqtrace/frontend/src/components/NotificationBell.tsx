@@ -45,6 +45,24 @@ export const NotificationBell: React.FC = () => {
     return () => clearInterval(timer);
   }, [load]);
 
+  // Ручной прогон (v1.6.4): после «Обновить страницы сейчас» с карточки
+  // проекта опрашиваем чаще, чтобы готовый дайджест пришёл за секунды.
+  const fastUntilRef = useRef(0);
+  useEffect(() => {
+    const onManualRun = () => {
+      fastUntilRef.current = Date.now() + 20 * 60 * 1000;
+      void load();
+    };
+    window.addEventListener('reqtrace:refresh-run', onManualRun);
+    return () => window.removeEventListener('reqtrace:refresh-run', onManualRun);
+  }, [load]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (Date.now() < fastUntilRef.current) void load();
+    }, 20_000);
+    return () => clearInterval(timer);
+  }, [load]);
+
   // Закрытие кликом мимо (паттерн меню карточки проекта) и по Escape.
   // role="menu" на панели — слоистая Escape-логика приложения (SidePanel и др.)
   // уступает обработку верхнему слою.

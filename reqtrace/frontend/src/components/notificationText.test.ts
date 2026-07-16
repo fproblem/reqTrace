@@ -31,7 +31,7 @@ describe('notificationTitle', () => {
     expect(notificationTitle(entry({ kind: 'cred_invalid' })))
       .toBe('Подключение к «Платёжный шлюз» отклонено');
     expect(notificationTitle(entry({ kind: 'run_skipped' })))
-      .toBe('Обновление «Платёжный шлюз» не выполнено');
+      .toBe('Обновление «Платёжный шлюз» не выполняется');
   });
 });
 
@@ -91,9 +91,23 @@ describe('notificationBody: креды и пропуски', () => {
 
   it('различает недоступность и умершие подключения', () => {
     expect(notificationBody(entry({ kind: 'run_skipped', skipped_reason: 'confluence_unreachable' })))
-      .toBe('Confluence был недоступен — прогон перенесён на следующую ночь');
+      .toBe('Confluence недоступен — доберём, как только появится связь');
     expect(notificationBody(entry({ kind: 'run_skipped', skipped_reason: 'no_valid_credentials' })))
       .toBe('Не осталось работающих подключений — проверьте креды в профиле');
+  });
+
+  it('серия неудач показывает размах одной строкой', () => {
+    const e = entry({
+      kind: 'run_skipped',
+      skipped_reason: 'confluence_unreachable',
+      attempts: 8,
+      first_attempt_at: '2026-07-16T00:12:00Z',
+      happened_at: '2026-07-16T08:12:00Z',
+    });
+    const body = notificationBody(e);
+    expect(body).toContain('Confluence недоступен — доберём, как только появится связь');
+    expect(body).toContain('Попыток: 8 — первая');
+    expect(body).toContain('последняя');
   });
 });
 

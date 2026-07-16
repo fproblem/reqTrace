@@ -23,8 +23,15 @@ class NotificationEntry(BaseModel):
     to_lost: int = 0
     affected_tests: list[str] = []
     # confluence_unreachable | no_valid_credentials — у run_skipped всегда,
-    # у digest — если прогон прерван на середине (partial).
+    # у digest — если прогон прерван (обрыв связи посреди прогона).
     skipped_reason: Optional[str] = None
+    # run_skipped — не событие, а СОСТОЯНИЕ «проект сейчас не обновляется»:
+    # хвостовая серия неудачных прогонов схлопывается в одну живую строку
+    # (иначе почасовое самолечение утопило бы панель повторами).
+    # attempts — длина серии, first_attempt_at — её начало,
+    # happened_at — последняя попытка.
+    attempts: int = 1
+    first_attempt_at: Optional[datetime] = None
 
 
 class NotificationsResponse(BaseModel):

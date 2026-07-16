@@ -189,6 +189,11 @@ export interface NotificationEntry {
   affected_tests: string[];
   /** confluence_unreachable | no_valid_credentials (у digest — если прогон прерван). */
   skipped_reason?: string | null;
+  /** run_skipped — состояние «проект не обновляется»: длина серии неудачных
+   *  попыток (почасовое самолечение схлопывается в одну живую строку). */
+  attempts?: number;
+  /** Начало серии неудач; happened_at — её последняя попытка. */
+  first_attempt_at?: string | null;
 }
 
 export interface NotificationsResponse {

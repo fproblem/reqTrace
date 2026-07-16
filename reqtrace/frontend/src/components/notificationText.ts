@@ -2,14 +2,15 @@
 // журнала прогонов, человеческие фразы собираются здесь — как humanizeError
 // в api/client.ts. Чистые функции, покрыты notificationText.test.ts.
 import { NotificationEntry } from '../types';
-import { plural } from '../pages/TestsPage';
+import { formatCheckedAt, plural } from '../pages/TestsPage';
 
 /** Сколько ключей тестов называем в дайджесте поимённо; остальные — «и ещё N». */
 const MAX_TEST_KEYS = 2;
 
 export function notificationTitle(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid') return `Подключение к «${e.project_name}» отклонено`;
-  if (e.kind === 'run_skipped') return `Обновление «${e.project_name}» не выполнено`;
+  // Состояние, а не событие: строка живёт, пока прогон не удался.
+  if (e.kind === 'run_skipped') return `Обновление «${e.project_name}» не выполняется`;
   return `Ночное обновление · ${e.project_name}`;
 }
 
@@ -19,9 +20,16 @@ export function notificationBody(e: NotificationEntry): string {
       + 'Обновите креды в профиле';
   }
   if (e.kind === 'run_skipped') {
-    return e.skipped_reason === 'confluence_unreachable'
-      ? 'Confluence был недоступен — прогон перенесён на следующую ночь'
+    const reason = e.skipped_reason === 'confluence_unreachable'
+      ? 'Confluence недоступен — доберём, как только появится связь'
       : 'Не осталось работающих подключений — проверьте креды в профиле';
+    const attempts = e.attempts ?? 1;
+    if (attempts > 1 && e.first_attempt_at) {
+      // Серия неудач схлопнута в одну живую строку — показываем её размах.
+      return `${reason}. Попыток: ${attempts} — первая ${formatCheckedAt(e.first_attempt_at)}, `
+        + `последняя ${formatCheckedAt(e.happened_at)}`;
+    }
+    return reason;
   }
 
   const parts: string[] = [];

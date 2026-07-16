@@ -22,6 +22,7 @@ from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
 from app.models.page import Page
 from app.models.project import Project, ProjectCredential
+from app.models.refresh_run import RefreshRun
 from app.models.snapshot import PageSnapshot
 from app.models.user import User
 from app.project_access import (
@@ -200,6 +201,19 @@ async def projects_stats(
         stats[hl_project[hl_id]].covered += 1
     for project_id, keys in keys_by_project.items():
         stats[project_id].tests = len(keys)
+
+    # Свежесть автообновления (v1.6.2): когда ночной прогон в последний раз
+    # проверял проект. skipped/failed не в счёт — страницы тогда не проверялись.
+    run_rows = (await db.execute(
+        select(RefreshRun.project_id, func.max(RefreshRun.finished_at))
+        .where(
+            RefreshRun.project_id.in_(project_ids),
+            RefreshRun.status.in_(("ok", "partial")),
+        )
+        .group_by(RefreshRun.project_id)
+    )).all()
+    for project_id, finished_at in run_rows:
+        stats[project_id].last_auto_refresh_at = finished_at
 
     return [stats[p.id] for p in projects]
 

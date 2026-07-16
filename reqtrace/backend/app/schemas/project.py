@@ -61,6 +61,9 @@ class ProjectTestsStats(BaseModel):
     active: int = 0
     outdated: int = 0
     lost: int = 0
+    # Когда автообновление в последний раз проверяло проект (v1.6.2):
+    # finished_at последнего успешного прогона; None — ещё ни разу (или демо).
+    last_auto_refresh_at: Optional[datetime] = None
 
 
 class TestLinkRef(BaseModel):

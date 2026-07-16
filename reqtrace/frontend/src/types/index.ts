@@ -169,6 +169,11 @@ export interface ProjectTestsStats {
   lost: number;
   /** Когда автообновление в последний раз проверяло проект (v1.6.2); null — ещё ни разу. */
   last_auto_refresh_at?: string | null;
+  /** Последняя попытка любого исхода (v1.6.4); reason заполнен
+   *  (confluence_unreachable | no_valid_credentials) — попытка не удалась,
+   *  и свежесть застыла не просто так. */
+  last_attempt_at?: string | null;
+  last_attempt_reason?: string | null;
 }
 
 // --- Уведомления (v1.6.3): дайджест ночных прогонов ---

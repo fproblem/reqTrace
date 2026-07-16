@@ -2,7 +2,7 @@
 // «Моих проектов» из профиля (та же стеклянная карточка, заголовок, ховер) —
 // пользователь видит знакомый проект, но со сводкой покрытия; клик ведёт на
 // ярус 2, к реверс-индексу тестов проекта.
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { ProjectTestsStats } from '../types';
@@ -57,18 +57,26 @@ export const TestsPage: React.FC = () => {
   const { showToast } = useToast();
   const [stats, setStats] = useState<ProjectTestsStats[] | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadStats = useCallback(() => {
     api.getProjectsStats()
-      .then(data => { if (!cancelled) setStats(data); })
+      .then(data => setStats(data))
       .catch((e: any) => {
-        if (!cancelled) {
-          setStats([]);
-          showToast('error', 'Не удалось загрузить сводку проектов', e.message);
-        }
+        setStats(prev => prev ?? []);
+        showToast('error', 'Не удалось загрузить сводку проектов', e.message);
       });
-    return () => { cancelled = true; };
   }, [showToast]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  // Прогон завершился (событие от колокольчика) — свежесть и предупреждения
+  // на карточках перечитываются сами, без перезахода на экран.
+  useEffect(() => {
+    const onRunFinished = () => loadStats();
+    window.addEventListener('reqtrace:refresh-run-finished', onRunFinished);
+    return () => window.removeEventListener('reqtrace:refresh-run-finished', onRunFinished);
+  }, [loadStats]);
 
   if (stats === null) {
     return (
@@ -184,26 +192,40 @@ export const TestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Свежесть ночного автообновления (v1.6.2). Статусы на этом
-                    экране ровно настолько актуальны, насколько свеж последний
-                    прогон — дата отвечает на вопрос «можно ли им верить с утра».
-                    Янтарь — прогона не было дольше двух суток (или вовсе). */}
-                {!s.is_demo && (
-                  <div
-                    title="Когда ночное автообновление в последний раз проверяло страницы проекта"
-                    style={{
-                      fontSize: '12px',
-                      color: !s.last_auto_refresh_at
-                          || Date.now() - new Date(s.last_auto_refresh_at).getTime() > 48 * 3600 * 1000
-                        ? colors.statusOutdated
-                        : colors.textTertiary,
-                    }}
-                  >
-                    {s.last_auto_refresh_at
-                      ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
-                      : 'Автообновление ещё не проверяло проект'}
-                  </div>
-                )}
+                {/* Свежесть автообновления (v1.6.2). Статусы на этом экране
+                    ровно настолько актуальны, насколько свеж последний прогон —
+                    дата отвечает на вопрос «можно ли им верить». Янтарь —
+                    последняя попытка не удалась (VPN/сеть/креды, v1.6.4) или
+                    прогона не было дольше двух суток (или вовсе). */}
+                {!s.is_demo && (() => {
+                  const failing = s.last_attempt_reason;
+                  const stale = !s.last_auto_refresh_at
+                    || Date.now() - new Date(s.last_auto_refresh_at).getTime() > 48 * 3600 * 1000;
+                  const reasonText = failing === 'no_valid_credentials'
+                    ? 'Нет работающих подключений'
+                    : 'Confluence недоступен';
+                  return (
+                    <div
+                      title={failing
+                        ? `Последняя попытка обновления (${s.last_attempt_at
+                            ? formatCheckedAt(s.last_attempt_at) : '—'}) не удалась — `
+                          + 'показаны данные последнего успешного прогона'
+                        : 'Когда автообновление в последний раз проверяло страницы проекта'}
+                      style={{
+                        fontSize: '12px',
+                        color: failing || stale ? colors.statusOutdated : colors.textTertiary,
+                      }}
+                    >
+                      {failing
+                        ? (s.last_auto_refresh_at
+                          ? `${reasonText} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
+                          : `${reasonText} — страницы ещё не проверялись`)
+                        : (s.last_auto_refresh_at
+                          ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
+                          : 'Автообновление ещё не проверяло проект')}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

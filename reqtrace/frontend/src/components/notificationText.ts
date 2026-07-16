@@ -11,12 +11,14 @@ export function notificationTitle(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid') return `Подключение к «${e.project_name}» отклонено`;
   // Состояние, а не событие: строка живёт, пока прогон не удался.
   if (e.kind === 'run_skipped') return `Обновление «${e.project_name}» не выполняется`;
-  return `Ночное обновление · ${e.project_name}`;
+  // Нейтрально, без «ночное»: после добора или ручного запуска прогон
+  // случается и днём, и вечером.
+  return `Обновление · ${e.project_name}`;
 }
 
 export function notificationBody(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid') {
-    return 'Confluence не принял ваши логин/пароль — ночное обновление прошло без них. '
+    return 'Confluence не принял ваши логин/пароль — обновление прошло без них. '
       + 'Обновите креды в профиле';
   }
   if (e.kind === 'run_skipped') {

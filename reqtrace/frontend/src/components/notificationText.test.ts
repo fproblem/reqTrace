@@ -28,7 +28,7 @@ function entry(over: Partial<NotificationEntry> = {}): NotificationEntry {
 
 describe('notificationTitle', () => {
   it('называет вид события и проект', () => {
-    expect(notificationTitle(entry())).toBe('Ночное обновление · Платёжный шлюз');
+    expect(notificationTitle(entry())).toBe('Обновление · Платёжный шлюз');
     expect(notificationTitle(entry({ kind: 'cred_invalid' })))
       .toBe('Подключение к «Платёжный шлюз» отклонено');
     expect(notificationTitle(entry({ kind: 'run_skipped' })))
@@ -85,7 +85,7 @@ describe('notificationBody: дайджест', () => {
 describe('notificationBody: креды и пропуски', () => {
   it('личная запись о кредах ведёт чинить профиль', () => {
     expect(notificationBody(entry({ kind: 'cred_invalid' }))).toBe(
-      'Confluence не принял ваши логин/пароль — ночное обновление прошло без них. '
+      'Confluence не принял ваши логин/пароль — обновление прошло без них. '
       + 'Обновите креды в профиле',
     );
   });

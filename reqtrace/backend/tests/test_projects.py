@@ -597,6 +597,9 @@ class TestTestsScreenEndpoints(ProjectTestBase):
             FakeResult([(h1, "REQ-1"), (h1, "req-1 "), (h2, "REQ-2")]),
             # свежесть автообновления (v1.6.2): последний успешный прогон
             FakeResult([(project.id, datetime(2026, 7, 16, 0, 12, tzinfo=timezone.utc))]),
+            # последняя попытка (v1.6.4): успешная — предупреждения нет
+            FakeResult([(project.id, "ok", None,
+                         datetime(2026, 7, 16, 0, 12, tzinfo=timezone.utc))]),
         ]
         resp = self.client.get("/api/projects/stats")
         self.assertEqual(resp.status_code, 200, resp.text)
@@ -609,6 +612,29 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         self.assertEqual(s["covered"], 2)   # у h3 тестов нет
         self.assertEqual(s["tests"], 2)     # REQ-1 (нормализован) и REQ-2
         self.assertTrue(s["last_auto_refresh_at"].startswith("2026-07-16T00:12"))
+        self.assertIsNone(s["last_attempt_reason"])
+
+    def test_stats_flags_failing_last_attempt(self):
+        """Последний прогон не удался (VPN/сеть): карточка «Тестов» должна
+        видеть и старую свежесть, и причину, почему она застыла."""
+        project = make_project(created_by=self.user.id)
+        self.session.execute_results = [
+            [project],       # членства со статусом ok
+            [],              # демо-проекта нет
+            FakeResult([]),  # страниц нет
+            # свежесть — успех был вчера
+            FakeResult([(project.id, datetime(2026, 7, 15, 0, 12, tzinfo=timezone.utc))]),
+            # последняя попытка — сегодня, упала по сети
+            FakeResult([(project.id, "skipped",
+                         {"skipped_reason": "confluence_unreachable"},
+                         datetime(2026, 7, 16, 0, 12, tzinfo=timezone.utc))]),
+        ]
+        resp = self.client.get("/api/projects/stats")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        [s] = resp.json()
+        self.assertTrue(s["last_auto_refresh_at"].startswith("2026-07-15"))
+        self.assertEqual(s["last_attempt_reason"], "confluence_unreachable")
+        self.assertTrue(s["last_attempt_at"].startswith("2026-07-16"))
 
     def test_stats_empty_without_projects(self):
         self.session.execute_results = [[], []]

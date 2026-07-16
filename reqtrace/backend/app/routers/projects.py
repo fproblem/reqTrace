@@ -216,6 +216,27 @@ async def projects_stats(
     for project_id, finished_at in run_rows:
         stats[project_id].last_auto_refresh_at = finished_at
 
+    # Последняя попытка любого исхода (v1.6.4): не удалась — карточка
+    # предупредит, что свежесть застыла не просто так (VPN/сеть/креды).
+    attempt_rows = (await db.execute(
+        select(
+            RefreshRun.project_id, RefreshRun.status,
+            RefreshRun.details, RefreshRun.finished_at,
+        )
+        .where(
+            RefreshRun.project_id.in_(project_ids),
+            RefreshRun.finished_at.isnot(None),
+        )
+        .distinct(RefreshRun.project_id)
+        .order_by(RefreshRun.project_id, RefreshRun.finished_at.desc())
+    )).all()
+    for project_id, status, details, finished_at in attempt_rows:
+        stats[project_id].last_attempt_at = finished_at
+        if status == "skipped":
+            reason = (details or {}).get("skipped_reason")
+            if reason in ("confluence_unreachable", "no_valid_credentials"):
+                stats[project_id].last_attempt_reason = reason
+
     return [stats[p.id] for p in projects]
 
 

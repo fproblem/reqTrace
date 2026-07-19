@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, setUnauthorizedHandler } from '../api/client';
+import { resetOnboardingAutoShow } from '../components/onboardingAutoShow';
 import { AuthUser } from '../types';
 
 interface AuthContextValue {
@@ -27,8 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Истёкшая сессия в любом запросе приложения → сразу на экран входа.
+  // Конец сессии — любым путём — сбрасывает и автопоказ инструкции:
+  // следующий вход снова считается «первым».
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null));
+    setUnauthorizedHandler(() => {
+      resetOnboardingAutoShow();
+      setUser(null);
+    });
     return () => setUnauthorizedHandler(null);
   }, []);
 
@@ -40,6 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await api.logout();
     } finally {
+      resetOnboardingAutoShow();
       setUser(null);
     }
   }, []);

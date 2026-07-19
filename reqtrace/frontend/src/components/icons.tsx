@@ -191,6 +191,11 @@ export const ImageIcon = makeIcon(<>
   <path d="M21 15l-5-5L5 21" />
 </>);
 
+export const BookOpenIcon = makeIcon(<>
+  <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+  <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
+</>);
+
 export const BranchIcon = makeIcon(<>
   <line x1="6" y1="3" x2="6" y2="15" />
   <circle cx="18" cy="6" r="3" />

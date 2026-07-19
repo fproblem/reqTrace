@@ -67,21 +67,30 @@ export const KeyIssueInformer: React.FC<{ text: string }> = ({ text }) => {
 
   return (
     <>
+      {/* Состояния кнопки — янтарная лестница заливок 15/26/33 (как у
+          чипов ключей): ховер, пресс и «нажато» (открытый поповер держит
+          заливку ховера — принадлежность видна, пока поповер жив). */}
       <button
         ref={btnRef}
         onClick={toggle}
         aria-label="Почему ключ не ведёт в Jira"
         style={{
           width: '22px', height: '22px', borderRadius: radii.sm,
-          border: 'none', background: open ? 'rgba(0,0,0,0.06)' : 'transparent',
+          border: 'none',
+          background: open ? `${colors.statusOutdated}26` : 'transparent',
           color: colors.statusOutdated, cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, padding: 0, transition: 'background 0.15s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
-        onMouseLeave={e => {
-          if (!open) e.currentTarget.style.background = 'transparent';
+        onMouseEnter={e => {
+          e.currentTarget.style.background = `${colors.statusOutdated}${open ? '26' : '15'}`;
         }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = open
+            ? `${colors.statusOutdated}26` : 'transparent';
+        }}
+        onMouseDown={e => { e.currentTarget.style.background = `${colors.statusOutdated}33`; }}
+        onMouseUp={e => { e.currentTarget.style.background = `${colors.statusOutdated}26`; }}
       >
         <StatusAlertIcon kind="warning" size={14} />
       </button>

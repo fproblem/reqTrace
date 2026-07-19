@@ -91,7 +91,9 @@ export const TestsPage: React.FC = () => {
     // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
     // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
     // оставляла всю «лишнюю» ширину одним пустым полем справа.
-    <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto', boxSizing: 'border-box' }}>
+    // Ширина — как у яруса 2 (1060): ярусы одного экрана не должны «дышать»
+    // при переходе между ними.
+    <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '6px' }}>
         Тесты
       </h1>

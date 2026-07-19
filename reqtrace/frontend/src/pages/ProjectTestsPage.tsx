@@ -319,12 +319,16 @@ export const ProjectTestsPage: React.FC = () => {
                   overflow: 'hidden',
                 }}
               >
-                {/* Строка ключа — клик раскрывает привязки. */}
+                {/* Строка ключа — клик раскрывает привязки. Структура по
+                    референсу (v1.7.0): ключ — колонкой слева, название —
+                    главная строка, счётчики — серой подстрокой. Без названия
+                    (нет токена/не нашли) счётчики остаются единственной
+                    строкой — высота держится minHeight. */}
                 <div
                   onClick={() => toggle(entry.key)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    height: '48px', padding: '0 14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    minHeight: '48px', padding: '8px 14px', cursor: 'pointer',
                     transition: 'background 0.15s',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
@@ -368,23 +372,25 @@ export const ProjectTestsPage: React.FC = () => {
                       {highlightMatch(entry.key, q)}
                     </span>
                   )}
-                  {/* Название из Jira (v1.7.0) — главное, ради чего интеграция:
-                      ключ обретает смысл без похода в Jira. ЦЕЛИКОМ, с
-                      переносами — обрезанное название не читается (ревью);
-                      длинное имя растит строку по высоте. */}
-                  {entry.summary && (
-                    <span style={{
-                      fontSize: '13px', color: colors.textSecondary,
-                      flexShrink: 1, minWidth: 0, lineHeight: 1.45,
-                      wordBreak: 'break-word',
-                    }}>
-                      {entry.summary}
+                  {/* Название (целиком, с переносами) + счётчики подстрокой:
+                      единый текст в одну строку читался кашей (ревью). */}
+                  <div style={{
+                    flex: 1, minWidth: 0,
+                    display: 'flex', flexDirection: 'column', gap: '2px',
+                  }}>
+                    {entry.summary && (
+                      <span style={{
+                        fontSize: '13.5px', color: colors.textPrimary,
+                        lineHeight: 1.45, wordBreak: 'break-word',
+                      }}>
+                        {entry.summary}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
+                      {entry.links.length} {plural(entry.links.length, ['привязка', 'привязки', 'привязок'])}
+                      {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
                     </span>
-                  )}
-                  <span style={{ fontSize: '13px', color: colors.textSecondary, flexShrink: 0 }}>
-                    {entry.links.length} {plural(entry.links.length, ['привязка', 'привязки', 'привязок'])}
-                    {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
-                  </span>
+                  </div>
                   {/* Красная пометка «мёртвого покрытия»: тест есть, но всё,
                       что он держал, утрачено. */}
                   {allLost && (
@@ -396,7 +402,7 @@ export const ProjectTestsPage: React.FC = () => {
                       все утрачены
                     </span>
                   )}
-                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {counts.active > 0 && (
                       <StatusCountPill color={colors.statusActive} count={counts.active} title="Актуально" />
                     )}

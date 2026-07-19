@@ -14,6 +14,7 @@ import {
   LockIcon,
   PlusIcon,
   StatusAlertIcon,
+  TrashIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
@@ -151,16 +152,6 @@ const LogoutIcon: React.FC = () => (
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
     <polyline points="16 17 21 12 16 7" />
     <line x1="21" y1="12" x2="9" y2="12" />
-  </svg>
-);
-
-// Та же корзина, что у «Удалить» в меню действий страницы.
-const TrashIcon: React.FC = () => (
-  <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    <line x1="10" y1="11" x2="10" y2="17" />
-    <line x1="14" y1="11" x2="14" y2="17" />
   </svg>
 );
 
@@ -469,8 +460,15 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
 
 // --- Модал «Изменить проект» (имя / Jira URL) ---
 
-const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onDone: () => void }> = ({
-  project, onClose, onDone,
+const EditProjectModal: React.FC<{
+  project: Project;
+  onClose: () => void;
+  onDone: () => void;
+  /** Открыть модалку удаления проекта (v1.6.5): удаление живёт здесь, а не
+   *  в меню карточки — в меню из пяти пунктов было два красных. */
+  onDelete: () => void;
+}> = ({
+  project, onClose, onDone, onDelete,
 }) => {
   const [name, setName] = useState(project.name);
   const [jiraUrl, setJiraUrl] = useState(project.jira_base_url || '');
@@ -514,7 +512,36 @@ const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onDone
           <div style={{ color: colors.statusLost, fontSize: '13px', marginBottom: '12px' }}>{error}</div>
         )}
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {/* Корзина — как у удаления выделения в панели привязки (SidePanel):
+              34×34, красная тонировка, библиотечная TrashIcon. */}
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Удалить проект со всеми страницами и привязками — у всех участников, необратимо"
+            style={{
+              width: '34px', height: '34px', borderRadius: radii.md,
+              border: '1px solid rgba(239,68,68,0.2)',
+              background: 'rgba(239,68,68,0.05)',
+              color: colors.statusLost,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.05)';
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)';
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+          >
+            <TrashIcon size={16} />
+          </button>
+          <span style={{ flex: 1 }} />
           <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
           <ModalButton type="submit" variant="primary" disabled={busy || !name.trim()}>
             {busy ? 'Сохранение…' : 'Сохранить'}
@@ -850,17 +877,8 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 <LogoutIcon />
                 Отключиться
               </button>
-              <button
-                role="menuitem"
-                title="Удалить проект со всеми страницами и привязками — у всех участников, необратимо"
-                style={{ ...menuItemStyle, color: colors.statusLost }}
-                onClick={() => { setMenuOpen(false); setModal('delete'); }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <TrashIcon />
-                Удалить проект
-              </button>
+              {/* «Удалить проект» переехал в модалку «Изменить проект» (v1.6.5):
+                  меню из пяти пунктов с двумя красными пугало обилием опасного. */}
             </div>
           )}
         </div>
@@ -959,7 +977,12 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         <CredsModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
       )}
       {modal === 'edit' && (
-        <EditProjectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
+        <EditProjectModal
+          project={project}
+          onClose={() => setModal(null)}
+          onDone={onChanged}
+          onDelete={() => setModal('delete')}
+        />
       )}
       {modal === 'disconnect' && (
         <DisconnectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />

@@ -954,65 +954,64 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {tests.map(test => {
                 // Ключ непохож на TEST-123 — вероятная опечатка и битая
-                // ссылка в Jira: значок-пояснение в начале строки, ключ — не
-                // ссылка. Сама строка обычная: янтарные рамку и заливку
-                // пробовали (v1.6.0) и убрали — целиком крашеная строка
-                // перегружала список, значка достаточно.
+                // ссылка в Jira: чип не кликабелен, рядом значок-пояснение.
                 const nonstandard = !isLikelyJiraKey(test.test_key);
+                const chipClickable = !!jiraBaseUrl && !nonstandard;
+                // Чип ключа тонирован статусом ПРИВЯЗКИ (референс v1.7.0,
+                // вариант D): ключ визуально отделён от названия и говорит
+                // о состоянии покрытия. Ступени заливки 15/26/33 — как у
+                // карточки привязки выше.
+                const tint = statusInfo.color;
+                const chipStyle: React.CSSProperties = {
+                  display: 'inline-block',
+                  padding: '3px 10px',
+                  borderRadius: radii.pill,
+                  background: `${tint}15`,
+                  border: `1px solid ${tint}33`,
+                  color: tint,
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  textDecoration: 'none',
+                  flexShrink: 0,
+                  transition: 'background 0.15s, border-color 0.15s',
+                };
                 return (
                 <div
                   key={test.id}
                   className="test-row"
                   style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    minHeight: '44px',
-                    padding: '6px 12px',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    padding: '10px 12px',
                     borderRadius: radii.md,
                     border: `1px solid ${colors.border}`,
                     background: colors.white,
                   }}
                 >
-                  {/* Ключ — ссылка только когда есть адрес Jira И формат похож
-                      на настоящий: без адреса /browse/КЛЮЧ — битый роут самого
-                      приложения, с нестандартным ключом — почти наверняка 404
-                      в Jira (да и зелёная ссылка на янтарной строке-предупреждении
-                      конфликтовала цветом). Текстовый ключ объясняет себя тултипом. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                    {nonstandard && (
-                      <span
-                        title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
-                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
-                      >
-                        <StatusAlertIcon kind="warning" size={14} />
-                      </span>
-                    )}
-                    <div style={{ minWidth: 0 }}>
-                    {jiraBaseUrl && !nonstandard ? (
-                      // Фирменный зелёный вместо веб-синего (#2563EB был
-                      // единственным элементом вне палитры ReqTrace); ховер —
-                      // темнее ступенью + подчёркивание: ссылка остаётся ссылкой.
+                    {chipClickable ? (
+                      // Чип-кнопка: клик открывает тест в Jira (только чтение,
+                      // как и вся интеграция); шеврона из референса нет —
+                      // решение пользователя.
                       <a
                         href={`${jiraBaseUrl}/browse/${test.test_key}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                          color: colors.greenDark,
-                          textDecoration: 'none',
-                          fontWeight: 500,
-                          fontSize: '13px',
-                          transition: 'color 0.15s',
-                        }}
+                        title="Открыть тест в Jira"
+                        style={{ ...chipStyle, cursor: 'pointer' }}
                         onClick={e => e.stopPropagation()}
                         onMouseEnter={e => {
-                          e.currentTarget.style.color = '#3F9E27';
-                          e.currentTarget.style.textDecoration = 'underline';
+                          e.currentTarget.style.background = `${tint}26`;
+                          e.currentTarget.style.borderColor = `${tint}55`;
                         }}
                         onMouseLeave={e => {
-                          e.currentTarget.style.color = colors.greenDark;
-                          e.currentTarget.style.textDecoration = 'none';
+                          e.currentTarget.style.background = `${tint}15`;
+                          e.currentTarget.style.borderColor = `${tint}33`;
                         }}
+                        onMouseDown={e => { e.currentTarget.style.background = `${tint}33`; }}
+                        onMouseUp={e => { e.currentTarget.style.background = `${tint}26`; }}
                       >
                         {test.test_key}
                       </a>
@@ -1021,56 +1020,57 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                         title={nonstandard
                           ? 'Ключ не похож на формат Jira (TEST-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
                           : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
-                        style={{
-                          color: colors.textPrimary,
-                          fontWeight: 500,
-                          fontSize: '13px',
-                          cursor: 'help',
-                        }}
+                        style={{ ...chipStyle, cursor: 'help' }}
                       >
                         {test.test_key}
                       </span>
                     )}
-                    {/* Название из Jira (v1.7.0): видно, какой тест привязан,
-                        не открывая Jira. ЦЕЛИКОМ, с переносами — обрезанное
-                        название не читается (ревью); нет имени — только ключ. */}
-                    {test.summary && (
-                      <div style={{
-                        fontSize: '11.5px', color: colors.textSecondary,
-                        marginTop: '1px', lineHeight: 1.45,
-                        wordBreak: 'break-word',
-                      }}>
-                        {test.summary}
-                      </div>
+                    {nonstandard && (
+                      <span
+                        title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
+                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
+                      >
+                        <StatusAlertIcon kind="warning" size={14} />
+                      </span>
                     )}
-                    </div>
+                    {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
+                        ховер; виден только при наведении на строку (.test-row) —
+                        список в покое без колонки крестиков. */}
+                    <button
+                      onClick={() => onRemoveTest(test.id)}
+                      className="test-row-remove"
+                      style={{
+                        width: '26px', height: '26px', borderRadius: radii.sm,
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: colors.textTertiary, display: 'flex', flexShrink: 0,
+                        alignItems: 'center', justifyContent: 'center',
+                        marginLeft: 'auto', transition: 'all 0.15s',
+                      }}
+                      title="Отвязать тест"
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                        e.currentTarget.style.color = colors.textPrimary;
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = colors.textTertiary;
+                      }}
+                      onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                      onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                    >
+                      <XIcon />
+                    </button>
                   </div>
-                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
-                      ховер; виден только при наведении на строку (.test-row) —
-                      список в покое без колонки крестиков. */}
-                  <button
-                    onClick={() => onRemoveTest(test.id)}
-                    className="test-row-remove"
-                    style={{
-                      width: '26px', height: '26px', borderRadius: radii.sm,
-                      border: 'none', background: 'transparent', cursor: 'pointer',
-                      color: colors.textTertiary, display: 'flex', flexShrink: 0,
-                      alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
-                    }}
-                    title="Отвязать тест"
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                      e.currentTarget.style.color = colors.textPrimary;
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = colors.textTertiary;
-                    }}
-                    onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
-                    onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                  >
-                    <XIcon />
-                  </button>
+                  {/* Название из Jira (v1.7.0): целиком, с переносами —
+                      обрезанное название не читается (ревью). */}
+                  {test.summary && (
+                    <div style={{
+                      fontSize: '12px', color: colors.textSecondary,
+                      lineHeight: 1.5, wordBreak: 'break-word',
+                    }}>
+                      {test.summary}
+                    </div>
+                  )}
                 </div>
                 );
               })}

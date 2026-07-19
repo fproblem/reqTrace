@@ -323,7 +323,7 @@ export const ProjectTestsPage: React.FC = () => {
                 >
                   {nonstandard && (
                     <span
-                      title="Ключ не похож на формат Jira (PROJECT-123) — проверьте, нет ли опечатки"
+                      title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
                       style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help', flexShrink: 0 }}
                     >
                       <StatusAlertIcon kind="warning" size={14} />

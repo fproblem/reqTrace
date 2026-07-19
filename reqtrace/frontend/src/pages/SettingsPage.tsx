@@ -11,10 +11,8 @@ import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
 import {
   BookOpenIcon,
-  ICON_TINTS,
   LockIcon,
   PlusIcon,
-  SparkleIcon,
   StatusAlertIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -1176,40 +1174,19 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {joined.length === 0 ? (
-        /* Пустое состояние — компактный тизер (v1.6.5): сам онбординг живёт
-           в модалке «Как работает ReqTrace», и новичку она открывается сама
-           (один раз за вход) — дублировать шаги карточками на странице
-           незачем. Кнопка тизера ведёт туда же, что и кнопка в заголовке. */
+        /* Пустое состояние без онбординга (v1.6.5): знание живёт в модалке
+           «Как работает ReqTrace» — новичку она открывается сама (один раз
+           за вход), а кнопка в заголовке раздела всегда рядом. */
         <div style={{
           background: 'rgba(255,255,255,0.85)',
           backdropFilter: 'blur(20px)',
           border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
           boxShadow: shadows.card,
-          padding: '20px 24px',
-          display: 'flex', alignItems: 'center', gap: '14px',
+          padding: '22px 24px',
+          color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
         }}>
-          <span style={{
-            width: '38px', height: '38px', borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, background: ICON_TINTS.green.bg, color: ICON_TINTS.green.fg,
-          }}>
-            <SparkleIcon size={18} />
-          </span>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: colors.textPrimary }}>
-              Добро пожаловать в ReqTrace
-            </div>
-            <div style={{
-              fontSize: '13px', color: colors.textSecondary,
-              marginTop: '2px', lineHeight: 1.5,
-            }}>
-              Подключитесь к проекту команды — а короткая инструкция подскажет, что дальше.
-            </div>
-          </div>
-          <ModalButton variant="secondary" onClick={openOnboarding} style={{ flexShrink: 0 }}>
-            Открыть инструкцию
-          </ModalButton>
+          Вы пока не подключены ни к одному проекту — начните с кнопки «Подключить проект».
         </div>
       ) : (
         <div style={{

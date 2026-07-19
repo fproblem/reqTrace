@@ -168,7 +168,7 @@ const ArtLinkTest: React.FC = () => (
         fontSize: '10.5px', fontWeight: 600,
         fontFamily: MONO,
       }}>
-        PROJECT-123
+        TEST-123
       </span>
       <span style={{ color: colors.statusActive, display: 'flex' }}>
         <StatusAlertIcon kind="ok" size={14} />
@@ -261,7 +261,7 @@ const ArtTests: React.FC = () => (
         fontSize: '10.5px', fontWeight: 600,
         fontFamily: MONO,
       }}>
-        PROJECT-123
+        TEST-123
       </span>
       <span style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
         {artCountPill(colors.statusActive, 3)}
@@ -279,7 +279,7 @@ const ArtTests: React.FC = () => (
         fontSize: '10.5px', fontWeight: 600,
         fontFamily: MONO,
       }}>
-        PROJECT-207
+        TEST-207
       </span>
       <span style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
         {artCountPill(colors.statusLost, 2)}

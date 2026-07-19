@@ -522,7 +522,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </aside>
 
         {/* Main content */}
-        <main style={{ flex: 1, position: 'relative', zIndex: 1, overflow: 'auto', minWidth: 0 }}>
+        {/* scrollbar-gutter: место под скроллбар зарезервировано всегда —
+            иначе центрированные колонки (профиль, «Тесты») сдвигались бы
+            влево на длинных страницах, где скроллбар появляется (при
+            системной настройке «показывать полосы всегда»). */}
+        <main style={{
+          flex: 1, position: 'relative', zIndex: 1, overflow: 'auto',
+          minWidth: 0, scrollbarGutter: 'stable',
+        }}>
           {children}
         </main>
       </div>

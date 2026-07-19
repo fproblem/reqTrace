@@ -24,6 +24,8 @@ export interface Project {
   last_check_at: string | null;
   /** Исход последней попытки проверки; unreachable — Confluence был недоступен (VPN, сеть). */
   my_last_check_result: 'ok' | 'invalid' | 'unreachable' | null;
+  /** Jira-токен участника (v1.7.0): ok | invalid; null — токена нет. */
+  my_jira_token_status?: 'ok' | 'invalid' | null;
 }
 
 export interface CredentialCheckResult {
@@ -80,6 +82,11 @@ export interface TestLink {
   test_key: string;
   created_by: string;
   created_at: string;
+  /** Название теста из Jira (v1.7.0); нет — показывается только ключ. */
+  summary?: string | null;
+  /** Ответ создания привязки: false — Jira не нашла задачу (вероятна
+   *  опечатка), null/undefined — проверка не выполнялась (нет токена). */
+  jira_found?: boolean | null;
 }
 
 export interface Highlight {
@@ -248,6 +255,8 @@ export interface TestLinkRef {
 export interface TestIndexEntry {
   key: string;
   links: TestLinkRef[];
+  /** Название теста из Jira (v1.7.0); нет — показывается только ключ. */
+  summary?: string | null;
 }
 
 export interface ProjectTestIndex {

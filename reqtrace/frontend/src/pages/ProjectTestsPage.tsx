@@ -362,6 +362,21 @@ export const ProjectTestsPage: React.FC = () => {
                       {highlightMatch(entry.key, q)}
                     </span>
                   )}
+                  {/* Название из Jira (v1.7.0) — главное, ради чего интеграция:
+                      ключ обретает смысл без похода в Jira. Эллипсис — счётчики
+                      и статусы правее важнее хвоста длинного названия. */}
+                  {entry.summary && (
+                    <span
+                      title={entry.summary}
+                      style={{
+                        fontSize: '13px', color: colors.textSecondary,
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0,
+                      }}
+                    >
+                      {entry.summary}
+                    </span>
+                  )}
                   <span style={{ fontSize: '13px', color: colors.textSecondary, flexShrink: 0 }}>
                     {entry.links.length} {plural(entry.links.length, ['привязка', 'привязки', 'привязок'])}
                     {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}

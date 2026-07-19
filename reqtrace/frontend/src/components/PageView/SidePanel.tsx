@@ -967,8 +967,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    height: '44px',
-                    padding: '0 12px',
+                    minHeight: '44px',
+                    padding: '6px 12px',
                     borderRadius: radii.md,
                     border: `1px solid ${colors.border}`,
                     background: colors.white,
@@ -988,6 +988,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                         <StatusAlertIcon kind="warning" size={14} />
                       </span>
                     )}
+                    <div style={{ minWidth: 0 }}>
                     {jiraBaseUrl && !nonstandard ? (
                       // Фирменный зелёный вместо веб-синего (#2563EB был
                       // единственным элементом вне палитры ReqTrace); ховер —
@@ -1030,6 +1031,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                         {test.test_key}
                       </span>
                     )}
+                    {/* Название из Jira (v1.7.0): видно, какой тест привязан,
+                        не открывая Jira. Нет имени — только ключ, как раньше. */}
+                    {test.summary && (
+                      <div
+                        title={test.summary}
+                        style={{
+                          fontSize: '11.5px', color: colors.textSecondary,
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap', marginTop: '1px', lineHeight: 1.4,
+                        }}
+                      >
+                        {test.summary}
+                      </div>
+                    )}
+                    </div>
                   </div>
                   {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
                       ховер; виден только при наведении на строку (.test-row) —

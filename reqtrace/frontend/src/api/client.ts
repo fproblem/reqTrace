@@ -268,6 +268,8 @@ export const api = {
   saveProjectCredentials: (projectId: string, data: {
     confluence_username: string;
     confluence_password?: string;
+    /** Jira-токен (v1.7.0): не передан — не менять; '' — удалить. */
+    jira_token?: string;
   }) =>
     request<Project>(`/projects/${projectId}/credentials`, {
       method: 'PUT',

@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, delete, or_, select
 
 from app.config import settings
 from app.database import async_session
@@ -41,6 +41,41 @@ from app.services import confluence, page_service, tree_sync
 from app.services.confluence import ConfluenceAuthError
 
 logger = logging.getLogger(__name__)
+
+# Ретеншн журнала (v1.6.5): дальше всех в прошлое смотрит панель уведомлений
+# (14 дней) — 90 дней дают шестикратный запас и квартальную историю, а рост
+# таблицы (и её JSONB-подробностей) перестаёт быть бесконечным.
+JOURNAL_RETENTION_DAYS = 90
+
+
+async def prune_journal(
+    session_factory=async_session,
+    *,
+    now_utc: datetime | None = None,
+    retention_days: int = JOURNAL_RETENTION_DAYS,
+) -> int:
+    """Удаляет строки журнала старше окна ретеншна; возвращает их число.
+
+    Уходят завершённые прогоны старше порога и «мёртвые» незавершённые
+    (строка без finished_at старше порога — процесс давно погиб, индикатор
+    такие и при жизни не показывал). Вызывается из ночного обхода; его
+    падение прогона не задевает (см. run_sweep).
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    cutoff = now_utc - timedelta(days=retention_days)
+    async with session_factory() as db:
+        result = await db.execute(
+            delete(RefreshRun).where(or_(
+                RefreshRun.finished_at < cutoff,
+                and_(RefreshRun.finished_at.is_(None), RefreshRun.started_at < cutoff),
+            ))
+        )
+        await db.commit()
+    deleted = getattr(result, "rowcount", 0) or 0
+    if deleted:
+        logger.info("auto-refresh: журнал подчищен — удалено %d строк старше %d дней",
+                    deleted, retention_days)
+    return deleted
 
 
 def pick_retry_projects(rows, now_utc: datetime, retry_after_minutes: int = 60) -> list:
@@ -422,6 +457,13 @@ async def run_sweep(*, trigger: str = "auto", session_factory=async_session) -> 
             await run_project(session_factory, project, trigger=trigger)
         except Exception:
             logger.exception("auto-refresh: прогон проекта «%s» упал", project.name)
+
+    # Гигиена журнала — раз в обход, после всех проектов; неудача чистки
+    # не должна портить сам прогон.
+    try:
+        await prune_journal(session_factory)
+    except Exception:
+        logger.exception("auto-refresh: чистка журнала упала")
     return len(projects)
 
 

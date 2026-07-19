@@ -87,7 +87,9 @@ export const TestsPage: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '960px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+    // Скроллит <main> из Layout (как в профиле): свой overflow у контейнера
+    // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
+    <div style={{ padding: '32px 40px', maxWidth: '960px', boxSizing: 'border-box' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '6px' }}>
         Тесты
       </h1>

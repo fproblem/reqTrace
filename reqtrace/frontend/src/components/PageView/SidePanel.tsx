@@ -187,6 +187,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     return () => clearTimeout(t);
   }, [rendered?.id]);
 
+  // Цвет фокуса следует за статусом привязки (v1.7.0). При листании привязок
+  // поле НЕ теряет фокус — onFocus не перевызовется, и обводка застряла бы в
+  // цвете прошлого статуса: перекрашиваем вручную при смене статуса.
+  // statusLabels — напрямую из rendered: statusInfo объявляется ниже раннего
+  // return, хукам он недоступен.
+  useEffect(() => {
+    const input = testInputRef.current;
+    if (!rendered || !input || document.activeElement !== input) return;
+    const tint = (statusLabels[rendered.status] || statusLabels.active).color;
+    input.style.borderColor = `${tint}8C`;
+    input.style.boxShadow = `0 0 0 2px ${tint}1F`;
+  }, [rendered?.status]);
+
   // Escape закрывает панель — с автофокусом поля весь цикл «выделил →
   // привязал тесты → закрыл» проходит без мыши. Слои: открытый поповер
   // подтверждения удаления обрабатывает Escape сам (confirmOpen), модалки и
@@ -900,12 +913,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 boxSizing: 'border-box',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
-              // Фокус — стандарт полей ReqTrace: рамка зеленеет (focusBorder,
-              // полупрозрачный greenDark) + тонкое кольцо (shadows.focusRing,
-              // референс — поля Confluence, оттенки подобраны по макету).
+              // Фокус — в цвете статуса привязки (v1.7.0, вслед за чипами
+              // ключей): на «Требует проверки» поле обводится янтарным, на
+              // «Актуально» — зелёным, на «Утрачено» — красным. Геометрия
+              // стандартная (рамка 0.55 + кольцо 0.12, как focusBorder/
+              // focusRing из tokens), меняется только оттенок — 8C и 1F это
+              // те же альфы в hex.
               onFocus={e => {
-                e.currentTarget.style.borderColor = colors.focusBorder;
-                e.currentTarget.style.boxShadow = shadows.focusRing;
+                e.currentTarget.style.borderColor = `${statusInfo.color}8C`;
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${statusInfo.color}1F`;
               }}
               onBlur={e => {
                 e.currentTarget.style.borderColor = colors.border;

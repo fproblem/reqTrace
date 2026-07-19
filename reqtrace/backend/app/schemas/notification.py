@@ -8,8 +8,8 @@ from pydantic import BaseModel
 class NotificationEntry(BaseModel):
     """Запись панели уведомлений (v1.6.3) — структурированные данные;
     человеческий текст собирает фронт (как humanizeError в api/client.ts)."""
-    id: str                      # стабильный ключ: "<run_id>:digest|cred|skip"
-    kind: str                    # digest | cred_invalid | run_skipped
+    id: str                      # стабильный ключ: "<run_id>:digest|cred|skip|quiet"
+    kind: str                    # digest | cred_invalid | run_skipped | run_quiet
     project_id: UUID
     project_name: str
     happened_at: datetime        # finished_at прогона — время события
@@ -25,11 +25,12 @@ class NotificationEntry(BaseModel):
     # confluence_unreachable | no_valid_credentials — у run_skipped всегда,
     # у digest — если прогон прерван (обрыв связи посреди прогона).
     skipped_reason: Optional[str] = None
-    # run_skipped — не событие, а СОСТОЯНИЕ «проект сейчас не обновляется»:
-    # хвостовая серия неудачных прогонов схлопывается в одну живую строку
-    # (иначе почасовое самолечение утопило бы панель повторами).
+    # run_skipped и run_quiet — не события, а СОСТОЯНИЯ («проект сейчас не
+    # обновляется» / «изменений нет, слежение живо», v1.6.5): хвостовая серия
+    # одинаковых исходов схлопывается в одну живую строку (иначе почасовое
+    # самолечение или неделя тишины утопили бы панель повторами).
     # attempts — длина серии, first_attempt_at — её начало,
-    # happened_at — последняя попытка.
+    # happened_at — последняя попытка/прогон.
     attempts: int = 1
     first_attempt_at: Optional[datetime] = None
 

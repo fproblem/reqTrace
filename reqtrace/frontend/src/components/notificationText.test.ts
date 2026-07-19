@@ -112,6 +112,39 @@ describe('notificationBody: креды и пропуски', () => {
   });
 });
 
+describe('notificationBody: подтверждение тишины (run_quiet, v1.6.5)', () => {
+  it('один тихий прогон — «изменений нет» и когда проверено', () => {
+    const e = entry({ kind: 'run_quiet', id: 'r1:quiet' });
+    const body = notificationBody(e);
+    expect(body).toContain('Изменений нет');
+    expect(body).toContain('страницы проверены');
+  });
+
+  it('серия тихих дней схлопнута в одну строку с размахом', () => {
+    const e = entry({
+      kind: 'run_quiet',
+      attempts: 3,
+      first_attempt_at: '2026-07-14T00:12:00Z',
+      happened_at: '2026-07-16T00:12:00Z',
+    });
+    const body = notificationBody(e);
+    expect(body).toContain('Спокойных прогонов: 3');
+    expect(body).toContain('тишина с');
+  });
+
+  it('изменившиеся страницы без задетых привязок называются честно', () => {
+    const e = entry({ kind: 'run_quiet', pages_changed: 2 });
+    expect(notificationBody(e)).toContain('Страницы менялись, но привязки не задеты');
+  });
+
+  it('заголовок нейтральный, оттенок зелёный, клик ведёт на «Тесты»', () => {
+    const e = entry({ kind: 'run_quiet' });
+    expect(notificationTitle(e)).toBe('Обновление · Платёжный шлюз');
+    expect(notificationTint(e)).toBe('green');
+    expect(notificationLink(e)).toBe('/tests/p1');
+  });
+});
+
 describe('notificationLink', () => {
   it('дайджест ведёт к худшему: сначала утраты, потом «требует проверки»', () => {
     expect(notificationLink(entry({ to_lost: 1, to_outdated: 3 }))).toBe('/tests/p1?f=lost');

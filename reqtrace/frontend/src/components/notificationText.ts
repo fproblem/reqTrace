@@ -33,6 +33,22 @@ export function notificationBody(e: NotificationEntry): string {
     }
     return reason;
   }
+  if (e.kind === 'run_quiet') {
+    // Подтверждение тишины (v1.6.5): ReqTrace следил, изменений не нашёл.
+    // Страницы могли меняться — важно, что привязки не задеты.
+    const what = e.pages_changed > 0
+      ? 'Страницы менялись, но привязки не задеты'
+      : 'Изменений нет';
+    const checked = `страницы проверены ${formatCheckedAt(e.happened_at)}`;
+    const attempts = e.attempts ?? 1;
+    if (attempts > 1 && e.first_attempt_at) {
+      // Неделя тишины — одна строка с её размахом, а не семь одинаковых
+      // (ярлык счёта — как «Попыток: N» у серии неудач).
+      return `${what} — ${checked}. Спокойных прогонов: ${attempts}, `
+        + `тишина с ${formatCheckedAt(e.first_attempt_at)}`;
+    }
+    return `${what} — ${checked}`;
+  }
 
   const parts: string[] = [];
   if (e.pages_changed > 0) {

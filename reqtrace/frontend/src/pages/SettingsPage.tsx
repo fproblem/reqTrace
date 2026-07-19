@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
+import { useFadeToggle } from '../components/fadePresence';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { OnboardingModal } from '../components/OnboardingModal';
 import { markOnboardingShown, shouldAutoShowOnboarding } from '../components/onboardingAutoShow';
@@ -654,6 +655,9 @@ const DeleteProjectModal: React.FC<{ project: Project; onClose: () => void; onDo
 
 const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ project, onChanged }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Мягкое появление/гашение меню (v1.6.6): menuMounted держит его в DOM,
+  // пока оно догасает.
+  const { mounted: menuMounted, fadeStyle: menuFade } = useFadeToggle(menuOpen);
   const [checking, setChecking] = useState(false);
   const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | 'delete' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -760,7 +764,9 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         // Каждая карточка — stacking context (backdrop-filter): без подъёма
         // открытое меню пряталось бы под следующей по DOM карточкой.
         position: 'relative',
-        zIndex: menuOpen ? 20 : 'auto',
+        // Пока меню открыто ИЛИ догасает, карточка держит верхний план —
+        // иначе гаснущее меню ныряло бы под соседнюю карточку.
+        zIndex: menuMounted ? 20 : 'auto',
       }}
       onMouseEnter={e => {
         e.currentTarget.style.borderColor = colors.borderHover;
@@ -820,7 +826,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           >
             <DotsIcon />
           </button>
-          {menuOpen && (
+          {menuMounted && (
             <div
               role="menu"
               style={{
@@ -829,6 +835,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 background: colors.cardBgSolid, border: `1px solid ${colors.border}`,
                 borderRadius: radii.md, boxShadow: shadows.panel,
                 display: 'flex', flexDirection: 'column', gap: '2px',
+                ...menuFade,
               }}
             >
               {/* Ручной прогон (v1.6.4): тот же полный прогон, что ночью, —
@@ -1068,7 +1075,9 @@ export const SettingsPage: React.FC = () => {
   const available = projects.filter(p => !p.joined);
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
+    // Колонка отцентрована (v1.6.6): прибитая к левому краю, на широком
+    // мониторе она оставляла всю «лишнюю» ширину одним пустым полем справа.
+    <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
         Профиль
       </h1>

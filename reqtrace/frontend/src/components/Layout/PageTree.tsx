@@ -6,12 +6,30 @@ import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { Select } from '../Select';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
+import { TreeReveal } from '../TreeReveal';
 import { ChevronRightIcon, CrossIcon, DocumentIcon, PlusIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
+
+// Плейсхолдер поиска на узком дереве обрезался жёстко, посреди буквы
+// («Поиск стран») — многоточие через ::placeholder, инлайн-стилям
+// псевдоэлемент недоступен (паттерн — TreeReveal/RefreshIcon).
+const SEARCH_STYLES_ID = 'reqtrace-tree-search-styles';
+if (typeof document !== 'undefined' && !document.getElementById(SEARCH_STYLES_ID)) {
+  const style = document.createElement('style');
+  style.id = SEARCH_STYLES_ID;
+  style.textContent = `
+.tree-search-input::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+`;
+  document.head.appendChild(style);
+}
 
 // Подсветка совпадения с поисковым запросом (жёлтая подложка). Экспорт —
 // её же использует поиск ключей на экране «Тесты».
@@ -31,35 +49,6 @@ export function highlightMatch(text: string, query: string): React.ReactNode {
   );
 }
 
-// --- Каскадное раскрытие/сворачивание вложенных списков (как в Confluence) ---
-
-const REVEAL_MS = 160;           // высота+прозрачность одной строки
-const REVEAL_STEP_MS = 26;       // шаг «волны» между соседними строками
-const REVEAL_TOTAL_CAP_MS = 240; // потолок волны, чтобы длинные списки не тянулись
-
-// Стили — один раз на документ (паттерн RefreshIcon): строк в дереве много,
-// по <style> на каждую плодить не хочется. Высота строки анимируется через
-// grid-template-rows 0fr↔1fr — без измерения содержимого в JS.
-const TREE_STYLES_ID = 'reqtrace-tree-reveal-styles';
-if (typeof document !== 'undefined' && !document.getElementById(TREE_STYLES_ID)) {
-  const style = document.createElement('style');
-  style.id = TREE_STYLES_ID;
-  style.textContent = `
-.tree-reveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transition: grid-template-rows ${REVEAL_MS}ms ease, opacity ${REVEAL_MS}ms ease;
-}
-.tree-reveal--open { grid-template-rows: 1fr; opacity: 1; }
-.tree-reveal-inner { overflow: hidden; min-height: 0; }
-@media (prefers-reduced-motion: reduce) {
-  .tree-reveal { transition: none; }
-}
-`;
-  document.head.appendChild(style);
-}
-
 // Шеврон раскрытия: остриё вправо, при раскрытии поворачивается вниз — как в
 // Confluence. Толщина 2.7 повторяет прежний вид (1.8 на вьюбоксе 16 ≈ 2.7 на 24).
 const TreeChevron: React.FC<{ expanded: boolean; size?: number }> = ({ expanded, size = 12 }) => (
@@ -73,52 +62,6 @@ const TreeChevron: React.FC<{ expanded: boolean; size?: number }> = ({ expanded,
     }}
   />
 );
-
-// Обёртка каскада: монтирует детей при раскрытии и держит их в DOM на время
-// анимации сворачивания. Появление — плавно с первой строки до последней,
-// сворачивание — в обратном порядке (задержки зеркалятся). Каждый прямой
-// ребёнок анимируется как строка; его собственное раскрытое поддерево едет
-// внутри этой строки единым блоком.
-const TreeReveal: React.FC<{ expanded: boolean; children: React.ReactNode }> = ({ expanded, children }) => {
-  const [mounted, setMounted] = useState(expanded);
-  const [open, setOpen] = useState(expanded);
-  const items = React.Children.toArray(children);
-  const count = items.length;
-  const step = count > 1
-    ? Math.min(REVEAL_STEP_MS, Math.round(REVEAL_TOTAL_CAP_MS / (count - 1)))
-    : 0;
-
-  useEffect(() => {
-    if (expanded) {
-      setMounted(true);
-      // Два кадра: закрытое состояние должно попасть в раскладку до снятия,
-      // иначе transition не запустится и список раскроется скачком.
-      let raf2 = 0;
-      const raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => setOpen(true));
-      });
-      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
-    }
-    setOpen(false);
-    const timer = setTimeout(() => setMounted(false), (count - 1) * step + REVEAL_MS);
-    return () => clearTimeout(timer);
-  }, [expanded, count, step]);
-
-  if (!mounted) return null;
-  return (
-    <>
-      {items.map((item, i) => (
-        <div
-          key={React.isValidElement(item) && item.key != null ? item.key : i}
-          className={open ? 'tree-reveal tree-reveal--open' : 'tree-reveal'}
-          style={{ transitionDelay: `${(open ? i : count - 1 - i) * step}ms` }}
-        >
-          <div className="tree-reveal-inner">{item}</div>
-        </div>
-      ))}
-    </>
-  );
-};
 
 // Кнопка-иконка шапки сайдбара — в точности как кнопки верхних баров страницы
 // («Обновить», «Ещё действия»): 34×34, рамка, белый фон, тот же ховер.
@@ -409,11 +352,13 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           </span>
           <input
             type="text"
+            className="tree-search-input"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             // В дизейбле поле само говорит о состоянии — тултип объясняет
-            // причину; в рабочем состоянии — компактное «Поиск страниц…»
-            // (длинный плейсхолдер обрезался на узком дереве).
+            // причину; в рабочем состоянии — компактное «Поиск страниц…».
+            // На узком дереве плейсхолдер сокращается многоточием
+            // (класс tree-search-input), а не режется посреди буквы.
             placeholder={searchDisabled ? 'Поиск недоступен' : 'Поиск страниц…'}
             disabled={searchDisabled}
             style={{
@@ -421,6 +366,10 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               // Правый резерв — только под реально существующий крестик
               // очистки: пустующие 30px обрезали плейсхолдер «невидимкой».
               padding: `8px ${searchQuery ? 30 : 12}px 8px 28px`,
+              // Chromium вешает многоточие плейсхолдера по text-overflow
+              // самого инпута — правила на ::placeholder ему недостаточно
+              // (проверено: первый заход только через CSS-класс не сработал).
+              textOverflow: 'ellipsis',
               lineHeight: '16px',
               borderRadius: radii.md,
               border: `1px solid ${colors.border}`,

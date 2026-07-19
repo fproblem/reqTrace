@@ -14,6 +14,7 @@ import { useToast } from '../components/Toast';
 import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
+import { TreeReveal } from '../components/TreeReveal';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
 import { plural, StatusCountPill } from './TestsPage';
@@ -190,7 +191,11 @@ export const ProjectTestsPage: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '1060px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+    // Скроллит <main> из Layout (как в профиле): свой overflow у контейнера
+    // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
+    // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
+    // оставляла всю «лишнюю» ширину одним пустым полем справа.
+    <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
       {/* Крошка-заголовок: «Тесты» возвращает на ярус выбора проекта. */}
       <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 16px', color: colors.textPrimary }}>
         <Link
@@ -393,9 +398,12 @@ export const ProjectTestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                {isOpen && (
-                  <div style={{ borderTop: `1px solid ${colors.border}` }}>
-                    {entry.links.map(link => {
+                {/* Каскад раскрытия — тот же TreeReveal, что в дереве страниц
+                    (v1.6.6): аккордеон отвечает так же мягко. Разделитель —
+                    на первой строке, а не на контейнере: контейнера нет,
+                    строки анимируются каждая в своей grid-обёртке. */}
+                <TreeReveal expanded={isOpen}>
+                  {entry.links.map((link, linkIndex) => {
                       const st = statusLabel[link.status] ?? statusLabel.active;
                       return (
                         <div
@@ -415,6 +423,8 @@ export const ProjectTestsPage: React.FC = () => {
                             display: 'flex', alignItems: 'center', gap: '12px',
                             minHeight: '44px', padding: '8px 14px',
                             cursor: 'pointer', transition: 'background 0.15s',
+                            borderTop: linkIndex === 0
+                              ? `1px solid ${colors.border}` : 'none',
                           }}
                           onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -452,8 +462,7 @@ export const ProjectTestsPage: React.FC = () => {
                         </div>
                       );
                     })}
-                  </div>
-                )}
+                </TreeReveal>
               </div>
             );
           })}

@@ -1,6 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { colors, radii, shadows } from '../styles/tokens';
+
+// Мягкость появления/скрытия — та же, что у каскада дерева (TreeReveal):
+// интерфейс отвечает одинаково спокойно везде (ревью v1.6.6).
+const FADE_MS = 160;
+const REDUCED_MOTION = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Единая модалка приложения (эталон — экран «Настройки», v1.5.2).
 //
@@ -76,6 +83,45 @@ export const Modal: React.FC<{
   children: React.ReactNode;
 }> = ({ title, onClose, width = '440px', children }) => {
   const windowRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Появление: прозрачность 0 → 1 после первого кадра (два rAF — приём
+  // TreeReveal: закрытое состояние должно попасть в раскладку до снятия).
+  const [visible, setVisible] = useState(REDUCED_MOTION);
+  useEffect(() => {
+    if (REDUCED_MOTION) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setVisible(true));
+    });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+  }, []);
+
+  // Скрытие. Модалки живут условным рендером в десятке мест — родитель
+  // размонтирует мгновенно, анимировать «после смерти» нечего. Поэтому при
+  // размонтировании оверлей клонируется «призраком» прямо в body и гаснет
+  // сам: работает для любого пути закрытия (крестик, Escape, фон, «Отмена»,
+  // успешное действие) без переделки вызывающих. Призрак инертен
+  // (pointer-events: none) и живёт меньше двух десятых секунды.
+  useEffect(() => {
+    // Узел захватывается на маунте: к моменту cleanup при размонтировании
+    // React уже обнулил ref (пассивные эффекты чистятся после отвязки ref) —
+    // чтение overlayRef.current здесь вернуло бы null, и призрака не было бы.
+    const node = overlayRef.current;
+    return () => {
+      if (!node || REDUCED_MOTION) return;
+      const ghost = node.cloneNode(true) as HTMLElement;
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.pointerEvents = 'none';
+      ghost.style.opacity = '1';
+      ghost.style.transition = `opacity ${FADE_MS}ms ease`;
+      document.body.appendChild(ghost);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => { ghost.style.opacity = '0'; });
+      });
+      window.setTimeout(() => ghost.remove(), FADE_MS + 80);
+    };
+  }, []);
 
   useEffect(() => {
     const container = windowRef.current;
@@ -117,7 +163,15 @@ export const Modal: React.FC<{
   }, [onClose]);
 
   return createPortal(
-    <div style={overlayStyle} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      ref={overlayRef}
+      style={{
+        ...overlayStyle,
+        opacity: visible ? 1 : 0,
+        transition: `opacity ${FADE_MS}ms ease`,
+      }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div ref={windowRef} role="dialog" aria-modal="true" style={{ ...windowStyle, width }}>
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',

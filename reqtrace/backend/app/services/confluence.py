@@ -78,12 +78,19 @@ def _macro_rich_body(block: str) -> str:
 
 
 def process_confluence_html(
-    html: str, page_id: str, jira_base_url: str = "", project_id: str = ""
+    html: str, page_id: str, jira_base_url: str = "", project_id: str = "",
+    image_dims: dict[str, tuple[int, int]] | None = None,
 ) -> str:
     """Transform Confluence storage-format XML into browser-renderable HTML.
 
     Handles: ac:image, ac:structured-macro (jira, status, …),
-    ac:link, ac:emoticon, and leftover ac:/ri: tags."""
+    ac:link, ac:emoticon, and leftover ac:/ri: tags.
+
+    image_dims — замеренные размеры вложений (services/image_dimensions,
+    v1.6.6): передаются только при рендере контента для фронта. Пути якорей
+    (проекция, реанкор) их не передают — размеры меняют лишь атрибуты <img>,
+    текст и структура блоков идентичны, но единообразие дешевле сомнений.
+    """
 
     # --- 1. Images (ac:image → <img>) ---
     def _replace_ac_image(m: re.Match) -> str:
@@ -102,14 +109,27 @@ def process_confluence_html(
         if align_m and align_m.group(1) == "center":
             style_parts += ["display: block", "margin: 8px auto"]
 
-        style = "; ".join(style_parts)
-
         att = re.search(r'ri:filename="([^"]+)"', block)
         if att:
             fn = att.group(1)
+            # Резерв места под картинку (v1.6.6): без известных размеров
+            # браузер отводит <img> нулевую высоту, и контент «едет» по мере
+            # загрузки при первом открытии. Авторские ac:width/ac:height
+            # главнее; замеренные добавляются только там, где авторских нет.
+            measured = (image_dims or {}).get(fn)
+            if measured and not height_m:
+                w, h = measured
+                if width_m:
+                    # Авторская ширина без высоты: атрибуты пропорцию не дают —
+                    # даём её стилем.
+                    style_parts.append(f"aspect-ratio: {w} / {h}")
+                else:
+                    size_attrs = f' width="{w}" height="{h}"'
+            style = "; ".join(style_parts)
             enc = urllib.parse.quote(fn, safe="")
             return f'<img src="/api/pages/{page_id}/attachments/{enc}" alt="{fn}" style="{style}"{size_attrs} />'
 
+        style = "; ".join(style_parts)
         url = re.search(r'ri:value="([^"]+)"', block)
         if url:
             return f'<img src="{url.group(1)}" style="{style}"{size_attrs} />'

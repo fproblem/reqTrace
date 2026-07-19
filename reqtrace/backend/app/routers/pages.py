@@ -33,6 +33,7 @@ from app.schemas.page import (
     TreeNodeItem, SpaceTreeResponse, ProjectTreeResponse, TreeSyncResult,
 )
 from app.services import confluence, page_service, tree_sync
+from app.services.image_dimensions import load_image_dimensions, measure_page_images
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ def _page_detail(
     project: Project,
     snapshot: PageSnapshot | None,
     baseline: Baseline | None,
+    image_dims: dict[str, tuple[int, int]] | None = None,
 ) -> PageDetail:
     return PageDetail(
         id=page.id,
@@ -90,7 +92,9 @@ def _page_detail(
             confirmed_by=baseline.confirmed_by,
             confirmed_at=baseline.confirmed_at,
         ) if baseline else None,
-        content_html=render_page_html(snapshot.content_html, page.id, project) if snapshot else None,
+        content_html=render_page_html(
+            snapshot.content_html, page.id, project, image_dims=image_dims,
+        ) if snapshot else None,
     )
 
 
@@ -331,7 +335,15 @@ async def add_page(
     db.add(baseline)
     await db.flush()
 
-    return _page_detail(page, project, snapshot, baseline)
+    # Замер размеров картинок — сразу при первом снимке (v1.6.6): к первому
+    # открытию страницы место под них уже зарезервировано. Best effort.
+    try:
+        await measure_page_images(db, page, page_data.content_html, conn)
+    except Exception:
+        logger.warning("замер картинок страницы %s не удался", page.id, exc_info=True)
+
+    return _page_detail(page, project, snapshot, baseline,
+                        await load_image_dimensions(db, page.id))
 
 
 @router.get("", response_model=list[PageListItem])
@@ -557,7 +569,10 @@ async def get_page(
     )
     latest_baseline = bl_result.scalar_one_or_none()
 
-    return _page_detail(page, project, latest_snapshot, latest_baseline)
+    # Известные размеры картинок — в рендер (v1.6.6): браузер резервирует
+    # место, контент не «едет» при первом открытии страницы.
+    image_dims = await load_image_dimensions(db, page.id) if latest_snapshot else None
+    return _page_detail(page, project, latest_snapshot, latest_baseline, image_dims)
 
 
 @router.post("/{page_id}/promote", response_model=PageDetail)
@@ -604,7 +619,15 @@ async def promote_page(
     db.add(baseline)
     await db.flush()
 
-    return _page_detail(page, project, snapshot, baseline)
+    # Замер размеров картинок — сразу при первом снимке (v1.6.6): к первому
+    # открытию страницы место под них уже зарезервировано. Best effort.
+    try:
+        await measure_page_images(db, page, page_data.content_html, conn)
+    except Exception:
+        logger.warning("замер картинок страницы %s не удался", page.id, exc_info=True)
+
+    return _page_detail(page, project, snapshot, baseline,
+                        await load_image_dimensions(db, page.id))
 
 
 @router.post("/{page_id}/refresh", response_model=PageDetail)

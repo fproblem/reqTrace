@@ -252,30 +252,23 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         zIndex: 2,
       }}>
         {/* Left: brand */}
-        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+        {/* Чип версии — кнопка в общем стиле баров (34px, radii.md, тот же
+            ховер и пресс), всегда прижата к логотипу. Прежняя абсолютная
+            позиция с выравниванием на кнопку синхронизации дерева «ездила»
+            за ресайзом сайдбара — убрана по ревью v1.6.6. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
           <img
             src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
             alt="ReqTrace"
             onClick={() => navigate('/')}
             style={{ height: '42px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
           />
-        </div>
-
-        {/* Чип версии — кнопка в общем стиле баров (34px, radii.md, тот же
-            ховер и пресс). Позиция абсолютная: левый край совпадает с левым
-            краем кнопки синхронизации дерева (width − 10px паддинга −
-            34px «+» − 6px гэпа − 34px синка = width − 84); на узком дереве
-            (или свёрнутой рельсе) прижимается к логотипу (187 ≈ 16px отступа +
-            161px ширины лого при высоте 42 + 10px зазора), чтобы не наезжать. */}
         {currentVersion && (
           <button
             onClick={() => setChangelogOpen(true)}
             title="История изменений"
             style={{
-              position: 'absolute',
-              left: `${Math.max((showRail ? 0 : width) - 84, 187)}px`,
-              top: '50%',
-              transform: 'translateY(-50%)',
+              flexShrink: 0,
               height: '34px',
               padding: '0 14px',
               borderRadius: radii.md,
@@ -304,6 +297,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             v{currentVersion}
           </button>
         )}
+        </div>
 
         {/* Right: профиль и выход. Аватар, имя и экран настроек «склеены» в
             один профиль-чип: настройки в ReqTrace — это ЛИЧНЫЕ подключения

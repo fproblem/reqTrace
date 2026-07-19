@@ -8,6 +8,8 @@ import type { HighlightRenderReport } from '../components/PageView/HighlightLaye
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
+import { useFadeToggle } from '../components/fadePresence';
+import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -69,6 +71,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const [showBaselineWarning, setShowBaselineWarning] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  // Мягкое появление/гашение меню «Ещё действия» (v1.6.6).
+  const { mounted: actionsMenuMounted, fadeStyle: actionsMenuFade } = useFadeToggle(showActionsMenu);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
 
   const loadPage = useCallback(async () => {
@@ -517,13 +521,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             maxWidth: '420px',
             padding: '40px',
           }}>
-            <div style={{
-              fontSize: '48px',
-              marginBottom: '16px',
-              opacity: 0.4,
-            }}>
-              📄
-            </div>
+            {/* Библиотечная иконка вместо эмодзи (v1.6.6): глиф выбивался из
+                языка интерфейса. Без плашки и крупно — по ревью; лёгкий серый,
+                тонкий штрих — страница «ещё не в игре». */}
+            <DocumentIcon
+              size={56}
+              strokeWidth={1.5}
+              style={{
+                color: colors.textTertiary,
+                margin: '0 auto 16px',
+              }}
+            />
             <div style={{
               fontSize: '18px',
               fontWeight: 600,
@@ -542,25 +550,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               Начните отслеживание, чтобы подтянуть содержимое из Confluence
               и работать с покрытием требований.
             </div>
-            <button
+            {/* ModalButton несёт все состояния (ховер, пресс, disabled) —
+                у прежней самодельной кнопки их не было (ревью v1.6.6). */}
+            <ModalButton
+              variant="primary"
               onClick={handlePromote}
               disabled={promoting}
-              style={{
-                padding: '10px 28px',
-                borderRadius: radii.pill,
-                border: 'none',
-                background: colors.greenAccent,
-                color: '#fff',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: promoting ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-                opacity: promoting ? 0.7 : 1,
-                transition: 'opacity 0.15s',
-              }}
+              style={{ padding: '10px 28px' }}
             >
-              {promoting ? 'Подключение...' : 'Начать отслеживание'}
-            </button>
+              {promoting ? 'Подключение…' : 'Начать отслеживание'}
+            </ModalButton>
           </div>
         </div>
       </div>
@@ -898,7 +897,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               </svg>
             </button>
 
-            {showActionsMenu && (
+            {actionsMenuMounted && (
               <div
                 role="menu"
                 style={{
@@ -915,6 +914,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '2px',
+                  ...actionsMenuFade,
                 }}
               >
                 <button

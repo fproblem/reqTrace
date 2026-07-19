@@ -9,7 +9,7 @@ import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { useFadeToggle } from '../components/fadePresence';
-import { DocumentIcon, IconBadge } from '../components/icons';
+import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -521,12 +521,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             maxWidth: '420px',
             padding: '40px',
           }}>
-            {/* Библиотечная иконка в плашке IconBadge вместо эмодзи (v1.6.6):
-                глиф эмодзи выбивался из языка интерфейса. Серый оттенок —
-                страница «ещё не в игре». */}
-            <IconBadge tint="gray" size={64} radius={20} style={{ marginBottom: '16px' }}>
-              <DocumentIcon size={28} />
-            </IconBadge>
+            {/* Библиотечная иконка вместо эмодзи (v1.6.6): глиф выбивался из
+                языка интерфейса. Без плашки и крупно — по ревью; лёгкий серый,
+                тонкий штрих — страница «ещё не в игре». */}
+            <DocumentIcon
+              size={56}
+              strokeWidth={1.5}
+              style={{
+                color: colors.textTertiary,
+                margin: '0 auto 16px',
+              }}
+            />
             <div style={{
               fontSize: '18px',
               fontWeight: 600,

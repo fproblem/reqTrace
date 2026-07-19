@@ -91,6 +91,10 @@ const STATUS_ICON_KIND: Record<string, 'ok' | 'warning' | 'error'> = {
 
 // Корзина — библиотечная TrashIcon (см. импорт): своя копия больше не нужна.
 
+// Один оборот лоадера RefreshIcon (0.8s в его keyframes): «Актуализировать»
+// не складывается раньше полного оборота — быстрый ответ дёргал глаз.
+const SPIN_TURN_MS = 800;
+
 // Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
 // прицеливаться (контент пере-вёрстывается, координаты цели плывут).
@@ -776,7 +780,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* TreeReveal (один ребёнок): после «Актуализировать» строка кнопки
             складывается те же 160мс, что всё в ReqTrace, — карточка привязки
             сжимается плавно, без скачка контента панели (ревью v1.7.0). */}
-        <TreeReveal expanded={highlight.status === 'outdated' && !!onReanchor}>
+        <TreeReveal expanded={(highlight.status === 'outdated' && !!onReanchor) || reanchoring}>
           <div>
           {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
               ховер-манипуляции фоном на время проигрывания, а reduced-motion
@@ -801,9 +805,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               // тип (кнопка живёт внутри TreeReveal без внешнего &&).
               if (reanchoring || noTests || !onReanchor) return;
               setReanchoring(true);
+              // Лоадер делает ПОЛНЫЙ оборот прежде, чем строка сложится:
+              // мгновенный ответ обрывал вращение на первых градусах —
+              // выглядело дёргано (ревью). reanchoring держит TreeReveal
+              // раскрытым (см. expanded выше): статус уже «Актуально», строка
+              // зеленеет — докрутка читается как знак успеха.
+              const fullTurn = new Promise<void>(r => setTimeout(r, SPIN_TURN_MS));
               try {
                 await onReanchor(highlight.id);
               } finally {
+                await fullTurn;
                 setReanchoring(false);
               }
             }}

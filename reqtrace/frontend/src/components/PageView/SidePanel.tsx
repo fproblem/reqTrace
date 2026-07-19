@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
+import { useFadeToggle } from '../fadePresence';
 import { XIcon } from '../Modal';
 import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
 import { useToast } from '../Toast';
@@ -109,6 +110,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const [reanchoring, setReanchoring] = useState(false);
   // Компактное подтверждение удаления — поповер над кнопкой в футере.
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Мягкое появление/гашение поповера подтверждения удаления (v1.6.6) —
+  // как у меню действий и панели дайджеста.
+  const { mounted: confirmMounted, fadeStyle: confirmFade } = useFadeToggle(confirmOpen);
   const confirmRef = useRef<HTMLDivElement>(null);
 
   // Плавное появление/скрытие: анимируется ширина корня 0↔360 (как у
@@ -1080,7 +1084,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           position: 'relative',
         }}
       >
-        {confirmOpen && (
+        {confirmMounted && (
           <div style={{
             position: 'absolute',
             bottom: 'calc(100% + 6px)',
@@ -1093,6 +1097,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             boxShadow: shadows.panel,
             padding: '20px 16px 16px',
             textAlign: 'center',
+            ...confirmFade,
           }}>
             {/* Симметричная карточка: заголовок и текст по центру, кнопки 50/50
                 без дивайдера. Корзины в круге больше нет — иконку уже несёт

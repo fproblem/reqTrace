@@ -1019,8 +1019,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     {(nonstandard || notInJira) && (
                       <KeyIssueInformer
                         text={nonstandard
-                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки; такой ключ не ведёт в Jira'
-                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой; ссылки поэтому нет'}
+                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
                       />
                     )}
                     {chipClickable ? (

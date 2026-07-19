@@ -642,7 +642,7 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), [])
 
-    def test_test_index_aggregates_normalizes_and_truncates(self):
+    def test_test_index_aggregates_normalizes_and_keeps_full_quote(self):
         project = make_project()
         cred = make_cred(project, self.user)
         self.session.objects[(Project, project.id)] = project
@@ -664,9 +664,10 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         req1 = data["tests"][0]
         # привязки отсортированы по названию страницы
         self.assertEqual([l["page_title"] for l in req1["links"]], ["Возвраты", "Оплата"])
+        # Цитата отдаётся целиком (v1.6.5) — обрезал раньше бэк до 140,
+        # теперь сколько показывать решает фронт (line-clamp).
         long_link = req1["links"][1]
-        self.assertEqual(len(long_link["excerpt"]), 140)
-        self.assertTrue(long_link["excerpt"].endswith("…"))
+        self.assertEqual(long_link["excerpt"], long_text)
         self.assertEqual(req1["links"][0]["status"], "lost")
 
     def test_test_index_requires_membership(self):

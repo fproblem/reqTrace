@@ -114,12 +114,6 @@ async def list_projects(
     return [_item(p, my_creds.get(p.id)) for p in projects]
 
 
-def _excerpt(text: str, limit: int = 140) -> str:
-    """Обрезанная цитата для списков: полный текст реверс-индексу не нужен."""
-    text = text or ""
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
-
-
 def _norm_key(key: str) -> str:
     """Ключи аппер-кейсятся при вводе, но старые данные могли сохраниться
     иначе — агрегируем по нормализованной форме."""
@@ -286,7 +280,10 @@ async def project_test_index(
             page_id=page_id,
             page_title=page_title[page_id],
             status=status,
-            excerpt=_excerpt(text),
+            # Цитата целиком (v1.6.5): раньше резалась до 140 символов, но
+            # именно текст требования — то, ради чего открывают реверс-индекс;
+            # сколько строк показать, решает фронт (line-clamp).
+            excerpt=text or "",
         ))
 
     tests = [

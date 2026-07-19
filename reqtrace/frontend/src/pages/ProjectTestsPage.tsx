@@ -413,7 +413,7 @@ export const ProjectTestsPage: React.FC = () => {
                           title="Открыть страницу на этом выделении"
                           style={{
                             display: 'flex', alignItems: 'center', gap: '12px',
-                            minHeight: '44px', padding: '6px 14px',
+                            minHeight: '44px', padding: '8px 14px',
                             cursor: 'pointer', transition: 'background 0.15s',
                           }}
                           onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
@@ -426,9 +426,16 @@ export const ProjectTestsPage: React.FC = () => {
                           }}>
                             {link.page_title}
                           </span>
+                          {/* Цитата — суть строки, ей до 3 строк (v1.6.5):
+                              типичное требование читается целиком на месте,
+                              не заставляя ходить на страницу; совсем длинное
+                              клампится — полный контекст по клику. */}
                           <span style={{
                             flex: 1, minWidth: 0, fontSize: '13px', color: colors.textPrimary,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            lineHeight: 1.5, overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: 'vertical',
                           }}>
                             «{link.excerpt}»
                           </span>

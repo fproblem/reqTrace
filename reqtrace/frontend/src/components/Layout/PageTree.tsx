@@ -366,6 +366,10 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               // Правый резерв — только под реально существующий крестик
               // очистки: пустующие 30px обрезали плейсхолдер «невидимкой».
               padding: `8px ${searchQuery ? 30 : 12}px 8px 28px`,
+              // Chromium вешает многоточие плейсхолдера по text-overflow
+              // самого инпута — правила на ::placeholder ему недостаточно
+              // (проверено: первый заход только через CSS-класс не сработал).
+              textOverflow: 'ellipsis',
               lineHeight: '16px',
               borderRadius: radii.md,
               border: `1px solid ${colors.border}`,

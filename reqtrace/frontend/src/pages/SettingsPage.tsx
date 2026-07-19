@@ -1068,7 +1068,9 @@ export const SettingsPage: React.FC = () => {
   const available = projects.filter(p => !p.joined);
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '960px' }}>
+    // Колонка отцентрована (v1.6.6): прибитая к левому краю, на широком
+    // мониторе она оставляла всю «лишнюю» ширину одним пустым полем справа.
+    <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
         Профиль
       </h1>

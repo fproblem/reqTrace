@@ -363,17 +363,15 @@ export const ProjectTestsPage: React.FC = () => {
                     </span>
                   )}
                   {/* Название из Jira (v1.7.0) — главное, ради чего интеграция:
-                      ключ обретает смысл без похода в Jira. Эллипсис — счётчики
-                      и статусы правее важнее хвоста длинного названия. */}
+                      ключ обретает смысл без похода в Jira. ЦЕЛИКОМ, с
+                      переносами — обрезанное название не читается (ревью);
+                      длинное имя растит строку по высоте. */}
                   {entry.summary && (
-                    <span
-                      title={entry.summary}
-                      style={{
-                        fontSize: '13px', color: colors.textSecondary,
-                        overflow: 'hidden', textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0,
-                      }}
-                    >
+                    <span style={{
+                      fontSize: '13px', color: colors.textSecondary,
+                      flexShrink: 1, minWidth: 0, lineHeight: 1.45,
+                      wordBreak: 'break-word',
+                    }}>
                       {entry.summary}
                     </span>
                   )}

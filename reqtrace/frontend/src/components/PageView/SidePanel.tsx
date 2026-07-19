@@ -1032,16 +1032,14 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                       </span>
                     )}
                     {/* Название из Jira (v1.7.0): видно, какой тест привязан,
-                        не открывая Jira. Нет имени — только ключ, как раньше. */}
+                        не открывая Jira. ЦЕЛИКОМ, с переносами — обрезанное
+                        название не читается (ревью); нет имени — только ключ. */}
                     {test.summary && (
-                      <div
-                        title={test.summary}
-                        style={{
-                          fontSize: '11.5px', color: colors.textSecondary,
-                          overflow: 'hidden', textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap', marginTop: '1px', lineHeight: 1.4,
-                        }}
-                      >
+                      <div style={{
+                        fontSize: '11.5px', color: colors.textSecondary,
+                        marginTop: '1px', lineHeight: 1.45,
+                        wordBreak: 'break-word',
+                      }}>
                         {test.summary}
                       </div>
                     )}

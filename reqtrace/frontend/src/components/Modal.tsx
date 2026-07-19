@@ -104,8 +104,11 @@ export const Modal: React.FC<{
   // успешное действие) без переделки вызывающих. Призрак инертен
   // (pointer-events: none) и живёт меньше двух десятых секунды.
   useEffect(() => {
+    // Узел захватывается на маунте: к моменту cleanup при размонтировании
+    // React уже обнулил ref (пассивные эффекты чистятся после отвязки ref) —
+    // чтение overlayRef.current здесь вернуло бы null, и призрака не было бы.
+    const node = overlayRef.current;
     return () => {
-      const node = overlayRef.current;
       if (!node || REDUCED_MOTION) return;
       const ghost = node.cloneNode(true) as HTMLElement;
       ghost.setAttribute('aria-hidden', 'true');

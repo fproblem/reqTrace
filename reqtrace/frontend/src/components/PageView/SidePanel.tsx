@@ -820,6 +820,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               height: '44px',
               padding: '0 14px',
               border: 'none',
+              position: 'relative',
               borderTop: `1px solid ${statusInfo.color}33`,
               // Ступени фона — те же, что у шапки-статуса (0F → 26 → 33):
               // зоны карточки откликаются одинаково.
@@ -845,7 +846,20 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
             }}
           >
-            {reanchoring ? 'Актуализация…' : 'Актуализировать'}
+            {/* Подпись не меняется (нечитаемая «Актуализация…» в момент
+                схлопывания смотрелась странно — ревью): на время ожидания
+                она гаснет, поверх крутятся стрелки — как у «Добавить». */}
+            <span style={{ opacity: reanchoring ? 0 : 1, transition: 'opacity 0.15s' }}>
+              Актуализировать
+            </span>
+            {reanchoring && (
+              <span style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <RefreshIcon size={15} spinning />
+              </span>
+            )}
           </button>
           </div>
         </TreeReveal>

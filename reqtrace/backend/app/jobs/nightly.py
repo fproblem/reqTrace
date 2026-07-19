@@ -37,7 +37,7 @@ from app.models.page import Page
 from app.models.project import Project, ProjectCredential
 from app.models.refresh_run import RefreshRun
 from app.project_access import connection_for
-from app.services import confluence, page_service, tree_sync
+from app.services import confluence, page_service, test_names, tree_sync
 from app.services.confluence import ConfluenceAuthError
 
 logger = logging.getLogger(__name__)
@@ -394,6 +394,15 @@ async def run_project(
                     "to_lost": [str(h) for h in result["to_lost"]],
                     "affected_tests": result["affected_tests"],
                 })
+
+    # Названия тестов из Jira (v1.7.0) — после страниц, строго best effort:
+    # неудача не трогает ни журнал, ни статус прогона. Jira и Confluence —
+    # разные серверы, поэтому пробуем даже при пропуске страниц (сеть могла
+    # умереть только для Confluence).
+    try:
+        await test_names.sync_project_test_names(session_factory, project)
+    except Exception:
+        logger.exception("nightly: синхронизация названий тестов «%s» упала", project.name)
 
     if skipped_reason == "confluence_unreachable":
         # Сеть умерла (до или посреди прогона): «сделанным на сегодня» прогон

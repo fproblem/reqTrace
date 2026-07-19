@@ -17,7 +17,7 @@ from app.schemas.highlight import (
     HighlightCreate, HighlightResponse,
     TestLinkCreate, TestLinkResponse,
 )
-from app.services import anchoring, page_service
+from app.services import anchoring, test_names, page_service
 
 HIGHLIGHT_LOAD_OPTIONS = [
     selectinload(Highlight.tests),
@@ -105,14 +105,22 @@ async def list_highlights(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await require_page_access(db, page_id, current_user)
+    _, project, _ = await require_page_access(db, page_id, current_user)
     result = await db.execute(
         select(Highlight)
         .where(Highlight.page_id == page_id)
         .options(*HIGHLIGHT_LOAD_OPTIONS)
         .order_by(Highlight.created_at)
     )
-    return result.scalars().all()
+    highlights = result.scalars().all()
+    # Названия тестов из Jira (v1.7.0): дописываем атрибутом на ORM-объекты
+    # связей — pydantic (from_attributes) подхватит; нет имени — None, UI
+    # покажет только ключ, как раньше.
+    summaries = await test_names.load_summaries(db, project.id)
+    for h in highlights:
+        for link in h.tests:
+            link.summary = summaries.get((link.test_key or "").upper())
+    return highlights
 
 
 @router.delete("/api/highlights/{highlight_id}", status_code=204)
@@ -208,7 +216,7 @@ async def add_test_link(
     highlight = await db.get(Highlight, highlight_id)
     if not highlight:
         raise HTTPException(status_code=404, detail="Highlight not found")
-    await require_page_access(db, highlight.page_id, current_user)
+    _, project, cred = await require_page_access(db, highlight.page_id, current_user)
 
     link = HighlightTest(
         highlight_id=highlight_id,
@@ -219,6 +227,15 @@ async def add_test_link(
     await db.flush()
     await db.refresh(link)
 
+    # Название из Jira — сразу при привязке (v1.7.0): видно, «какой тест
+    # креплю», а 404 честно валидирует опечатку до того, как мёртвый ключ
+    # доживёт до ночного прогона. Строго best effort: без токена/сети
+    # привязка создаётся ровно как раньше.
+    summary, found = await test_names.fetch_name_on_link(
+        db, project, cred, link.test_key,
+    )
+    link.summary = summary
+    link.jira_found = found
     return link
 
 

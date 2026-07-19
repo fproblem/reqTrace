@@ -84,6 +84,41 @@ function refreezeTables(container: HTMLDivElement) {
   updateAllScrollClipClasses(container);
 }
 
+// --- Битые картинки (v1.6.6) ---
+// Бэкенд резервирует место под картинки известными размерами (иначе контент
+// «едет» при первом открытии), но если картинка НЕ загрузилась (удалена, нет
+// прав, сеть) — зарезервированное место не должно остаться пустой дырой.
+// Подменяем src на инлайн-SVG-заглушку и ужимаем размеры. Сам элемент <img>
+// остаётся в DOM: замена его на div с текстом добавила бы текстовые узлы и
+// сдвинула текстовые смещения якорей привязок.
+const BROKEN_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="72" viewBox="0 0 260 72">
+  <rect x="0.5" y="0.5" width="259" height="71" rx="8" fill="rgba(0,0,0,0.03)" stroke="rgba(0,0,0,0.12)"/>
+  <g transform="translate(20 20)" fill="none" stroke="${colors.textTertiary}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="32" height="32" rx="4"/>
+    <circle cx="10.5" cy="10.5" r="2.6"/>
+    <path d="M32 23l-8.5-8.5L5 33"/>
+  </g>
+  <text x="68" y="41" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="${colors.textSecondary}">Изображение недоступно</text>
+</svg>`;
+const BROKEN_IMAGE_SRC = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(BROKEN_IMAGE_SVG)}`;
+
+export function replaceBrokenImage(img: HTMLImageElement): void {
+  if (img.dataset.broken === '1') return;
+  img.dataset.broken = '1';
+  const name = img.getAttribute('alt') || '';
+  img.title = name
+    ? `Не удалось загрузить «${name}»`
+    : 'Не удалось загрузить изображение';
+  // Сброс зарезервированных размеров: заглушка компактная, а «дыра» в
+  // полный рост несуществующей картинки — ровно то, чего избегаем.
+  img.removeAttribute('width');
+  img.removeAttribute('height');
+  img.style.width = '260px';
+  img.style.height = '72px';
+  img.style.aspectRatio = 'auto';
+  img.src = BROKEN_IMAGE_SRC;
+}
+
 export const ContentRenderer: React.FC<ContentRendererProps> = ({
   html, onContentReady, suspendTableRefreeze,
 }) => {
@@ -98,9 +133,30 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({
       // До onContentReady: потребители (HighlightLayer, обработчики выделения)
       // должны видеть уже стабилизированный DOM.
       stabilizeTables(containerRef.current);
+      // Картинки, успевшие упасть до подписки на error (мгновенный отказ из
+      // кэша) — добираем разово по факту: complete без natural-размеров.
+      containerRef.current.querySelectorAll('img').forEach(img => {
+        if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+          replaceBrokenImage(img);
+        }
+      });
       onContentReady?.(containerRef.current);
     }
   }, [html, onContentReady]);
+
+  // Ошибки загрузки картинок: error не всплывает, но ловится на capture-фазе
+  // контейнера — по слушателю на каждый <img> из dangerouslySetInnerHTML не
+  // навесить.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onError = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.tagName === 'IMG') replaceBrokenImage(target as HTMLImageElement);
+    };
+    container.addEventListener('error', onError, true);
+    return () => container.removeEventListener('error', onError, true);
+  }, []);
 
   // Пере-заморозка при изменении ширины контейнера. Дебаунс пережидает шквал
   // событий от анимации панели (RO стреляет каждый кадр) и плавных ресайзов;

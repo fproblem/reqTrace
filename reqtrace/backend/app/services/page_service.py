@@ -22,6 +22,7 @@ from app.models.snapshot import PageSnapshot
 from app.project_access import connection_for, render_page_html, run_confluence
 from app.services import anchoring, confluence
 from app.services.diff_engine import has_text_changed
+from app.services.image_dimensions import measure_page_images
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,15 @@ async def refresh_from_confluence(
     new_parent = page_data.ancestors[-1].page_id if page_data.ancestors else None
     if page.parent_confluence_page_id != new_parent:
         page.parent_confluence_page_id = new_parent
+
+    # Замер размеров картинок (v1.6.6) — ДО раннего выхода «контент не
+    # изменился»: у давно стабильных страниц размеры добираются без нового
+    # снимка (обычно это один SELECT — недостающих нет). Строго best effort:
+    # неудача замера не должна трогать refresh.
+    try:
+        await measure_page_images(db, page, page_data.content_html, conn)
+    except Exception:
+        logger.warning("замер картинок страницы %s не удался", page.id, exc_info=True)
 
     prev_snapshot = await latest_snapshot(db, page.id)
     if prev_snapshot and not has_text_changed(prev_snapshot.content_html, page_data.content_html):

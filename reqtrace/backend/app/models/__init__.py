@@ -6,5 +6,6 @@ from app.models.highlight import Highlight
 from app.models.highlight_test import HighlightTest
 from app.models.project import Project, ProjectCredential
 from app.models.refresh_run import RefreshRun
+from app.models.attachment_dimension import AttachmentDimension
 
-__all__ = ["User", "Page", "PageSnapshot", "Baseline", "Highlight", "HighlightTest", "Project", "ProjectCredential", "RefreshRun"]
+__all__ = ["User", "Page", "PageSnapshot", "Baseline", "Highlight", "HighlightTest", "Project", "ProjectCredential", "RefreshRun", "AttachmentDimension"]

@@ -25,14 +25,21 @@ from app.services.confluence import (
 )
 
 
-def render_page_html(raw_html: str | None, page_id, project: Project) -> str | None:
+def render_page_html(
+    raw_html: str | None, page_id, project: Project,
+    image_dims: dict[str, tuple[int, int]] | None = None,
+) -> str | None:
     """Обработанный HTML снимка — ровно то представление, что отдаётся фронту.
 
     Снимки хранят сырой storage-XML Confluence, где видимый текст ссылок и кода
     сидит в CDATA/атрибутах и невидим HTML-парсеру. Блочные якоря привязок фронт
     считает по обработанному DOM, поэтому ЛЮБАЯ серверная работа с якорями
     (проекция при refresh, извлечение текста при реанкоре) обязана идти по этому
-    же представлению — иначе координаты расходятся и цитаты портятся."""
+    же представлению — иначе координаты расходятся и цитаты портятся.
+
+    image_dims (v1.6.6) — замеренные размеры вложений для резерва места под
+    картинки; передаются только контент-эндпоинтами. Атрибуты <img> не меняют
+    ни текст, ни структуру блоков — якорям безразличны."""
     if not raw_html:
         return raw_html
     return process_confluence_html(
@@ -41,6 +48,7 @@ def render_page_html(raw_html: str | None, page_id, project: Project) -> str | N
         jira_base_url=project.jira_base_url or "",
         # У демо-проекта нет Confluence — прокси-ссылки ему не нужны.
         project_id="" if project.is_demo else str(project.id),
+        image_dims=image_dims,
     )
 
 

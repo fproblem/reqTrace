@@ -8,6 +8,7 @@ import type { HighlightRenderReport } from '../components/PageView/HighlightLaye
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
+import { useFadeToggle } from '../components/fadePresence';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -69,6 +70,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const [showBaselineWarning, setShowBaselineWarning] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  // Мягкое появление/гашение меню «Ещё действия» (v1.6.6).
+  const { mounted: actionsMenuMounted, fadeStyle: actionsMenuFade } = useFadeToggle(showActionsMenu);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
 
   const loadPage = useCallback(async () => {
@@ -898,7 +901,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               </svg>
             </button>
 
-            {showActionsMenu && (
+            {actionsMenuMounted && (
               <div
                 role="menu"
                 style={{
@@ -915,6 +918,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '2px',
+                  ...actionsMenuFade,
                 }}
               >
                 <button

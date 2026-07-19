@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
 import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, ShieldIcon, SyncIcon } from './icons';
+import { useFadeToggle } from './fadePresence';
 import { XIcon } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
 import { formatCheckedAt } from '../pages/TestsPage';
@@ -48,6 +49,8 @@ export const NotificationBell: React.FC = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<NotificationsResponse | null>(null);
   const [open, setOpen] = useState(false);
+  // Мягкое появление/гашение панели дайджеста (v1.6.6).
+  const { mounted: panelMounted, fadeStyle: panelFade } = useFadeToggle(open);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -293,7 +296,7 @@ export const NotificationBell: React.FC = () => {
         )}
       </button>
 
-      {open && (
+      {panelMounted && (
         <div
           role="menu"
           style={{
@@ -304,6 +307,7 @@ export const NotificationBell: React.FC = () => {
             boxShadow: shadows.cardHover,
             padding: '10px', boxSizing: 'border-box',
             zIndex: 30,
+            ...panelFade,
           }}
         >
           <div style={{

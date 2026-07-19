@@ -302,7 +302,10 @@ export const ProjectTestsPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {rows.map(({ entry, counts, pagesCount, allLost, nonstandard }) => {
             const isOpen = expanded.has(entry.key);
-            const keyIsLink = !!data.jira_base_url && !nonstandard;
+            // Jira не знает такой задачи — ключ гаснет и теряет ссылку
+            // (/browse дал бы 404); информер объяснит (v1.7.0).
+            const notInJira = entry.jira_status === 'not_found';
+            const keyIsLink = !!data.jira_base_url && !nonstandard && !notInJira;
             return (
               <div
                 key={entry.key}
@@ -358,8 +361,23 @@ export const ProjectTestsPage: React.FC = () => {
                       {highlightMatch(entry.key, q)}
                     </a>
                   ) : (
-                    <span style={{ color: colors.textPrimary, fontWeight: 600, fontSize: '14px', flexShrink: 0 }}>
+                    <span
+                      title={notInJira ? 'Не ведёт в Jira: задачи с таким ключом там нет' : undefined}
+                      style={{
+                        color: notInJira ? colors.textSecondary : colors.textPrimary,
+                        fontWeight: 600, fontSize: '14px', flexShrink: 0,
+                        cursor: notInJira ? 'help' : undefined,
+                      }}
+                    >
                       {highlightMatch(entry.key, q)}
+                    </span>
+                  )}
+                  {notInJira && !nonstandard && (
+                    <span
+                      title="Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой"
+                      style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help', flexShrink: 0 }}
+                    >
+                      <StatusAlertIcon kind="warning" size={14} />
                     </span>
                   )}
                   {/* Название из Jira (v1.7.0) — главное, ради чего интеграция:

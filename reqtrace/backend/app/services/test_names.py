@@ -102,12 +102,15 @@ async def fetch_name_on_link(
     return summary, result == "ok"
 
 
-async def load_summaries(db: AsyncSession, project_id) -> dict[str, str]:
-    """Известные названия тестов проекта: ключ → summary."""
+async def load_details(db: AsyncSession, project_id) -> dict[str, TestDetail]:
+    """Известное о тестах проекта: ключ → строка test_details.
+
+    Читателям нужны и summary, и fetch_result: not_found красит чип ключа
+    серым и снимает ссылку (задачи в Jira нет — /browse дал бы 404)."""
     rows = (await db.execute(
         select(TestDetail).where(TestDetail.project_id == project_id)
     )).scalars().all()
-    return {row.test_key: row.summary for row in rows if row.summary}
+    return {row.test_key: row for row in rows}
 
 
 async def sync_project_test_names(session_factory, project: Project) -> int:

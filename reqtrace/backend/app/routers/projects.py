@@ -289,12 +289,13 @@ async def project_test_index(
         ))
 
     # Названия тестов из Jira (v1.7.0) — свойство ключа, не привязки.
-    summaries = await test_names.load_summaries(db, project.id)
+    details = await test_names.load_details(db, project.id)
     tests = [
         TestIndexEntry(
             key=key,
             links=sorted(links, key=lambda l: (l.page_title, l.excerpt)),
-            summary=summaries.get(key),
+            summary=details[key].summary if key in details else None,
+            jira_status=details[key].fetch_result if key in details else None,
         )
         for key, links in sorted(entries.items())
     ]

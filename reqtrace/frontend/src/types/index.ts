@@ -84,6 +84,9 @@ export interface TestLink {
   created_at: string;
   /** Название теста из Jira (v1.7.0); нет — показывается только ключ. */
   summary?: string | null;
+  /** Итог похода в Jira: not_found — задачи нет (чип серый, без ссылки);
+   *  null/undefined — в Jira не ходили. */
+  jira_status?: 'ok' | 'not_found' | 'error' | null;
   /** Ответ создания привязки: false — Jira не нашла задачу (вероятна
    *  опечатка), null/undefined — проверка не выполнялась (нет токена). */
   jira_found?: boolean | null;
@@ -257,6 +260,8 @@ export interface TestIndexEntry {
   links: TestLinkRef[];
   /** Название теста из Jira (v1.7.0); нет — показывается только ключ. */
   summary?: string | null;
+  /** not_found — задачи нет в Jira: ключ серый, без ссылки. */
+  jira_status?: 'ok' | 'not_found' | 'error' | null;
 }
 
 export interface ProjectTestIndex {

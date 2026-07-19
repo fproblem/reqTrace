@@ -116,10 +116,12 @@ async def list_highlights(
     # Названия тестов из Jira (v1.7.0): дописываем атрибутом на ORM-объекты
     # связей — pydantic (from_attributes) подхватит; нет имени — None, UI
     # покажет только ключ, как раньше.
-    summaries = await test_names.load_summaries(db, project.id)
+    details = await test_names.load_details(db, project.id)
     for h in highlights:
         for link in h.tests:
-            link.summary = summaries.get((link.test_key or "").upper())
+            row = details.get((link.test_key or "").upper())
+            link.summary = row.summary if row else None
+            link.jira_status = row.fetch_result if row else None
     return highlights
 
 
@@ -236,6 +238,7 @@ async def add_test_link(
     )
     link.summary = summary
     link.jira_found = found
+    link.jira_status = None if found is None else ("ok" if found else "not_found")
     return link
 
 

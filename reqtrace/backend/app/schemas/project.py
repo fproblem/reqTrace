@@ -92,6 +92,9 @@ class TestIndexEntry(BaseModel):
     links: list[TestLinkRef]
     # Название теста из Jira (v1.7.0); None — имени нет, UI показывает ключ.
     summary: Optional[str] = None
+    # ok | not_found | error; None — в Jira не ходили. not_found — задачи нет:
+    # чип серый, ссылка снята.
+    jira_status: Optional[str] = None
 
 
 class ProjectTestIndex(BaseModel):

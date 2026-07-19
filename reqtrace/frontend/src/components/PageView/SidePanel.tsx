@@ -972,19 +972,23 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 // Ключ непохож на TEST-123 — вероятная опечатка и битая
                 // ссылка в Jira: чип не кликабелен, рядом значок-пояснение.
                 const nonstandard = !isLikelyJiraKey(test.test_key);
-                const chipClickable = !!jiraBaseUrl && !nonstandard;
+                // Jira не знает такой задачи (тест удалён или ключ-фантом):
+                // чип гаснет в серый и теряет ссылку — /browse дал бы 404.
+                const notInJira = test.jira_status === 'not_found';
+                const chipClickable = !!jiraBaseUrl && !nonstandard && !notInJira;
                 // Чип ключа тонирован статусом ПРИВЯЗКИ (референс v1.7.0,
                 // вариант D): ключ визуально отделён от названия и говорит
                 // о состоянии покрытия. Ступени заливки 15/26/33 — как у
-                // карточки привязки выше.
+                // карточки привязки выше. Проблемные ключи — нейтральный
+                // серый: не путать с красным «Утрачено».
                 const tint = statusInfo.color;
                 const chipStyle: React.CSSProperties = {
                   display: 'inline-block',
                   padding: '3px 10px',
                   borderRadius: radii.pill,
-                  background: `${tint}15`,
-                  border: `1px solid ${tint}33`,
-                  color: tint,
+                  background: nonstandard || notInJira ? 'rgba(0,0,0,0.04)' : `${tint}15`,
+                  border: `1px solid ${nonstandard || notInJira ? colors.border : `${tint}33`}`,
+                  color: nonstandard || notInJira ? colors.textSecondary : tint,
                   fontSize: '12.5px',
                   fontWeight: 600,
                   lineHeight: 1.4,
@@ -1035,15 +1039,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                       <span
                         title={nonstandard
                           ? 'Ключ не похож на формат Jira (TEST-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
-                          : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
+                          : notInJira
+                            ? 'Не ведёт в Jira: задачи с таким ключом там нет'
+                            : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
                         style={{ ...chipStyle, cursor: 'help' }}
                       >
                         {test.test_key}
                       </span>
                     )}
-                    {nonstandard && (
+                    {/* Информер называет беду точно: «не похож на формат» и
+                        «задачи нет в Jira» чинятся по-разному. */}
+                    {(nonstandard || notInJira) && (
                       <span
-                        title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
+                        title={nonstandard
+                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
                         style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
                       >
                         <StatusAlertIcon kind="warning" size={14} />

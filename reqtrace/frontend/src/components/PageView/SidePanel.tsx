@@ -94,6 +94,9 @@ const STATUS_ICON_KIND: Record<string, 'ok' | 'warning' | 'error'> = {
 // Один оборот лоадера RefreshIcon (0.8s в его keyframes): «Актуализировать»
 // не складывается раньше полного оборота — быстрый ответ дёргал глаз.
 const SPIN_TURN_MS = 800;
+// Пауза на зелёной галочке успеха после оборота — глаз успевает считать
+// итог прежде, чем строка сложится.
+const DONE_HOLD_MS = 600;
 
 // Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
@@ -115,6 +118,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const [adding, setAdding] = useState(false);
   const testInputRef = useRef<HTMLInputElement>(null);
   const [reanchoring, setReanchoring] = useState(false);
+  // Фаза «галочка успеха» после полного оборота лоадера (см. onClick кнопки).
+  const [reanchorDone, setReanchorDone] = useState(false);
   // Компактное подтверждение удаления — поповер над кнопкой в футере.
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Мягкое появление/гашение поповера подтверждения удаления (v1.6.6) —
@@ -133,6 +138,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // рисовать последнее выделение (rendered) — активного уже нет — и убираем
   // контент по таймеру чуть длиннее транзишена (220мс).
   const [rendered, setRendered] = useState<Highlight | null>(null);
+  // Свежий статус для замыкания onClick «Актуализировать»: галочка успеха
+  // показывается только если реанкор реально перевёл привязку в active.
+  const renderedStatusRef = useRef<string | undefined>(undefined);
+  renderedStatusRef.current = rendered?.status;
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (activeHighlight) {
@@ -780,7 +789,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* TreeReveal (один ребёнок): после «Актуализировать» строка кнопки
             складывается те же 160мс, что всё в ReqTrace, — карточка привязки
             сжимается плавно, без скачка контента панели (ревью v1.7.0). */}
-        <TreeReveal expanded={(highlight.status === 'outdated' && !!onReanchor) || reanchoring}>
+        <TreeReveal expanded={(highlight.status === 'outdated' && !!onReanchor) || reanchoring || reanchorDone}>
           <div>
           {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
               ховер-манипуляции фоном на время проигрывания, а reduced-motion
@@ -791,8 +800,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               50% { background-color: ${colors.statusOutdated}33; }
             }
             .reanchor-pulse { animation: reanchor-pulse 0.6s ease-in-out 2; }
+            @keyframes reanchor-done-pop {
+              from { opacity: 0; transform: scale(0.7); }
+              to { opacity: 1; transform: scale(1); }
+            }
+            .reanchor-done-pop { animation: reanchor-done-pop 160ms ease; }
             @media (prefers-reduced-motion: reduce) {
-              .reanchor-pulse { animation: none; }
+              .reanchor-pulse, .reanchor-done-pop { animation: none; }
             }
           `}</style>
           <button
@@ -815,6 +829,14 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 await onReanchor(highlight.id);
               } finally {
                 await fullTurn;
+                // Галочка успеха — только если статус реально стал active
+                // (реанкор мог не удаться: parent показал тост, строка
+                // останется — зелёная галочка была бы враньём).
+                if (renderedStatusRef.current === 'active') {
+                  setReanchorDone(true);
+                  await new Promise(r => setTimeout(r, DONE_HOLD_MS));
+                  setReanchorDone(false);
+                }
                 setReanchoring(false);
               }
             }}
@@ -860,15 +882,29 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             {/* Подпись не меняется (нечитаемая «Актуализация…» в момент
                 схлопывания смотрелась странно — ревью): на время ожидания
                 она гаснет, поверх крутятся стрелки — как у «Добавить». */}
-            <span style={{ opacity: reanchoring ? 0 : 1, transition: 'opacity 0.15s' }}>
+            <span style={{ opacity: reanchoring || reanchorDone ? 0 : 1, transition: 'opacity 0.15s' }}>
               Актуализировать
             </span>
-            {reanchoring && (
+            {reanchoring && !reanchorDone && (
+              // Цвет лоадера следует за статусом: когда привязка уже стала
+              // «Актуально», докрутка идёт зелёным на зелёном блоке — а не
+              // янтарным (ревью).
               <span style={{
-                position: 'absolute', inset: 0,
+                position: 'absolute', inset: 0, color: statusInfo.color,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <RefreshIcon size={15} spinning />
+              </span>
+            )}
+            {reanchorDone && (
+              <span
+                className="reanchor-done-pop"
+                style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <StatusAlertIcon kind="ok" size={16} />
               </span>
             )}
           </button>

@@ -86,19 +86,22 @@ function refreezeTables(container: HTMLDivElement) {
 
 // --- Битые картинки (v1.6.6) ---
 // Бэкенд резервирует место под картинки известными размерами (иначе контент
-// «едет» при первом открытии), но если картинка НЕ загрузилась (удалена, нет
-// прав, сеть) — зарезервированное место не должно остаться пустой дырой.
-// Подменяем src на инлайн-SVG-заглушку и ужимаем размеры. Сам элемент <img>
-// остаётся в DOM: замена его на div с текстом добавила бы текстовые узлы и
-// сдвинула текстовые смещения якорей привязок.
-const BROKEN_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="72" viewBox="0 0 260 72">
-  <rect x="0.5" y="0.5" width="259" height="71" rx="8" fill="rgba(0,0,0,0.03)" stroke="rgba(0,0,0,0.12)"/>
-  <g transform="translate(20 20)" fill="none" stroke="${colors.textTertiary}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+// «едет» при первом открытии), и если картинка НЕ загрузилась (удалена, нет
+// прав, сеть) — зарезервированное место не остаётся пустой дырой: <img>
+// получает рамку с фоном, а src подменяется инлайн-SVG «Изображение
+// недоступно». Размеры НЕ трогаем — заглушка занимает ровно место картинки,
+// так что даже сама ошибка не сдвигает контент; иконка с текстом при этом
+// не растягиваются (object-fit: scale-down центрует их натуральный размер,
+// в маленьком боксе — ужимает). Сам элемент <img> остаётся в DOM: замена
+// его на div с текстом добавила бы текстовые узлы и сдвинула текстовые
+// смещения якорей привязок.
+const BROKEN_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="64" viewBox="0 0 240 64">
+  <g transform="translate(12 16)" fill="none" stroke="${colors.textTertiary}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="0" y="0" width="32" height="32" rx="4"/>
     <circle cx="10.5" cy="10.5" r="2.6"/>
     <path d="M32 23l-8.5-8.5L5 33"/>
   </g>
-  <text x="68" y="41" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="${colors.textSecondary}">Изображение недоступно</text>
+  <text x="58" y="37" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" fill="${colors.textSecondary}">Изображение недоступно</text>
 </svg>`;
 const BROKEN_IMAGE_SRC = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(BROKEN_IMAGE_SVG)}`;
 
@@ -109,13 +112,18 @@ export function replaceBrokenImage(img: HTMLImageElement): void {
   img.title = name
     ? `Не удалось загрузить «${name}»`
     : 'Не удалось загрузить изображение';
-  // Сброс зарезервированных размеров: заглушка компактная, а «дыра» в
-  // полный рост несуществующей картинки — ровно то, чего избегаем.
-  img.removeAttribute('width');
-  img.removeAttribute('height');
-  img.style.width = '260px';
-  img.style.height = '72px';
-  img.style.aspectRatio = 'auto';
+  // Место известно (атрибуты от бэкенда) — заглушка занимает его целиком.
+  // Размеров нет (старый снимок, ещё не замеренный прогоном) — компактный
+  // фолбэк, чтобы не рисовать рамку нулевой высоты.
+  const hasReservedBox = !!(img.getAttribute('width')
+    && (img.getAttribute('height') || img.style.aspectRatio));
+  if (!hasReservedBox) {
+    img.style.width = '260px';
+    img.style.height = '72px';
+  }
+  img.style.background = 'rgba(0,0,0,0.03)';
+  img.style.border = '1px solid rgba(0,0,0,0.12)';
+  img.style.objectFit = 'scale-down';
   img.src = BROKEN_IMAGE_SRC;
 }
 

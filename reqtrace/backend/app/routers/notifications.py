@@ -8,9 +8,12 @@
 что протухшим паролем статус уже invalid, и по правилу «ok» он не увидел бы
 главное для себя уведомление.
 
-Тихие прогоны (без переходов, потерь и ошибок) в панель не попадают — «нет
-бейджа» само по себе означает «требования не менялись». Их след остаётся
-в журнале и в строке свежести на карточках «Тестов».
+Тихие прогоны (без переходов, потерь и ошибок) — не события, а подтверждение,
+что слежение живо (v1.6.5): хвостовая серия тихих успешных прогонов проекта
+схлопывается в одну строку «изменений нет, страницы проверены тогда-то» —
+в понедельник видно, что ReqTrace следил все выходные и уверен в тишине.
+Строка никогда не зажигает бейдж и не считается непрочитанной: это
+уверенность по запросу, а не новость.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -51,6 +54,15 @@ def _skip_reason(run: RefreshRun) -> str | None:
 
 def _is_shown_skip(run: RefreshRun) -> bool:
     return run.status == "skipped" and _skip_reason(run) in SHOWN_SKIP_REASONS
+
+
+def _is_quiet_success(run: RefreshRun) -> bool:
+    """Тихий успешный прогон: завершился чисто и не дал ни одного сигнала,
+    достойного дайджеста (те же условия, что в _event_entries)."""
+    return (
+        run.status == "ok"
+        and not (run.to_outdated or run.to_lost or run.pages_failed)
+    )
 
 
 def failure_unseen_marker(finished_desc: list[datetime], today_local, tz) -> datetime:
@@ -146,6 +158,40 @@ def _failure_state_entry(
     )
 
 
+def _quiet_state_entry(
+    runs_desc: list[RefreshRun], project_name: str
+) -> NotificationEntry | None:
+    """СОСТОЯНИЕ «изменений нет, но слежение живо» — одна строка на проект.
+
+    Хвостовая серия тихих успешных прогонов (свежие первыми) схлопывается в
+    одну запись: happened_at — последний прогон («проверено сегодня в 03:02»),
+    first_attempt_at/attempts — размах тишины («с пятницы, прогонов: 3»).
+    Любой другой исход — дайджест с находками или «не выполнено» — разрывает
+    серию: о нём расскажет собственная запись. Идея пользователя (v1.6.5):
+    после тихих выходных в понедельник важно видеть не пустую панель, а
+    уверенность ReqTrace в том, что изменений действительно не было.
+    """
+    streak: list[RefreshRun] = []
+    for run in runs_desc:
+        if _is_quiet_success(run):
+            streak.append(run)
+        else:
+            break
+    if not streak:
+        return None
+    last, first = streak[0], streak[-1]
+    return NotificationEntry(
+        id=f"{last.id}:quiet", kind="run_quiet",
+        project_id=last.project_id,
+        project_name=project_name,
+        happened_at=last.finished_at,
+        first_attempt_at=first.finished_at,
+        attempts=len(streak),
+        pages_total=last.pages_total,
+        pages_changed=last.pages_changed,
+    )
+
+
 @router.get("", response_model=NotificationsResponse)
 async def list_notifications(
     db: AsyncSession = Depends(get_db),
@@ -205,12 +251,22 @@ async def list_notifications(
                     [r.finished_at for r in project_runs[:state.attempts]],
                     today_local, tz,
                 )
+            else:
+                # Хвост без неудач: возможно, там тишина — подтвердим её.
+                quiet = _quiet_state_entry(project_runs, names[project_id])
+                if quiet is not None:
+                    entries.append(quiet)
 
     entries.sort(key=lambda e: e.happened_at, reverse=True)
     entries = entries[:MAX_ENTRIES]
 
     seen_at = current_user.notifications_seen_at
     for entry in entries:
+        if entry.kind == "run_quiet":
+            # Подтверждение тишины — уверенность по запросу, не новость:
+            # бейдж не зажигает и непрочитанным не бывает.
+            entry.unseen = False
+            continue
         marker = unseen_markers.get(entry.id, entry.happened_at)
         entry.unseen = seen_at is None or marker > seen_at
 

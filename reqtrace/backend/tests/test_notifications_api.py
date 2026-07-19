@@ -170,12 +170,17 @@ class DigestEntriesTest(NotificationsBase):
         self.assertTrue(entry["unseen"])
         self.assertEqual(data["unseen_count"], 1)
 
-    def test_quiet_run_is_not_news(self):
+    def test_quiet_run_is_confirmation_not_news(self):
+        """Тихий прогон (v1.6.5) — строка-состояние «изменений нет», но не
+        новость: бейдж не зажигается, непрочитанным не считается."""
         project = make_project()
         cred = make_cred(project, self.user)
         run = make_run(project, pages_total=14, pages_changed=0)
         data = self.get_entries([cred], [(run, project.name)])
-        self.assertEqual(data["entries"], [])
+        [entry] = data["entries"]
+        self.assertEqual(entry["kind"], "run_quiet")
+        self.assertFalse(entry["unseen"])
+        self.assertEqual(data["unseen_count"], 0)
         self.assertEqual(data["unseen_count"], 0)
 
     def test_interrupted_run_carries_reason_on_digest(self):
@@ -257,7 +262,8 @@ class FailureStateTest(NotificationsBase):
         project = make_project()
         cred = make_cred(project, self.user)
         runs = [
-            # Свежий тихий успех: состояние разрешилось, новостей нет.
+            # Свежий тихий успех: состояние разрешилось — вместо «не выполнено»
+            # спокойное подтверждение тишины (v1.6.5).
             (make_run(project, finished_at=NOW, pages_total=5), project.name),
             (make_run(project, status="skipped", finished_at=NOW - timedelta(hours=1),
                       details={"skipped_reason": "confluence_unreachable"}), project.name),
@@ -265,7 +271,10 @@ class FailureStateTest(NotificationsBase):
                       details={"skipped_reason": "confluence_unreachable"}), project.name),
         ]
         data = self.get_entries([cred], runs)
-        self.assertEqual(data["entries"], [])
+        [entry] = data["entries"]
+        self.assertEqual(entry["kind"], "run_quiet")
+        # Тишина началась этим прогоном: неудачи в серию не входят.
+        self.assertEqual(entry["attempts"], 1)
         self.assertEqual(data["unseen_count"], 0)
 
     def test_failures_behind_latest_digest_are_history(self):
@@ -294,6 +303,63 @@ class FailureStateTest(NotificationsBase):
         data = self.get_entries([cred], runs)
         [entry] = data["entries"]
         self.assertEqual(entry["attempts"], 1)
+
+
+class QuietStateTest(NotificationsBase):
+    """«Изменений нет» — состояние-подтверждение (v1.6.5): неделя тишины —
+    одна строка, а не семь; уверенность, что слежение живо, без шума."""
+
+    def test_quiet_days_collapse_into_single_entry(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        runs = [
+            (make_run(project, finished_at=NOW, pages_total=5), project.name),
+            (make_run(project, finished_at=NOW - timedelta(days=1), pages_total=5), project.name),
+            (make_run(project, finished_at=NOW - timedelta(days=2), pages_total=5), project.name),
+        ]
+        data = self.get_entries([cred], runs)
+
+        [entry] = data["entries"]
+        self.assertEqual(entry["kind"], "run_quiet")
+        self.assertEqual(entry["attempts"], 3)
+        # happened_at — последний прогон, first_attempt_at — начало тишины.
+        self.assertTrue(entry["happened_at"].startswith("2026-07-16T00:12"))
+        self.assertTrue(entry["first_attempt_at"].startswith("2026-07-14T00:12"))
+
+    def test_digest_breaks_quiet_streak_and_stays_alongside(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        runs = [
+            (make_run(project, finished_at=NOW, pages_total=5), project.name),
+            # Позавчерашние находки — граница тишины; их дайджест остаётся в ленте.
+            (make_run(project, to_outdated=1, pages_total=5,
+                      finished_at=NOW - timedelta(days=1)), project.name),
+            (make_run(project, finished_at=NOW - timedelta(days=2), pages_total=5), project.name),
+        ]
+        data = self.get_entries([cred], runs)
+
+        self.assertEqual([e["kind"] for e in data["entries"]], ["run_quiet", "digest"])
+        quiet = data["entries"][0]
+        self.assertEqual(quiet["attempts"], 1)
+
+    def test_trailing_failure_supersedes_quiet_state(self):
+        project = make_project()
+        cred = make_cred(project, self.user)
+        runs = [
+            (make_run(project, status="skipped", finished_at=NOW,
+                      details={"skipped_reason": "confluence_unreachable"}), project.name),
+            (make_run(project, finished_at=NOW - timedelta(days=1), pages_total=5), project.name),
+        ]
+        data = self.get_entries([cred], runs)
+        # Последняя попытка неудачна — панель говорит о проблеме, не о тишине.
+        self.assertEqual([e["kind"] for e in data["entries"]], ["run_skipped"])
+
+    def test_quiet_state_needs_ok_membership(self):
+        project = make_project()
+        cred = make_cred(project, self.user, status="invalid")
+        run = make_run(project, finished_at=NOW, pages_total=5)
+        data = self.get_entries([cred], [(run, project.name)])
+        self.assertEqual(data["entries"], [])
 
 
 class FailureUnseenMarkerTest(unittest.TestCase):

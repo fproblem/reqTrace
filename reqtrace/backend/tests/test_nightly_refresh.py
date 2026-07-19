@@ -35,6 +35,7 @@ from app.config import settings
 from app.crypto import encrypt_secret
 from app.jobs.nightly import (
     pick_retry_projects,
+    prune_journal,
     run_project,
     run_sweep,
     status_transitions,
@@ -554,6 +555,50 @@ class RunSweepTest(unittest.TestCase):
             count = asyncio.run(run_sweep(trigger="auto", session_factory=factory))
         self.assertEqual(count, 2)
         self.assertEqual(rp.await_count, 2)
+
+    def test_sweep_prunes_journal_and_survives_prune_failure(self):
+        session = FakeSession(execute_results=[[]])
+        factory = FakeSessionFactory(session)
+        with patch(
+            "app.jobs.nightly.prune_journal",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ) as prune:
+            count = asyncio.run(run_sweep(trigger="auto", session_factory=factory))
+        # Чистка вызвана раз за обход; её падение обход не валит.
+        self.assertEqual(prune.await_count, 1)
+        self.assertEqual(count, 0)
+
+
+class PruneJournalTest(unittest.TestCase):
+    """Ретеншн журнала (v1.6.5): строки старше окна уходят раз в ночной обход."""
+
+    NOW = datetime(2026, 7, 19, 0, 12, tzinfo=timezone.utc)
+
+    def test_deletes_finished_and_dead_rows_older_than_retention(self):
+        statements = []
+
+        class RecordingSession(FakeSession):
+            async def execute(self, stmt):
+                statements.append(stmt)
+                return await super().execute(stmt)
+
+        deleted_result = FakeResult(None)
+        deleted_result.rowcount = 3
+        session = RecordingSession(execute_results=[deleted_result])
+
+        deleted = asyncio.run(
+            prune_journal(FakeSessionFactory(session), now_utc=self.NOW)
+        )
+
+        self.assertEqual(deleted, 3)
+        self.assertEqual(session.commits, 1)
+        [stmt] = statements
+        # Оба условия — завершённые и мёртвые незавершённые — режутся по
+        # одному порогу: NOW − 90 дней.
+        params = stmt.compile().params
+        cutoff = self.NOW - timedelta(days=90)
+        self.assertEqual(len(params), 2)
+        self.assertTrue(all(v == cutoff for v in params.values()), params)
 
 
 if __name__ == "__main__":

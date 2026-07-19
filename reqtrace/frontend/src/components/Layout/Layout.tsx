@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
+import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { PageTree } from './PageTree';
 import { ClipboardCheckIcon, LogoutIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
@@ -64,6 +65,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [changelogOpen, setChangelogOpen] = useState(false);
+  // Подтверждение выхода: кнопка выхода соседствует с колокольчиком, и
+  // случайный клик мгновенно выбрасывал на экран входа (ревью v1.6.5).
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const currentVersion = useCurrentVersion();
 
   const [sidebar, setSidebar] = useState<SidebarState>(loadSidebarState);
@@ -419,7 +423,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           {user && <NotificationBell />}
           {user && (
             <button
-              onClick={() => { void logout(); }}
+              onClick={() => setLogoutConfirmOpen(true)}
               title="Выйти из ReqTrace"
               style={{
                 width: '34px', height: '34px', padding: 0,
@@ -530,6 +534,27 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+
+      {logoutConfirmOpen && (
+        <Modal title="Выйти из ReqTrace?" width="400px" onClose={() => setLogoutConfirmOpen(false)}>
+          <p style={modalTextStyle}>
+            Сессия на этом устройстве завершится, для возвращения понадобится
+            снова войти через Google. Привязки и настройки, разумеется, никуда
+            не денутся.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <ModalButton variant="secondary" onClick={() => setLogoutConfirmOpen(false)}>
+              Отмена
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              onClick={() => { setLogoutConfirmOpen(false); void logout(); }}
+            >
+              Выйти
+            </ModalButton>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

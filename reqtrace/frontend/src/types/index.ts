@@ -179,9 +179,9 @@ export interface ProjectTestsStats {
 // --- Уведомления (v1.6.3): дайджест ночных прогонов ---
 
 export interface NotificationEntry {
-  /** Стабильный ключ записи: "<run_id>:digest|cred|skip". */
+  /** Стабильный ключ записи: "<run_id>:digest|cred|skip|quiet". */
   id: string;
-  kind: 'digest' | 'cred_invalid' | 'run_skipped';
+  kind: 'digest' | 'cred_invalid' | 'run_skipped' | 'run_quiet';
   project_id: string;
   project_name: string;
   happened_at: string;
@@ -194,10 +194,11 @@ export interface NotificationEntry {
   affected_tests: string[];
   /** confluence_unreachable | no_valid_credentials (у digest — если прогон прерван). */
   skipped_reason?: string | null;
-  /** run_skipped — состояние «проект не обновляется»: длина серии неудачных
-   *  попыток (почасовое самолечение схлопывается в одну живую строку). */
+  /** run_skipped и run_quiet — состояния («не обновляется» / «изменений нет,
+   *  слежение живо», v1.6.5): длина хвостовой серии одинаковых исходов —
+   *  и неудачи, и тихие дни схлопываются в одну живую строку. */
   attempts?: number;
-  /** Начало серии неудач; happened_at — её последняя попытка. */
+  /** Начало серии; happened_at — её последняя попытка/прогон. */
   first_attempt_at?: string | null;
 }
 

@@ -2,17 +2,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
+import { OnboardingModal } from '../components/OnboardingModal';
+import { markOnboardingShown, shouldAutoShowOnboarding } from '../components/onboardingAutoShow';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
 import {
-  ICON_TINTS,
+  BookOpenIcon,
   LockIcon,
   PlusIcon,
-  SparkleIcon,
   StatusAlertIcon,
+  TrashIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { normalizeBaseUrl } from '../utils/baseUrl';
@@ -40,197 +42,6 @@ const labelStyle: React.CSSProperties = {
 };
 
 const fieldStyle: React.CSSProperties = { marginBottom: '14px' };
-
-// --- Онбординг пустого состояния: три шага до первого покрытого требования ---
-// Показывается только пока пользователь не подключён ни к одному проекту.
-// У каждого шага — мини-иллюстрация сути действия (чистый CSS/SVG, фирменные
-// зелёный и серый): окно браузера с адресом Confluence, список страниц с «+»,
-// выделенное «требование» с ключом теста.
-
-// Серая скелетон-полоска «текста».
-const artBar = (width: string, background?: string): React.CSSProperties => ({
-  height: '6px',
-  width,
-  borderRadius: '4px',
-  background: background ?? 'rgba(0, 0, 0, 0.07)',
-});
-
-// Все три иллюстрации растягиваются на высоту общего бокса (см. рендер):
-// картинки занимают одинаковое пространство в каждой карточке.
-const artRootStyle: React.CSSProperties = {
-  height: '100%',
-  boxSizing: 'border-box',
-  borderRadius: '10px',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-// Шаг 1: окно браузера с зелёной шапкой и адресной строкой Confluence.
-const ArtConnect: React.FC = () => (
-  <div style={{ ...artRootStyle, background: colors.background, overflow: 'hidden' }}>
-    <div style={{
-      height: '18px',
-      flexShrink: 0,
-      background: `linear-gradient(90deg, ${colors.greenAccent}, ${colors.greenDark})`,
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px',
-      padding: '0 8px',
-    }}>
-      {[0, 1, 2].map(i => (
-        <span key={i} style={{
-          width: '5px', height: '5px', borderRadius: '50%',
-          background: 'rgba(255, 255, 255, 0.65)',
-        }} />
-      ))}
-    </div>
-    <div style={{
-      flex: 1, padding: '9px 10px',
-      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px',
-        background: colors.white,
-        border: `1px solid ${colors.border}`,
-        borderRadius: radii.pill,
-        padding: '5px 10px',
-        color: colors.textTertiary,
-      }}>
-        <LockIcon size={11} />
-        <span style={{
-          fontSize: '10.5px',
-          color: colors.textSecondary,
-          fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          https://confluence.company.ru
-        </span>
-      </div>
-      <span style={{ ...artBar('52%'), marginLeft: '4px' }} />
-    </div>
-  </div>
-);
-
-// Шаг 2: белый «лист» дерева страниц на бледно-зелёной подложке, обрезанный
-// нижним краем (как будто список продолжается), с зелёной кнопкой «+» поверх.
-// Строка дерева: маркер (точка статуса у первой, квадратики-листы у прочих) + текст.
-const artTreeRow = (marker: React.ReactNode, width: string) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-    {marker}
-    <span style={artBar(width)} />
-  </div>
-);
-
-const artLeafSquare = (
-  <span style={{
-    width: '8px', height: '8px', borderRadius: '2.5px',
-    background: 'rgba(0, 0, 0, 0.08)', flexShrink: 0,
-  }} />
-);
-
-const ArtAddPage: React.FC = () => (
-  <div style={{
-    ...artRootStyle,
-    position: 'relative',
-    background: ICON_TINTS.green.bg,
-    border: `1px solid ${ICON_TINTS.green.border}`,
-    padding: '10px 12px 0',
-    overflow: 'hidden',
-  }}>
-    <div style={{
-      flex: 1,
-      background: colors.white,
-      border: `1px solid ${colors.border}`,
-      borderBottom: 'none',
-      borderRadius: '8px 8px 0 0',
-      padding: '10px 12px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-    }}>
-      {artTreeRow(
-        <span style={{
-          width: '7px', height: '7px', borderRadius: '50%',
-          background: colors.statusOutdated, flexShrink: 0,
-        }} />,
-        '46%',
-      )}
-      {artTreeRow(artLeafSquare, '62%')}
-      {artTreeRow(artLeafSquare, '54%')}
-      {artTreeRow(artLeafSquare, '66%')}
-      {artTreeRow(artLeafSquare, '44%')}
-    </div>
-    {/* Мини-копия настоящей кнопки «Добавить страницу» из шапки дерева
-        (HeaderIconButton 34×34, radii.md): белый квадрат с рамкой и серым
-        плюсом, уменьшенный пропорционально. */}
-    <span style={{
-      position: 'absolute', top: '14px', right: '16px',
-      width: '26px', height: '26px', borderRadius: '10px',
-      background: colors.white,
-      border: `1px solid ${colors.border}`,
-      color: colors.textSecondary,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: shadows.card,
-    }}>
-      <PlusIcon size={13} />
-    </span>
-  </div>
-);
-
-// Шаг 3: «требование» с зелёной подсветкой выделения и ключом теста.
-const ArtLinkTest: React.FC = () => (
-  <div style={{
-    ...artRootStyle,
-    background: colors.white,
-    padding: '12px',
-    justifyContent: 'center',
-    gap: '8px',
-  }}>
-    <span style={artBar('82%')} />
-    <span style={{ ...artBar('64%', colors.greenLight), height: '8px' }} />
-    <span style={artBar('72%')} />
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-      <span style={{
-        padding: '2px 8px', borderRadius: '5px',
-        background: ICON_TINTS.green.bg,
-        border: `1px solid ${ICON_TINTS.green.border}`,
-        color: ICON_TINTS.green.fg,
-        fontSize: '10.5px', fontWeight: 600,
-        fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-      }}>
-        PROJECT-123
-      </span>
-      <span style={{ color: colors.statusActive, display: 'flex' }}>
-        <StatusAlertIcon kind="ok" size={14} />
-      </span>
-    </div>
-  </div>
-);
-
-const ONBOARDING_STEPS: {
-  title: string;
-  text: string;
-  art: React.ReactNode;
-}[] = [
-  {
-    title: 'Подключите проект',
-    // Адрес Confluence упоминается только для создания: при присоединении к
-    // существующему проекту нужны лишь свои логин и пароль.
-    text: 'Присоединитесь к проекту команды своими логином и паролем — или создайте новый, указав адрес Confluence.',
-    art: <ArtConnect />,
-  },
-  {
-    title: 'Добавьте страницу',
-    text: 'Вставьте ссылку на страницу требований — кнопка «+» над деревом слева. Раздел подтянется целиком.',
-    art: <ArtAddPage />,
-  },
-  {
-    title: 'Привяжите тесты',
-    text: 'Выделите фрагмент требования, нажмите «Привязать тесты» и укажите ключ теста из Jira. Дальше ReqTrace проследит, чтобы покрытие не устаревало.',
-    art: <ArtLinkTest />,
-  },
-];
 
 // Плашка статуса подключения — один в один со статус-плашкой привязки в
 // панели выделения (SidePanel): заливка 8%, рамка 20%, жирный 13px, иконка
@@ -341,16 +152,6 @@ const LogoutIcon: React.FC = () => (
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
     <polyline points="16 17 21 12 16 7" />
     <line x1="21" y1="12" x2="9" y2="12" />
-  </svg>
-);
-
-// Та же корзина, что у «Удалить» в меню действий страницы.
-const TrashIcon: React.FC = () => (
-  <svg {...featherProps} style={{ display: 'block', flexShrink: 0 }}>
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    <line x1="10" y1="11" x2="10" y2="17" />
-    <line x1="14" y1="11" x2="14" y2="17" />
   </svg>
 );
 
@@ -659,8 +460,15 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
 
 // --- Модал «Изменить проект» (имя / Jira URL) ---
 
-const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onDone: () => void }> = ({
-  project, onClose, onDone,
+const EditProjectModal: React.FC<{
+  project: Project;
+  onClose: () => void;
+  onDone: () => void;
+  /** Открыть модалку удаления проекта (v1.6.5): удаление живёт здесь, а не
+   *  в меню карточки — в меню из пяти пунктов было два красных. */
+  onDelete: () => void;
+}> = ({
+  project, onClose, onDone, onDelete,
 }) => {
   const [name, setName] = useState(project.name);
   const [jiraUrl, setJiraUrl] = useState(project.jira_base_url || '');
@@ -704,7 +512,36 @@ const EditProjectModal: React.FC<{ project: Project; onClose: () => void; onDone
           <div style={{ color: colors.statusLost, fontSize: '13px', marginBottom: '12px' }}>{error}</div>
         )}
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {/* Корзина — как у удаления выделения в панели привязки (SidePanel):
+              34×34, красная тонировка, библиотечная TrashIcon. */}
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Удалить проект со всеми страницами и привязками — у всех участников, необратимо"
+            style={{
+              width: '34px', height: '34px', borderRadius: radii.md,
+              border: '1px solid rgba(239,68,68,0.2)',
+              background: 'rgba(239,68,68,0.05)',
+              color: colors.statusLost,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.05)';
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)';
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+          >
+            <TrashIcon size={16} />
+          </button>
+          <span style={{ flex: 1 }} />
           <ModalButton type="button" onClick={onClose}>Отмена</ModalButton>
           <ModalButton type="submit" variant="primary" disabled={busy || !name.trim()}>
             {busy ? 'Сохранение…' : 'Сохранить'}
@@ -1040,17 +877,8 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 <LogoutIcon />
                 Отключиться
               </button>
-              <button
-                role="menuitem"
-                title="Удалить проект со всеми страницами и привязками — у всех участников, необратимо"
-                style={{ ...menuItemStyle, color: colors.statusLost }}
-                onClick={() => { setMenuOpen(false); setModal('delete'); }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <TrashIcon />
-                Удалить проект
-              </button>
+              {/* «Удалить проект» переехал в модалку «Изменить проект» (v1.6.5):
+                  меню из пяти пунктов с двумя красными пугало обилием опасного. */}
             </div>
           )}
         </div>
@@ -1149,7 +977,12 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         <CredsModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
       )}
       {modal === 'edit' && (
-        <EditProjectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
+        <EditProjectModal
+          project={project}
+          onClose={() => setModal(null)}
+          onDone={onChanged}
+          onDelete={() => setModal('delete')}
+        />
       )}
       {modal === 'disconnect' && (
         <DisconnectModal project={project} onClose={() => setModal(null)} onDone={onChanged} />
@@ -1167,6 +1000,7 @@ export const SettingsPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { showToast } = useToast();
   const { refreshTree } = useTreeRefresh();
   const { user } = useAuth();
@@ -1192,6 +1026,23 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     load();
   }, []);
+
+  const openOnboarding = () => {
+    // Ручное открытие тоже гасит автопоказ: инструкцию уже видели.
+    markOnboardingShown();
+    setShowOnboarding(true);
+  };
+
+  // Новичку без единого проекта инструкция открывается сама — один раз за
+  // вход (sessionStorage, см. onboardingAutoShow.ts). Строго после загрузки
+  // списка: решение принимается по данным, а не поверх «Загрузки...».
+  useEffect(() => {
+    if (loading) return;
+    if (shouldAutoShowOnboarding(projects.filter(p => p.joined).length)) {
+      markOnboardingShown();
+      setShowOnboarding(true);
+    }
+  }, [loading, projects]);
 
   // Прогон завершился (событие от колокольчика): статус подключений мог
   // измениться (например, «Confluence был недоступен») — карточки и дерево
@@ -1294,98 +1145,71 @@ export const SettingsPage: React.FC = () => {
         <h2 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, margin: 0 }}>
           Мои проекты
         </h2>
-        <button
-          onClick={() => setShowConnect(true)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '8px',
-            padding: '9px 20px', borderRadius: radii.pill, border: 'none',
-            background: colors.greenAccent, color: '#fff',
-            fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-            fontFamily: 'inherit', flexShrink: 0,
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
-          onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
-          onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
-          onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
-        >
-          <PlusIcon size={15} strokeWidth={2.4} />
-          Подключить проект
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          {/* Инструкция доступна всегда, а не только «пустым» пользователям, —
+              шаги 2–3 и фичи вроде дайджеста нужны уже после первого проекта. */}
+          <button
+            onClick={openOnboarding}
+            title="Короткая инструкция: от подключения проекта до экрана «Тесты»"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '9px 18px', borderRadius: radii.pill,
+              border: `1px solid ${colors.border}`,
+              background: colors.white, color: colors.textSecondary,
+              fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+              e.currentTarget.style.color = colors.textPrimary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = colors.white;
+              e.currentTarget.style.borderColor = colors.border;
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
+            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+          >
+            <BookOpenIcon size={15} />
+            Как работает ReqTrace
+          </button>
+          <button
+            onClick={() => setShowConnect(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '9px 20px', borderRadius: radii.pill, border: 'none',
+              background: colors.greenAccent, color: '#fff',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'inherit', flexShrink: 0,
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+            onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
+            onMouseDown={e => { e.currentTarget.style.background = '#3F9E27'; }}
+            onMouseUp={e => { e.currentTarget.style.background = colors.greenDark; }}
+          >
+            <PlusIcon size={15} strokeWidth={2.4} />
+            Подключить проект
+          </button>
+        </div>
       </div>
 
       {joined.length === 0 ? (
-        /* Онбординг пустого состояния. Кнопок здесь сознательно нет
-           («Подключить проект» уже над разделом, демо — в пустом дереве);
-           крестика-закрытия тоже: блок и есть пустое состояние раздела,
-           прятать его некуда. */
+        /* Пустое состояние без онбординга (v1.6.5): знание живёт в модалке
+           «Как работает ReqTrace» — новичку она открывается сама (один раз
+           за вход), а кнопка в заголовке раздела всегда рядом. */
         <div style={{
           background: 'rgba(255,255,255,0.85)',
           backdropFilter: 'blur(20px)',
           border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
           boxShadow: shadows.card,
-          padding: '24px 26px',
+          padding: '22px 24px',
+          color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
         }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            marginBottom: '4px', color: colors.greenDark,
-          }}>
-            <SparkleIcon size={18} />
-            <span style={{ fontSize: '16px', fontWeight: 700, color: colors.textPrimary }}>
-              Начните за 3 простых шага
-            </span>
-          </div>
-          <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '18px' }}>
-            Три шага — и покрытие требований под контролем.
-          </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '14px',
-          }}>
-            {ONBOARDING_STEPS.map((step, i) => (
-              <div key={step.title} style={{
-                background: colors.white,
-                border: `1px solid ${colors.border}`,
-                borderRadius: radii.md,
-                padding: '18px 20px 16px',
-                display: 'flex',
-                flexDirection: 'column',
-              }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '9px',
-                }}>
-                  <span style={{
-                    width: '24px', height: '24px', borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0, background: ICON_TINTS.green.bg,
-                    color: ICON_TINTS.green.fg, fontSize: '12.5px', fontWeight: 700,
-                  }}>
-                    {i + 1}
-                  </span>
-                  <span style={{
-                    fontSize: '14.5px', fontWeight: 600, color: colors.textPrimary,
-                    lineHeight: 1.4,
-                  }}>
-                    {step.title}
-                  </span>
-                </div>
-                <div style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.55 }}>
-                  {step.text}
-                </div>
-                {/* Иллюстрация прижата к низу, а её бокс фиксированной высоты:
-                    картинки во всех трёх карточках занимают одинаковое
-                    пространство и заканчиваются в одну линию. */}
-                <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-                  <div style={{ height: '96px' }}>
-                    {step.art}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          Вы пока не подключены ни к одному проекту — начните с кнопки «Подключить проект».
         </div>
       ) : (
         <div style={{
@@ -1409,6 +1233,8 @@ export const SettingsPage: React.FC = () => {
           onDone={handleProjectsChanged}
         />
       )}
+
+      {showOnboarding && <OnboardingModal onClose={() => setShowOnboarding(false)} />}
     </div>
   );
 };

@@ -331,11 +331,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       await onAddTest(highlight.id, key);
       setTestKey('');
       // Мягкое напоминание ПОСЛЕ привязки (не запрет): непохожий на
-      // PROJECT-123 ключ — почти наверняка опечатка, поэтому ссылкой в Jira
+      // TEST-123 ключ — почти наверняка опечатка, поэтому ссылкой в Jira
       // он не становится (см. рендер списка). В списке такой ключ дополнительно
       // помечен янтарной строкой со значком.
       if (!isLikelyJiraKey(key)) {
-        showToast('warning', 'Ключ не похож на формат Jira', `${key} не соответствует виду PROJECT-123 и не станет ссылкой на тест — проверьте, нет ли опечатки`);
+        showToast('warning', 'Ключ не похож на формат Jira', `${key} не соответствует виду TEST-123 и не станет ссылкой на тест — проверьте, нет ли опечатки`);
       }
     } finally {
       setAdding(false);
@@ -882,7 +882,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               type="text"
               value={testKey}
               onChange={e => setTestKey(e.target.value)}
-              placeholder="PROJECT-123"
+              placeholder="TEST-123"
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
               style={{
                 flex: 1,
@@ -949,7 +949,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {tests.map(test => {
-                // Ключ непохож на PROJECT-123 — вероятная опечатка и битая
+                // Ключ непохож на TEST-123 — вероятная опечатка и битая
                 // ссылка в Jira: значок-пояснение в начале строки, ключ — не
                 // ссылка. Сама строка обычная: янтарные рамку и заливку
                 // пробовали (v1.6.0) и убрали — целиком крашеная строка
@@ -978,7 +978,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                     {nonstandard && (
                       <span
-                        title="Ключ не похож на формат Jira (PROJECT-123) — проверьте, нет ли опечатки"
+                        title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
                         style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
                       >
                         <StatusAlertIcon kind="warning" size={14} />
@@ -1014,7 +1014,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     ) : (
                       <span
                         title={nonstandard
-                          ? 'Ключ не похож на формат Jira (PROJECT-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
+                          ? 'Ключ не похож на формат Jira (TEST-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
                           : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
                         style={{
                           color: colors.textPrimary,

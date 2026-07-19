@@ -18,6 +18,11 @@ const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: 'rgba(0,0,0,0.35)',
+  // Лёгкий блюр фона: модалка ещё заметнее отделяется от страницы. Именно
+  // лёгкий — сильное размытие прячет контекст, к которому модалка относится.
+  // ⚠ backdrop-filter делает оверлей containing block для fixed-потомков —
+  // внутри модалок их нет (тосты и попапы живут вне, Select — absolute).
+  backdropFilter: 'blur(3px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

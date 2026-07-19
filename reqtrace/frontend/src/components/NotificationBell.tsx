@@ -10,7 +10,7 @@ import {
   FinishedRunSummary, NotificationEntry, NotificationsResponse, RunningRun,
 } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
-import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, SyncIcon } from './icons';
+import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, ShieldIcon, SyncIcon } from './icons';
 import { XIcon } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
 import { formatCheckedAt } from '../pages/TestsPage';
@@ -40,6 +40,8 @@ const KIND_ICONS: Record<NotificationEntry['kind'], React.FC<IconProps>> = {
   digest: SyncIcon,
   cred_invalid: LockIcon,
   run_skipped: ClockIcon,
+  // Подтверждение тишины (v1.6.5): слежение живо, изменений нет.
+  run_quiet: ShieldIcon,
 };
 
 export const NotificationBell: React.FC = () => {
@@ -352,8 +354,11 @@ export const NotificationBell: React.FC = () => {
               padding: '16px 10px', fontSize: '13px',
               color: colors.textSecondary, lineHeight: 1.55,
             }}>
-              Пока тихо: плановые прогоны не находили изменений в ваших проектах.
-              Когда требования изменятся, дайджест появится здесь
+              {/* Тишина теперь видима строкой-подтверждением (v1.6.5) —
+                  сюда попадают только те, по чьим проектам прогонов ещё
+                  не было вовсе. */}
+              Плановые прогоны ещё не отчитывались по вашим проектам.
+              Как только первый пройдёт, его итог появится здесь
             </div>
           ) : (
             data.entries.map(entry => {

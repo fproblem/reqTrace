@@ -395,7 +395,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     });
 
   return (
-    <div style={shellStyle(open, true)}>
+    <div style={shellStyle(open, true)} data-popover-center>
       {/* Контент — на фиксированной ширине панели: при анимации ширины корня
           он не пере-верстается, а «въезжает» справа единым блоком (левый край
           корня движется вместе с шириной, контент прижат к нему). */}

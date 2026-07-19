@@ -16,10 +16,13 @@ import { StatusAlertIcon } from './icons';
 import { colors, radii, shadows } from '../styles/tokens';
 
 const POPOVER_WIDTH = 280;
+// В контейнере с data-popover-center (панель привязки) поповер центруется
+// по его ширине с полями 20px — как поповер удаления привязки.
+const CENTERED_MAX_WIDTH = 320;
 
 export const KeyIssueInformer: React.FC<{ text: string }> = ({ text }) => {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const { mounted, fadeStyle } = useFadeToggle(open);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -34,10 +37,25 @@ export const KeyIssueInformer: React.FC<{ text: string }> = ({ text }) => {
     }
     const rect = btnRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setPos({
-      top: rect.bottom + 6,
-      left: Math.min(Math.max(8, rect.left), window.innerWidth - POPOVER_WIDTH - 8),
-    });
+    // Панель привязки объявляет себя центром (data-popover-center):
+    // поповер встаёт по её ширине, как поповер удаления. Вне таких
+    // контейнеров (ярус 2 «Тестов») — якорится к кнопке.
+    const host = btnRef.current?.closest('[data-popover-center]');
+    if (host) {
+      const hostRect = host.getBoundingClientRect();
+      const width = Math.min(CENTERED_MAX_WIDTH, hostRect.width - 40);
+      setPos({
+        top: rect.bottom + 6,
+        left: hostRect.left + (hostRect.width - width) / 2,
+        width,
+      });
+    } else {
+      setPos({
+        top: rect.bottom + 6,
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - POPOVER_WIDTH - 8),
+        width: POPOVER_WIDTH,
+      });
+    }
     setOpen(true);
   };
 
@@ -103,7 +121,7 @@ export const KeyIssueInformer: React.FC<{ text: string }> = ({ text }) => {
             position: 'fixed',
             top: `${pos.top}px`,
             left: `${pos.left}px`,
-            width: `${POPOVER_WIDTH}px`,
+            width: `${pos.width}px`,
             zIndex: 1000,
             background: colors.cardBgSolid,
             border: `1px solid ${colors.border}`,

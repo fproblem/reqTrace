@@ -1011,6 +1011,20 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {/* Информер — слева от чипа и единственный носитель
+                        объяснения: тултип на самом чипе дублировал его теми
+                        же словами (ревью). Тексты разные: «не похож на
+                        формат» и «задачи нет в Jira» чинятся по-разному. */}
+                    {(nonstandard || notInJira) && (
+                      <span
+                        title={nonstandard
+                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки; такой ключ не ведёт в Jira'
+                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой; ссылки поэтому нет'}
+                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
+                      >
+                        <StatusAlertIcon kind="warning" size={14} />
+                      </span>
+                    )}
                     {chipClickable ? (
                       // Чип-кнопка: клик открывает тест в Jira (только чтение,
                       // как и вся интеграция); шеврона из референса нет —
@@ -1037,26 +1051,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                       </a>
                     ) : (
                       <span
-                        title={nonstandard
-                          ? 'Ключ не похож на формат Jira (TEST-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
-                          : notInJira
-                            ? 'Не ведёт в Jira: задачи с таким ключом там нет'
-                            : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
-                        style={{ ...chipStyle, cursor: 'help' }}
+                        title={!nonstandard && !notInJira
+                          ? 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'
+                          : undefined}
+                        style={{
+                          ...chipStyle,
+                          cursor: !nonstandard && !notInJira ? 'help' : 'default',
+                        }}
                       >
                         {test.test_key}
-                      </span>
-                    )}
-                    {/* Информер называет беду точно: «не похож на формат» и
-                        «задачи нет в Jira» чинятся по-разному. */}
-                    {(nonstandard || notInJira) && (
-                      <span
-                        title={nonstandard
-                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
-                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
-                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
-                      >
-                        <StatusAlertIcon kind="warning" size={14} />
                       </span>
                     )}
                     {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный

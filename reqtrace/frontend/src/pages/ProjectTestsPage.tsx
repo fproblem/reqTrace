@@ -329,9 +329,11 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {nonstandard && (
+                  {(nonstandard || notInJira) && (
                     <span
-                      title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
+                      title={nonstandard
+                        ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки; такой ключ не ведёт в Jira'
+                        : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой; ссылки поэтому нет'}
                       style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help', flexShrink: 0 }}
                     >
                       <StatusAlertIcon kind="warning" size={14} />
@@ -361,23 +363,11 @@ export const ProjectTestsPage: React.FC = () => {
                       {highlightMatch(entry.key, q)}
                     </a>
                   ) : (
-                    <span
-                      title={notInJira ? 'Не ведёт в Jira: задачи с таким ключом там нет' : undefined}
-                      style={{
-                        color: notInJira ? colors.textSecondary : colors.textPrimary,
-                        fontWeight: 600, fontSize: '14px', flexShrink: 0,
-                        cursor: notInJira ? 'help' : undefined,
-                      }}
-                    >
+                    <span style={{
+                      color: notInJira ? colors.textSecondary : colors.textPrimary,
+                      fontWeight: 600, fontSize: '14px', flexShrink: 0,
+                    }}>
                       {highlightMatch(entry.key, q)}
-                    </span>
-                  )}
-                  {notInJira && !nonstandard && (
-                    <span
-                      title="Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой"
-                      style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help', flexShrink: 0 }}
-                    >
-                      <StatusAlertIcon kind="warning" size={14} />
                     </span>
                   )}
                   {/* Название из Jira (v1.7.0) — главное, ради чего интеграция:

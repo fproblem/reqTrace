@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { useFadeToggle } from '../fadePresence';
+import { RefreshIcon } from '../RefreshIcon';
 import { KeyIssueInformer } from '../KeyIssueInformer';
 import { XIcon } from '../Modal';
 import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
@@ -945,6 +946,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 fontFamily: 'inherit',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s',
+                // Лоадер живёт ПОВЕРХ невидимой подписи: ширина кнопки не
+                // меняется, кнопка не «дышит» (ревью v1.7.0 — ожидание
+                // ответа Jira стало заметным).
+                position: 'relative',
               }}
               onMouseEnter={e => {
                 if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
@@ -959,7 +964,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
               }}
             >
-              {adding ? '...' : 'Добавить'}
+              {/* Подпись прозрачная на время ожидания — держит ширину;
+                  крутятся стрелки RefreshIcon (докрутка оборота внутри). */}
+              <span style={{ opacity: adding ? 0 : 1, transition: 'opacity 0.15s' }}>
+                Добавить
+              </span>
+              {adding && (
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <RefreshIcon size={15} spinning />
+                </span>
+              )}
             </button>
           </div>
 

@@ -3,6 +3,7 @@ import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { useFadeToggle } from '../fadePresence';
 import { RefreshIcon } from '../RefreshIcon';
+import { TreeReveal } from '../TreeReveal';
 import { KeyIssueInformer } from '../KeyIssueInformer';
 import { XIcon } from '../Modal';
 import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
@@ -772,8 +773,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             актуализация подтверждает, что привязанные тесты всё ещё покрывают
             текст — «актуальное» выделение без единого теста вводило бы в
             заблуждение. Привязали первый тест — кнопка оживает. */}
-        {highlight.status === 'outdated' && onReanchor && (
-          <>
+        {/* TreeReveal (один ребёнок): после «Актуализировать» строка кнопки
+            складывается те же 160мс, что всё в ReqTrace, — карточка привязки
+            сжимается плавно, без скачка контента панели (ревью v1.7.0). */}
+        <TreeReveal expanded={highlight.status === 'outdated' && !!onReanchor}>
+          <div>
           {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
               ховер-манипуляции фоном на время проигрывания, а reduced-motion
               отключается медиа-запросом. */}
@@ -793,7 +797,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             // мыши, и у недоступной кнопки не работали ни title, ни курсор —
             // а «почему нельзя нажать» важнее всего именно у недоступной.
             onClick={async () => {
-              if (reanchoring || noTests) return;
+              // !onReanchor — для TypeScript: условный рендер больше не сужает
+              // тип (кнопка живёт внутри TreeReveal без внешнего &&).
+              if (reanchoring || noTests || !onReanchor) return;
               setReanchoring(true);
               try {
                 await onReanchor(highlight.id);
@@ -839,10 +845,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
             }}
           >
-            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
+            {reanchoring ? 'Актуализация…' : 'Актуализировать'}
           </button>
-          </>
-        )}
+          </div>
+        </TreeReveal>
 
         {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
             действия: статус терминальный, актуализировать нечего. Полная

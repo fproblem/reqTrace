@@ -14,6 +14,23 @@ import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
+// Плейсхолдер поиска на узком дереве обрезался жёстко, посреди буквы
+// («Поиск стран») — многоточие через ::placeholder, инлайн-стилям
+// псевдоэлемент недоступен (паттерн — TreeReveal/RefreshIcon).
+const SEARCH_STYLES_ID = 'reqtrace-tree-search-styles';
+if (typeof document !== 'undefined' && !document.getElementById(SEARCH_STYLES_ID)) {
+  const style = document.createElement('style');
+  style.id = SEARCH_STYLES_ID;
+  style.textContent = `
+.tree-search-input::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+`;
+  document.head.appendChild(style);
+}
+
 // Подсветка совпадения с поисковым запросом (жёлтая подложка). Экспорт —
 // её же использует поиск ключей на экране «Тесты».
 export function highlightMatch(text: string, query: string): React.ReactNode {
@@ -335,11 +352,13 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           </span>
           <input
             type="text"
+            className="tree-search-input"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             // В дизейбле поле само говорит о состоянии — тултип объясняет
-            // причину; в рабочем состоянии — компактное «Поиск страниц…»
-            // (длинный плейсхолдер обрезался на узком дереве).
+            // причину; в рабочем состоянии — компактное «Поиск страниц…».
+            // На узком дереве плейсхолдер сокращается многоточием
+            // (класс tree-search-input), а не режется посреди буквы.
             placeholder={searchDisabled ? 'Поиск недоступен' : 'Поиск страниц…'}
             disabled={searchDisabled}
             style={{

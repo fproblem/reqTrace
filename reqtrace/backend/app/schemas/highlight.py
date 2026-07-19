@@ -28,6 +28,17 @@ class TestLinkResponse(BaseModel):
     test_key: str
     created_by: UUID
     created_at: datetime
+    # Название теста из Jira (v1.7.0); None — имени нет (нет токена/не нашли),
+    # UI показывает только ключ, как раньше.
+    summary: Optional[str] = None
+    # Итог последнего похода в Jira за этим ключом: ok | not_found | error;
+    # None — не ходили (нет токена/URL или ключ не похож на Jira).
+    # not_found красит чип серым и снимает ссылку (задачи нет — /browse = 404).
+    jira_status: Optional[str] = None
+    # Ответ создания привязки: существует ли задача в Jira. None — проверка
+    # не выполнялась (нет Jira URL/токена или ключ не похож на Jira);
+    # False — Jira ответила 404, вероятна опечатка (привязка всё равно создана).
+    jira_found: Optional[bool] = None
 
     model_config = {"from_attributes": True}
 

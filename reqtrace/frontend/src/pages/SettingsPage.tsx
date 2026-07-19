@@ -392,9 +392,11 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
 }) => {
   const [username, setUsername] = useState(project.my_username || '');
   const [password, setPassword] = useState('');
+  const [jiraToken, setJiraToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const { showToast } = useToast();
+  const hasJiraToken = !!project.my_jira_token_status;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -404,6 +406,9 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
       await api.saveProjectCredentials(project.id, {
         confluence_username: username.trim(),
         confluence_password: password || undefined,
+        // Пустое поле — «не менять» (токен уже сохранён или не нужен);
+        // удаление токена в v1.7.0 не предусмотрено — вводится новый.
+        jira_token: jiraToken.trim() || undefined,
       });
       showToast('success', 'Креды обновлены', `Подключение к «${project.name}» проверено`);
       onDone();
@@ -443,6 +448,37 @@ const CredsModal: React.FC<{ project: Project; onClose: () => void; onDone: () =
           </div>
           <CredsSecurityNote />
         </div>
+        {/* Jira-токен (v1.7.0): ТОЛЬКО чтение названий тестов — рядом с
+            ключом видно, какой тест привязан. Поле опционально: без токена
+            всё работает, как раньше. */}
+        {project.jira_base_url && (
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              Jira-токен — названия тестов
+              {hasJiraToken && (project.my_jira_token_status === 'invalid' ? (
+                <span style={{ color: colors.statusOutdated, fontWeight: 400, marginLeft: '8px' }}>
+                  (сохранён, но Jira его отклонила — вставьте новый)
+                </span>
+              ) : (
+                <span style={{ color: colors.statusActive, fontWeight: 400, marginLeft: '8px' }}>
+                  (сохранён)
+                </span>
+              ))}
+            </label>
+            <input
+              type="password"
+              value={jiraToken}
+              onChange={e => setJiraToken(e.target.value)}
+              placeholder={hasJiraToken ? '••••••••' : 'необязательно'}
+              style={inputStyle}
+            />
+            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px', lineHeight: 1.5 }}>
+              Персональный токен (профиль Jira → Personal Access Tokens).
+              ReqTrace читает по нему только названия тестов — ничего в Jira
+              не меняет. Хранится зашифрованным, как пароль.
+            </div>
+          </div>
+        )}
 
         {error && (
           <div style={{ color: colors.statusLost, fontSize: '13px', marginBottom: '12px' }}>{error}</div>

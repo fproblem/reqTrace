@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.crypto import decrypt_secret, encrypt_secret
+from app.services.jira import JiraAuthError
 from app.database import get_db
 from app.jobs.scheduler import start_manual_run
 from app.models.baseline import Baseline
@@ -43,7 +44,7 @@ from app.schemas.project import (
     TestIndexEntry,
     TestLinkRef,
 )
-from app.services import confluence
+from app.services import confluence, jira, test_names
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ def _item(project: Project, cred: ProjectCredential | None) -> ProjectListItem:
         my_username=cred.confluence_username if cred else None,
         last_check_at=cred.last_check_at if cred else None,
         my_last_check_result=cred.last_check_result if cred else None,
+        my_jira_token_status=(cred.jira_token_status if cred and cred.jira_token_enc else None),
     )
 
 
@@ -286,8 +288,15 @@ async def project_test_index(
             excerpt=text or "",
         ))
 
+    # Названия тестов из Jira (v1.7.0) — свойство ключа, не привязки.
+    details = await test_names.load_details(db, project.id)
     tests = [
-        TestIndexEntry(key=key, links=sorted(links, key=lambda l: (l.page_title, l.excerpt)))
+        TestIndexEntry(
+            key=key,
+            links=sorted(links, key=lambda l: (l.page_title, l.excerpt)),
+            summary=details[key].summary if key in details else None,
+            jira_status=details[key].fetch_result if key in details else None,
+        )
         for key, links in sorted(entries.items())
     ]
     return ProjectTestIndex(
@@ -475,6 +484,29 @@ async def upsert_credentials(
         base_url=project.confluence_base_url, username=username, password=password,
     ))
 
+    # Личный Jira-токен (v1.7.0): None — не трогать, "" — удалить, непустой —
+    # живая проверка (GET /myself) и сохранение. Токен нужен ТОЛЬКО для чтения
+    # названий тестов; без него фича молчит.
+    jira_token = data.jira_token.strip() if data.jira_token is not None else None
+    if jira_token:
+        if not project.jira_base_url:
+            raise HTTPException(
+                status_code=400,
+                detail="У проекта не указан адрес Jira — добавьте его в «Изменить проект», затем сохраните токен",
+            )
+        try:
+            await jira.check_token(project.jira_base_url, jira_token)
+        except JiraAuthError:
+            raise HTTPException(
+                status_code=400,
+                detail="Jira отклонила токен — проверьте его в профиле Jira (Personal Access Tokens)",
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=502,
+                detail="Jira недоступна — токен не проверить. Проверьте VPN и попробуйте ещё раз",
+            )
+
     now = datetime.now(timezone.utc)
     if cred is None:
         cred = ProjectCredential(
@@ -493,6 +525,13 @@ async def upsert_credentials(
         cred.status = "ok"
         cred.last_check_at = now
         cred.last_check_result = "ok"
+
+    if jira_token:
+        cred.jira_token_enc = encrypt_secret(jira_token)
+        cred.jira_token_status = "ok"
+    elif jira_token == "":
+        cred.jira_token_enc = None
+        cred.jira_token_status = None
 
     try:
         await db.flush()

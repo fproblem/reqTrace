@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { useFadeToggle } from '../fadePresence';
+import { RefreshIcon } from '../RefreshIcon';
+import { TreeReveal } from '../TreeReveal';
+import { KeyIssueInformer } from '../KeyIssueInformer';
 import { XIcon } from '../Modal';
 import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
 import { useToast } from '../Toast';
@@ -88,6 +91,13 @@ const STATUS_ICON_KIND: Record<string, 'ok' | 'warning' | 'error'> = {
 
 // Корзина — библиотечная TrashIcon (см. импорт): своя копия больше не нужна.
 
+// Один оборот лоадера RefreshIcon (0.8s в его keyframes): «Актуализировать»
+// не складывается раньше полного оборота — быстрый ответ дёргал глаз.
+const SPIN_TURN_MS = 800;
+// Пауза на зелёной галочке успеха после оборота — глаз успевает считать
+// итог прежде, чем строка сложится.
+const DONE_HOLD_MS = 600;
+
 // Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
 // прицеливаться (контент пере-вёрстывается, координаты цели плывут).
@@ -108,6 +118,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const [adding, setAdding] = useState(false);
   const testInputRef = useRef<HTMLInputElement>(null);
   const [reanchoring, setReanchoring] = useState(false);
+  // Фаза «галочка успеха» после полного оборота лоадера (см. onClick кнопки).
+  const [reanchorDone, setReanchorDone] = useState(false);
   // Компактное подтверждение удаления — поповер над кнопкой в футере.
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Мягкое появление/гашение поповера подтверждения удаления (v1.6.6) —
@@ -126,6 +138,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // рисовать последнее выделение (rendered) — активного уже нет — и убираем
   // контент по таймеру чуть длиннее транзишена (220мс).
   const [rendered, setRendered] = useState<Highlight | null>(null);
+  // Свежий статус для замыкания onClick «Актуализировать»: галочка успеха
+  // показывается только если реанкор реально перевёл привязку в active.
+  const renderedStatusRef = useRef<string | undefined>(undefined);
+  renderedStatusRef.current = rendered?.status;
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (activeHighlight) {
@@ -186,6 +202,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     const t = setTimeout(() => input.scrollIntoView({ block: 'nearest' }), 260);
     return () => clearTimeout(t);
   }, [rendered?.id]);
+
+  // Цвет фокуса следует за статусом привязки (v1.7.0). При листании привязок
+  // поле НЕ теряет фокус — onFocus не перевызовется, и обводка застряла бы в
+  // цвете прошлого статуса: перекрашиваем вручную при смене статуса.
+  // statusLabels — напрямую из rendered: statusInfo объявляется ниже раннего
+  // return, хукам он недоступен.
+  useEffect(() => {
+    const input = testInputRef.current;
+    if (!rendered || !input || document.activeElement !== input) return;
+    const tint = (statusLabels[rendered.status] || statusLabels.active).color;
+    input.style.borderColor = `${tint}8C`;
+    input.style.boxShadow = `0 0 0 2px ${tint}1F`;
+  }, [rendered?.status]);
 
   // Escape закрывает панель — с автофокусом поля весь цикл «выделил →
   // привязал тесты → закрыл» проходит без мыши. Слои: открытый поповер
@@ -381,7 +410,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     });
 
   return (
-    <div style={shellStyle(open, true)}>
+    <div style={shellStyle(open, true)} data-popover-center>
       {/* Контент — на фиксированной ширине панели: при анимации ширины корня
           он не пере-верстается, а «въезжает» справа единым блоком (левый край
           корня движется вместе с шириной, контент прижат к нему). */}
@@ -757,8 +786,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             актуализация подтверждает, что привязанные тесты всё ещё покрывают
             текст — «актуальное» выделение без единого теста вводило бы в
             заблуждение. Привязали первый тест — кнопка оживает. */}
-        {highlight.status === 'outdated' && onReanchor && (
-          <>
+        {/* TreeReveal (один ребёнок): после «Актуализировать» строка кнопки
+            складывается те же 160мс, что всё в ReqTrace, — карточка привязки
+            сжимается плавно, без скачка контента панели (ревью v1.7.0). */}
+        <TreeReveal expanded={(highlight.status === 'outdated' && !!onReanchor) || reanchoring || reanchorDone}>
+          <div>
           {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
               ховер-манипуляции фоном на время проигрывания, а reduced-motion
               отключается медиа-запросом. */}
@@ -768,8 +800,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               50% { background-color: ${colors.statusOutdated}33; }
             }
             .reanchor-pulse { animation: reanchor-pulse 0.6s ease-in-out 2; }
+            @keyframes reanchor-done-pop {
+              from { opacity: 0; transform: scale(0.7); }
+              to { opacity: 1; transform: scale(1); }
+            }
+            .reanchor-done-pop { animation: reanchor-done-pop 160ms ease; }
             @media (prefers-reduced-motion: reduce) {
-              .reanchor-pulse { animation: none; }
+              .reanchor-pulse, .reanchor-done-pop { animation: none; }
             }
           `}</style>
           <button
@@ -778,11 +815,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             // мыши, и у недоступной кнопки не работали ни title, ни курсор —
             // а «почему нельзя нажать» важнее всего именно у недоступной.
             onClick={async () => {
-              if (reanchoring || noTests) return;
+              // !onReanchor — для TypeScript: условный рендер больше не сужает
+              // тип (кнопка живёт внутри TreeReveal без внешнего &&).
+              if (reanchoring || noTests || !onReanchor) return;
               setReanchoring(true);
+              // Лоадер делает ПОЛНЫЙ оборот прежде, чем строка сложится:
+              // мгновенный ответ обрывал вращение на первых градусах —
+              // выглядело дёргано (ревью). reanchoring держит TreeReveal
+              // раскрытым (см. expanded выше): статус уже «Актуально», строка
+              // зеленеет — докрутка читается как знак успеха.
+              const fullTurn = new Promise<void>(r => setTimeout(r, SPIN_TURN_MS));
               try {
                 await onReanchor(highlight.id);
               } finally {
+                await fullTurn;
+                // Галочка успеха — только если статус реально стал active
+                // (реанкор мог не удаться: parent показал тост, строка
+                // останется — зелёная галочка была бы враньём).
+                if (renderedStatusRef.current === 'active') {
+                  setReanchorDone(true);
+                  await new Promise(r => setTimeout(r, DONE_HOLD_MS));
+                  setReanchorDone(false);
+                }
                 setReanchoring(false);
               }
             }}
@@ -799,6 +853,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               height: '44px',
               padding: '0 14px',
               border: 'none',
+              position: 'relative',
               borderTop: `1px solid ${statusInfo.color}33`,
               // Ступени фона — те же, что у шапки-статуса (0F → 26 → 33):
               // зоны карточки откликаются одинаково.
@@ -824,10 +879,40 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               if (!reanchoring && !noTests) e.currentTarget.style.background = `${statusInfo.color}26`;
             }}
           >
-            {reanchoring ? 'Актуализация...' : 'Актуализировать'}
+            {/* Подпись не меняется (нечитаемая «Актуализация…» в момент
+                схлопывания смотрелась странно — ревью): на время ожидания
+                она гаснет, поверх крутятся стрелки — как у «Добавить». */}
+            <span style={{ opacity: reanchoring || reanchorDone ? 0 : 1, transition: 'opacity 0.15s' }}>
+              Актуализировать
+            </span>
+            {reanchoring && !reanchorDone && (
+              // Цвет лоадера следует за статусом: когда привязка уже стала
+              // «Актуально», докрутка идёт зелёным на зелёном блоке — а не
+              // янтарным (ревью).
+              <span style={{
+                position: 'absolute', inset: 0, color: statusInfo.color,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <RefreshIcon size={15} spinning />
+              </span>
+            )}
+            {reanchorDone && (
+              // color обязателен: круг StatusAlertIcon красится через
+              // currentColor, а кнопка несёт янтарный color — без явного
+              // зелёного галочка успеха выходила янтарной.
+              <span
+                className="reanchor-done-pop"
+                style={{
+                  position: 'absolute', inset: 0, color: colors.statusActive,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <StatusAlertIcon kind="ok" size={16} />
+              </span>
+            )}
           </button>
-          </>
-        )}
+          </div>
+        </TreeReveal>
 
         {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
             действия: статус терминальный, актуализировать нечего. Полная
@@ -900,12 +985,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 boxSizing: 'border-box',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
-              // Фокус — стандарт полей ReqTrace: рамка зеленеет (focusBorder,
-              // полупрозрачный greenDark) + тонкое кольцо (shadows.focusRing,
-              // референс — поля Confluence, оттенки подобраны по макету).
+              // Фокус — в цвете статуса привязки (v1.7.0, вслед за чипами
+              // ключей): на «Требует проверки» поле обводится янтарным, на
+              // «Актуально» — зелёным, на «Утрачено» — красным. Геометрия
+              // стандартная (рамка 0.55 + кольцо 0.12, как focusBorder/
+              // focusRing из tokens), меняется только оттенок — 8C и 1F это
+              // те же альфы в hex.
               onFocus={e => {
-                e.currentTarget.style.borderColor = colors.focusBorder;
-                e.currentTarget.style.boxShadow = shadows.focusRing;
+                e.currentTarget.style.borderColor = `${statusInfo.color}8C`;
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${statusInfo.color}1F`;
               }}
               onBlur={e => {
                 e.currentTarget.style.borderColor = colors.border;
@@ -928,6 +1016,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 fontFamily: 'inherit',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.15s',
+                // Лоадер живёт ПОВЕРХ невидимой подписи: ширина кнопки не
+                // меняется, кнопка не «дышит» (ревью v1.7.0 — ожидание
+                // ответа Jira стало заметным).
+                position: 'relative',
               }}
               onMouseEnter={e => {
                 if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
@@ -942,7 +1034,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 if (testKey.trim() && !adding) e.currentTarget.style.background = colors.greenDark;
               }}
             >
-              {adding ? '...' : 'Добавить'}
+              {/* Подпись прозрачная на время ожидания — держит ширину;
+                  крутятся стрелки RefreshIcon (докрутка оборота внутри). */}
+              <span style={{ opacity: adding ? 0 : 1, transition: 'opacity 0.15s' }}>
+                Добавить
+              </span>
+              {adding && (
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <RefreshIcon size={15} spinning />
+                </span>
+              )}
             </button>
           </div>
 
@@ -954,109 +1058,133 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {tests.map(test => {
                 // Ключ непохож на TEST-123 — вероятная опечатка и битая
-                // ссылка в Jira: значок-пояснение в начале строки, ключ — не
-                // ссылка. Сама строка обычная: янтарные рамку и заливку
-                // пробовали (v1.6.0) и убрали — целиком крашеная строка
-                // перегружала список, значка достаточно.
+                // ссылка в Jira: чип не кликабелен, рядом значок-пояснение.
                 const nonstandard = !isLikelyJiraKey(test.test_key);
+                // Jira не знает такой задачи (тест удалён или ключ-фантом):
+                // чип гаснет в серый и теряет ссылку — /browse дал бы 404.
+                const notInJira = test.jira_status === 'not_found';
+                const chipClickable = !!jiraBaseUrl && !nonstandard && !notInJira;
+                // Чип ключа тонирован статусом ПРИВЯЗКИ (референс v1.7.0,
+                // вариант D): ключ визуально отделён от названия и говорит
+                // о состоянии покрытия. Ступени заливки 15/26/33 — как у
+                // карточки привязки выше. Проблемные ключи — нейтральный
+                // серый: не путать с красным «Утрачено».
+                const tint = statusInfo.color;
+                const chipStyle: React.CSSProperties = {
+                  display: 'inline-block',
+                  padding: '3px 10px',
+                  borderRadius: radii.pill,
+                  background: nonstandard || notInJira ? 'rgba(0,0,0,0.04)' : `${tint}15`,
+                  border: `1px solid ${nonstandard || notInJira ? colors.border : `${tint}33`}`,
+                  color: nonstandard || notInJira ? colors.textSecondary : tint,
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  textDecoration: 'none',
+                  flexShrink: 0,
+                  transition: 'background 0.15s, border-color 0.15s',
+                };
                 return (
                 <div
                   key={test.id}
                   className="test-row"
                   style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    height: '44px',
-                    padding: '0 12px',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    padding: '10px 12px',
                     borderRadius: radii.md,
                     border: `1px solid ${colors.border}`,
                     background: colors.white,
                   }}
                 >
-                  {/* Ключ — ссылка только когда есть адрес Jira И формат похож
-                      на настоящий: без адреса /browse/КЛЮЧ — битый роут самого
-                      приложения, с нестандартным ключом — почти наверняка 404
-                      в Jira (да и зелёная ссылка на янтарной строке-предупреждении
-                      конфликтовала цветом). Текстовый ключ объясняет себя тултипом. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                    {nonstandard && (
-                      <span
-                        title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
-                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
-                      >
-                        <StatusAlertIcon kind="warning" size={14} />
-                      </span>
+                    {/* Информер — слева от чипа и единственный носитель
+                        объяснения (кликабельный поповер, v1.7.0): тултип не
+                        живёт на тачах. Тексты разные: «не похож на формат»
+                        и «задачи нет в Jira» чинятся по-разному. */}
+                    {(nonstandard || notInJira) && (
+                      <KeyIssueInformer
+                        text={nonstandard
+                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
+                      />
                     )}
-                    {jiraBaseUrl && !nonstandard ? (
-                      // Фирменный зелёный вместо веб-синего (#2563EB был
-                      // единственным элементом вне палитры ReqTrace); ховер —
-                      // темнее ступенью + подчёркивание: ссылка остаётся ссылкой.
+                    {chipClickable ? (
+                      // Чип-кнопка: клик открывает тест в Jira (только чтение,
+                      // как и вся интеграция); шеврона из референса нет —
+                      // решение пользователя.
                       <a
                         href={`${jiraBaseUrl}/browse/${test.test_key}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                          color: colors.greenDark,
-                          textDecoration: 'none',
-                          fontWeight: 500,
-                          fontSize: '13px',
-                          transition: 'color 0.15s',
-                        }}
+                        title="Открыть тест в Jira"
+                        style={{ ...chipStyle, cursor: 'pointer' }}
                         onClick={e => e.stopPropagation()}
                         onMouseEnter={e => {
-                          e.currentTarget.style.color = '#3F9E27';
-                          e.currentTarget.style.textDecoration = 'underline';
+                          e.currentTarget.style.background = `${tint}26`;
+                          e.currentTarget.style.borderColor = `${tint}55`;
                         }}
                         onMouseLeave={e => {
-                          e.currentTarget.style.color = colors.greenDark;
-                          e.currentTarget.style.textDecoration = 'none';
+                          e.currentTarget.style.background = `${tint}15`;
+                          e.currentTarget.style.borderColor = `${tint}33`;
                         }}
+                        onMouseDown={e => { e.currentTarget.style.background = `${tint}33`; }}
+                        onMouseUp={e => { e.currentTarget.style.background = `${tint}26`; }}
                       >
                         {test.test_key}
                       </a>
                     ) : (
                       <span
-                        title={nonstandard
-                          ? 'Ключ не похож на формат Jira (TEST-123), поэтому не ведёт в Jira — поправьте ключ, и он станет ссылкой'
-                          : 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'}
+                        title={!nonstandard && !notInJira
+                          ? 'Укажите адрес Jira в карточке проекта (профиль), чтобы ключи тестов стали ссылками'
+                          : undefined}
                         style={{
-                          color: colors.textPrimary,
-                          fontWeight: 500,
-                          fontSize: '13px',
-                          cursor: 'help',
+                          ...chipStyle,
+                          cursor: !nonstandard && !notInJira ? 'help' : 'default',
                         }}
                       >
                         {test.test_key}
                       </span>
                     )}
+                    {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
+                        ховер; виден только при наведении на строку (.test-row) —
+                        список в покое без колонки крестиков. */}
+                    <button
+                      onClick={() => onRemoveTest(test.id)}
+                      className="test-row-remove"
+                      style={{
+                        width: '26px', height: '26px', borderRadius: radii.sm,
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: colors.textTertiary, display: 'flex', flexShrink: 0,
+                        alignItems: 'center', justifyContent: 'center',
+                        marginLeft: 'auto', transition: 'all 0.15s',
+                      }}
+                      title="Отвязать тест"
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                        e.currentTarget.style.color = colors.textPrimary;
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = colors.textTertiary;
+                      }}
+                      onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+                      onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                    >
+                      <XIcon />
+                    </button>
                   </div>
-                  {/* Крестик — как у закрытия панели/модалок: XIcon, нейтральный
-                      ховер; виден только при наведении на строку (.test-row) —
-                      список в покое без колонки крестиков. */}
-                  <button
-                    onClick={() => onRemoveTest(test.id)}
-                    className="test-row-remove"
-                    style={{
-                      width: '26px', height: '26px', borderRadius: radii.sm,
-                      border: 'none', background: 'transparent', cursor: 'pointer',
-                      color: colors.textTertiary, display: 'flex', flexShrink: 0,
-                      alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
-                    }}
-                    title="Отвязать тест"
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                      e.currentTarget.style.color = colors.textPrimary;
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = colors.textTertiary;
-                    }}
-                    onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
-                    onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                  >
-                    <XIcon />
-                  </button>
+                  {/* Название из Jira (v1.7.0): целиком, с переносами —
+                      обрезанное название не читается (ревью). */}
+                  {test.summary && (
+                    <div style={{
+                      fontSize: '12px', color: colors.textSecondary,
+                      lineHeight: 1.5, wordBreak: 'break-word',
+                    }}>
+                      {test.summary}
+                    </div>
+                  )}
                 </div>
                 );
               })}

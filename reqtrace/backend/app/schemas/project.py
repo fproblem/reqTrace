@@ -24,6 +24,9 @@ class CredentialsUpsert(BaseModel):
     confluence_username: str
     # None/пусто — оставить прежний пароль (для уже подключённого участника).
     confluence_password: Optional[str] = None
+    # Личный Jira-токен (PAT) — только для чтения названий тестов (v1.7.0).
+    # None — не менять; пустая строка — удалить; непустая — проверить и сохранить.
+    jira_token: Optional[str] = None
 
 
 class ProjectListItem(BaseModel):
@@ -36,6 +39,8 @@ class ProjectListItem(BaseModel):
     my_username: Optional[str] = None
     last_check_at: Optional[datetime] = None
     my_last_check_result: Optional[str] = None  # ok | invalid | unreachable — исход последней проверки
+    # Jira-токен участника (v1.7.0): ok | invalid; None — токена нет.
+    my_jira_token_status: Optional[str] = None
 
 
 class CredentialCheckResult(BaseModel):
@@ -85,6 +90,11 @@ class TestLinkRef(BaseModel):
 class TestIndexEntry(BaseModel):
     key: str
     links: list[TestLinkRef]
+    # Название теста из Jira (v1.7.0); None — имени нет, UI показывает ключ.
+    summary: Optional[str] = None
+    # ok | not_found | error; None — в Jira не ходили. not_found — задачи нет:
+    # чип серый, ссылка снята.
+    jira_status: Optional[str] = None
 
 
 class ProjectTestIndex(BaseModel):

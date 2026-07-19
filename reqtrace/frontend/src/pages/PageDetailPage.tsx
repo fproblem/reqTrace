@@ -310,7 +310,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
   const handleAddTest = async (highlightId: string, testKey: string) => {
     try {
-      await api.addTestLink(highlightId, testKey);
+      const link = await api.addTestLink(highlightId, testKey);
+      // Валидация существования (v1.7.0): Jira ответила 404 — почти наверняка
+      // опечатка в ключе. Привязка при этом создана — решает человек.
+      if (link.jira_found === false) {
+        showToast('warning', 'Тест не найден в Jira',
+          `${link.test_key} — Jira не знает такой задачи. Проверьте, нет ли опечатки в ключе`);
+      }
       await loadPage();
       const refreshed = await api.listHighlights(pageId!);
       setHighlights(refreshed);

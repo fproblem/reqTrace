@@ -14,6 +14,7 @@ import { useToast } from '../components/Toast';
 import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
+import { KeyIssueInformer } from '../components/KeyIssueInformer';
 import { TreeReveal } from '../components/TreeReveal';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -302,7 +303,10 @@ export const ProjectTestsPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {rows.map(({ entry, counts, pagesCount, allLost, nonstandard }) => {
             const isOpen = expanded.has(entry.key);
-            const keyIsLink = !!data.jira_base_url && !nonstandard;
+            // Jira не знает такой задачи — ключ гаснет и теряет ссылку
+            // (/browse дал бы 404); информер объяснит (v1.7.0).
+            const notInJira = entry.jira_status === 'not_found';
+            const keyIsLink = !!data.jira_base_url && !nonstandard && !notInJira;
             return (
               <div
                 key={entry.key}
@@ -315,24 +319,27 @@ export const ProjectTestsPage: React.FC = () => {
                   overflow: 'hidden',
                 }}
               >
-                {/* Строка ключа — клик раскрывает привязки. */}
+                {/* Строка ключа — клик раскрывает привязки. Структура по
+                    референсу (v1.7.0): ключ — колонкой слева, название —
+                    главная строка, счётчики — серой подстрокой. Без названия
+                    (нет токена/не нашли) счётчики остаются единственной
+                    строкой — высота держится minHeight. */}
                 <div
                   onClick={() => toggle(entry.key)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    height: '48px', padding: '0 14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    minHeight: '48px', padding: '8px 14px', cursor: 'pointer',
                     transition: 'background 0.15s',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {nonstandard && (
-                    <span
-                      title="Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки"
-                      style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help', flexShrink: 0 }}
-                    >
-                      <StatusAlertIcon kind="warning" size={14} />
-                    </span>
+                  {(nonstandard || notInJira) && (
+                    <KeyIssueInformer
+                      text={nonstandard
+                        ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                        : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
+                    />
                   )}
                   {keyIsLink ? (
                     <a
@@ -358,14 +365,32 @@ export const ProjectTestsPage: React.FC = () => {
                       {highlightMatch(entry.key, q)}
                     </a>
                   ) : (
-                    <span style={{ color: colors.textPrimary, fontWeight: 600, fontSize: '14px', flexShrink: 0 }}>
+                    <span style={{
+                      color: notInJira ? colors.textSecondary : colors.textPrimary,
+                      fontWeight: 600, fontSize: '14px', flexShrink: 0,
+                    }}>
                       {highlightMatch(entry.key, q)}
                     </span>
                   )}
-                  <span style={{ fontSize: '13px', color: colors.textSecondary, flexShrink: 0 }}>
-                    {entry.links.length} {plural(entry.links.length, ['привязка', 'привязки', 'привязок'])}
-                    {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
-                  </span>
+                  {/* Название (целиком, с переносами) + счётчики подстрокой:
+                      единый текст в одну строку читался кашей (ревью). */}
+                  <div style={{
+                    flex: 1, minWidth: 0,
+                    display: 'flex', flexDirection: 'column', gap: '2px',
+                  }}>
+                    {entry.summary && (
+                      <span style={{
+                        fontSize: '13.5px', color: colors.textPrimary,
+                        lineHeight: 1.45, wordBreak: 'break-word',
+                      }}>
+                        {entry.summary}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
+                      {entry.links.length} {plural(entry.links.length, ['привязка', 'привязки', 'привязок'])}
+                      {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
+                    </span>
+                  </div>
                   {/* Красная пометка «мёртвого покрытия»: тест есть, но всё,
                       что он держал, утрачено. */}
                   {allLost && (
@@ -377,7 +402,7 @@ export const ProjectTestsPage: React.FC = () => {
                       все утрачены
                     </span>
                   )}
-                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {counts.active > 0 && (
                       <StatusCountPill color={colors.statusActive} count={counts.active} title="Актуально" />
                     )}

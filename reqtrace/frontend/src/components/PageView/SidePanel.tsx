@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Highlight, TestLink } from '../../types';
 import { colors, radii, shadows } from '../../styles/tokens';
 import { useFadeToggle } from '../fadePresence';
+import { KeyIssueInformer } from '../KeyIssueInformer';
 import { XIcon } from '../Modal';
 import { LinkIcon, QuoteIcon, StatusAlertIcon, TrashIcon } from '../icons';
 import { useToast } from '../Toast';
@@ -1012,18 +1013,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                     {/* Информер — слева от чипа и единственный носитель
-                        объяснения: тултип на самом чипе дублировал его теми
-                        же словами (ревью). Тексты разные: «не похож на
-                        формат» и «задачи нет в Jira» чинятся по-разному. */}
+                        объяснения (кликабельный поповер, v1.7.0): тултип не
+                        живёт на тачах. Тексты разные: «не похож на формат»
+                        и «задачи нет в Jira» чинятся по-разному. */}
                     {(nonstandard || notInJira) && (
-                      <span
-                        title={nonstandard
+                      <KeyIssueInformer
+                        text={nonstandard
                           ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки; такой ключ не ведёт в Jira'
                           : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой; ссылки поэтому нет'}
-                        style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help' }}
-                      >
-                        <StatusAlertIcon kind="warning" size={14} />
-                      </span>
+                      />
                     )}
                     {chipClickable ? (
                       // Чип-кнопка: клик открывает тест в Jira (только чтение,

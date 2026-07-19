@@ -14,6 +14,7 @@ import { useToast } from '../components/Toast';
 import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
+import { KeyIssueInformer } from '../components/KeyIssueInformer';
 import { TreeReveal } from '../components/TreeReveal';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -330,14 +331,11 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   {(nonstandard || notInJira) && (
-                    <span
-                      title={nonstandard
+                    <KeyIssueInformer
+                      text={nonstandard
                         ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки; такой ключ не ведёт в Jira'
                         : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой; ссылки поэтому нет'}
-                      style={{ color: colors.statusOutdated, display: 'flex', cursor: 'help', flexShrink: 0 }}
-                    >
-                      <StatusAlertIcon kind="warning" size={14} />
-                    </span>
+                    />
                   )}
                   {keyIsLink ? (
                     <a

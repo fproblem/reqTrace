@@ -1,0 +1,119 @@
+// Информер проблемного ключа теста (v1.7.0): янтарный значок-кнопка, по
+// клику — поповер с причиной («ключ не похож на формат» / «задачи нет в
+// Jira»). Кликабельность вместо тултипа: наведение не живёт на тачах и
+// плохо обнаружимо, а поповер — в языке меню «ещё действия».
+//
+// Поповер — портал в body с fixed-координатами от кнопки: absolute внутри
+// строки не работает (карточки яруса 2 клипают overflow: hidden), а fixed
+// без портала сломала бы панель привязки (backdrop-filter делает её
+// containing block для fixed — ловушка v1.5.2). Скролл/ресайз закрывают
+// поповер — позиция не пересчитывается. role="dialog" — слоистая
+// Escape-логика приложения (SidePanel и др.) уступает верхнему слою.
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useFadeToggle } from './fadePresence';
+import { StatusAlertIcon } from './icons';
+import { colors, radii, shadows } from '../styles/tokens';
+
+const POPOVER_WIDTH = 280;
+
+export const KeyIssueInformer: React.FC<{ text: string }> = ({ text }) => {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const { mounted, fadeStyle } = useFadeToggle(open);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  const toggle = (e: React.MouseEvent) => {
+    // Информер живёт и внутри кликабельной строки аккордеона («Тесты»,
+    // ярус 2) — клик не должен раскрывать строку.
+    e.stopPropagation();
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPos({
+      top: rect.bottom + 6,
+      left: Math.min(Math.max(8, rect.left), window.innerWidth - POPOVER_WIDTH - 8),
+    });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!popRef.current?.contains(target) && !btnRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const onMove = () => setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={toggle}
+        aria-label="Почему ключ не ведёт в Jira"
+        style={{
+          width: '22px', height: '22px', borderRadius: radii.sm,
+          border: 'none', background: open ? 'rgba(0,0,0,0.06)' : 'transparent',
+          color: colors.statusOutdated, cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0, padding: 0, transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
+        onMouseLeave={e => {
+          if (!open) e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <StatusAlertIcon kind="warning" size={14} />
+      </button>
+      {mounted && pos && createPortal(
+        <div
+          ref={popRef}
+          role="dialog"
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: `${pos.top}px`,
+            left: `${pos.left}px`,
+            width: `${POPOVER_WIDTH}px`,
+            zIndex: 1000,
+            background: colors.cardBgSolid,
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.md,
+            boxShadow: shadows.panel,
+            padding: '10px 12px',
+            fontSize: '12.5px',
+            fontWeight: 400,
+            color: colors.textSecondary,
+            lineHeight: 1.5,
+            textAlign: 'left',
+            boxSizing: 'border-box',
+            ...fadeStyle,
+          }}
+        >
+          {text}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+};

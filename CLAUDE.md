@@ -10,7 +10,9 @@ Confluence, хранит их снимки, считает диффы относ
 
 - **Бэкенд** — FastAPI (Python, async SQLAlchemy + Alembic), каталог `reqtrace/backend/app`.
 - **Фронтенд** — React + TypeScript (Create React App, react-router), каталог `reqtrace/frontend/src`.
-- Весь код приложения — в `reqtrace/`. В корне — спецификации (`*.md`) и инструменты.
+- Весь код приложения — в `reqtrace/`. В корне — `BACKLOG.md` (идеи и отложенные
+  фичи; решения «отклонено — не предлагать» тоже там) и `update.sh` (обновление
+  на рабочей машине); живые дизайн-документы — в `docs/`.
 
 ## 🧭 Сначала сориентируйся по графу кода (CodeGraph)
 
@@ -52,7 +54,7 @@ codegraph status                                 # состояние индек
 - `jobs/` — фоновые задачи (v1.6.2): `nightly` — ночной прогон автообновления
   (перепроверка кред → sync-tree → refresh страниц, журнал `refresh_runs`),
   `scheduler` — asyncio-задача в lifespan (`AUTO_REFRESH_*` в `.env`).
-  Дизайн — `auto-refresh-plan-v1.6.md` в корне; тесты — `tests/test_nightly_refresh.py`.
+  Дизайн — `docs/auto-refresh-plan-v1.6.md`; тесты — `tests/test_nightly_refresh.py`.
 - `schemas/` — Pydantic-схемы запросов/ответов.
 - `models/` — ORM (SQLAlchemy): `user, page, snapshot, baseline, highlight, highlight_test, project`.
 - `database.py`, `config.py` — фундамент. ⚠ `database.py` импортируют ~13 модулей.
@@ -103,7 +105,7 @@ cd reqtrace && docker compose run --rm --no-deps backend python -m unittest disc
 ## Привязки: модель «маркер в снимке» (v1.5.9)
 
 Эталон поведения — inline-комментарии Confluence (исследование и полный дизайн:
-`anchoring-plan-v1.5.9.md`). Привязка — диапазон в тексте ОБРАБОТАННОГО HTML
+`docs/anchoring-plan-v1.5.9.md`). Привязка — диапазон в тексте ОБРАБОТАННОГО HTML
 конкретного снимка; при каждом refresh диапазон ОДИН РАЗ переносится диффом
 «старый снимок → новый» на сервере. **Фронтенд ничего не ищет и статусы не
 решает** — он рендерит готовые координаты. Поиска текста по странице не

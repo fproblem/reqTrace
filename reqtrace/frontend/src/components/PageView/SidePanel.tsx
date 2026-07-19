@@ -897,10 +897,13 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               </span>
             )}
             {reanchorDone && (
+              // color обязателен: круг StatusAlertIcon красится через
+              // currentColor, а кнопка несёт янтарный color — без явного
+              // зелёного галочка успеха выходила янтарной.
               <span
                 className="reanchor-done-pop"
                 style={{
-                  position: 'absolute', inset: 0,
+                  position: 'absolute', inset: 0, color: colors.statusActive,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >

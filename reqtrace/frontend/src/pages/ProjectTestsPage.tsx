@@ -14,7 +14,9 @@ import { useToast } from '../components/Toast';
 import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
+import { FadeIn } from '../components/fadePresence';
 import { KeyIssueInformer } from '../components/KeyIssueInformer';
+import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { TreeReveal } from '../components/TreeReveal';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -68,6 +70,9 @@ export const ProjectTestsPage: React.FC = () => {
   // после первого применения.
   const [pulseKey, setPulseKey] = useState<string | null>(null);
   const arrivalKeyRef = useRef<string | null>(searchParams.get('key'));
+
+  // Каркас — только если ответ не мгновенный: мигание хуже его отсутствия.
+  const showSkeleton = useDelayedFlag(data === null && !failed);
 
   const q = searchParams.get('q') ?? '';
   const filter = (searchParams.get('f') ?? 'all') as FilterKey;
@@ -189,9 +194,33 @@ export const ProjectTestsPage: React.FC = () => {
     );
   }
   if (!data || !summary) {
+    // Скелетон яруса: полоска-заголовок (имя проекта неизвестно до ответа),
+    // поле-полоса и типовые строки ключей 48px.
     return (
-      <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary }}>
-        Загрузка...
+      <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
+        {showSkeleton && (
+          <FadeIn>
+            <SkeletonBar width="260px" height={22} style={{ marginBottom: '20px' }} />
+            <SkeletonBar width="420px" height={38} radius={10} style={{ marginBottom: '16px' }} />
+            <SkeletonBar width="330px" height={12} style={{ marginBottom: '20px' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[0, 1, 2, 3, 4, 5].map(i => (
+                <div key={i} style={{
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: radii.md,
+                  background: colors.white,
+                  minHeight: '48px',
+                  padding: '8px 14px',
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                }}>
+                  <SkeletonBar width="86px" height={12} />
+                  <SkeletonBar width={i % 2 ? '38%' : '52%'} height={12} />
+                  <SkeletonBar width="34px" height={18} radius={9} style={{ marginLeft: 'auto' }} />
+                </div>
+              ))}
+            </div>
+          </FadeIn>
+        )}
       </div>
     );
   }
@@ -202,6 +231,8 @@ export const ProjectTestsPage: React.FC = () => {
     // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
     // оставляла всю «лишнюю» ширину одним пустым полем справа.
     <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
+      {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
+      <FadeIn>
       {/* Крошка-заголовок: «Тесты» возвращает на ярус выбора проекта. */}
       <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 16px', color: colors.textPrimary }}>
         <Link
@@ -498,6 +529,7 @@ export const ProjectTestsPage: React.FC = () => {
           })}
         </div>
       )}
+      </FadeIn>
     </div>
   );
 };

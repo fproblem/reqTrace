@@ -6,6 +6,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { ProjectTestsStats } from '../types';
+import { FadeIn } from '../components/fadePresence';
+import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
 import { ChevronRightIcon, ClipboardCheckIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -52,10 +54,35 @@ export const StatusCountPill: React.FC<{ color: string; count: number; title: st
   </span>
 );
 
+// Скелетон карточки проекта — каркас в габаритах настоящей (заголовок,
+// главная цифра, пилюли, свежесть); количество и точные высоты придут
+// только с данными, несовпадение прощает FadeIn контента.
+const ProjectCardSkeleton: React.FC = () => (
+  <div style={{
+    background: 'rgba(255,255,255,0.85)',
+    border: `1px solid ${colors.border}`,
+    borderRadius: radii.lg,
+    padding: '18px 22px',
+    boxShadow: shadows.card,
+    display: 'flex', flexDirection: 'column', gap: '14px',
+  }}>
+    <SkeletonBar width="45%" height={12} />
+    <SkeletonBar width="70%" height={16} />
+    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+      <SkeletonBar width="34px" height={18} radius={9} />
+      <SkeletonBar width="34px" height={18} radius={9} />
+      <SkeletonBar width="72px" height={10} style={{ marginLeft: 'auto' }} />
+    </div>
+    <SkeletonBar width="55%" height={10} />
+  </div>
+);
+
 export const TestsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [stats, setStats] = useState<ProjectTestsStats[] | null>(null);
+  // Каркас — только если ответ не мгновенный: мигание хуже его отсутствия.
+  const showSkeleton = useDelayedFlag(stats === null);
 
   const loadStats = useCallback(() => {
     api.getProjectsStats()
@@ -78,10 +105,36 @@ export const TestsPage: React.FC = () => {
     return () => window.removeEventListener('reqtrace:refresh-run-finished', onRunFinished);
   }, [loadStats]);
 
+  // Хром экрана (заголовок, подзаголовок) не зависит от данных — он стоит
+  // с первого кадра настоящим, скелетоны занимают только место карточек.
+  const chrome = (
+    <>
+      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '6px' }}>
+        Тесты
+      </h1>
+      <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '0 0 20px', lineHeight: 1.5 }}>
+        Обратный взгляд на покрытие: выберите проект — внутри по каждому тесту
+        видно, какие требования он держит и в каком они статусе.
+      </p>
+    </>
+  );
+
   if (stats === null) {
     return (
-      <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary }}>
-        Загрузка...
+      <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
+        {chrome}
+        {showSkeleton && (
+          <FadeIn>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+              gap: '16px',
+            }}>
+              <ProjectCardSkeleton />
+              <ProjectCardSkeleton />
+            </div>
+          </FadeIn>
+        )}
       </div>
     );
   }
@@ -94,14 +147,11 @@ export const TestsPage: React.FC = () => {
     // Ширина — как у яруса 2 (1060): ярусы одного экрана не должны «дышать»
     // при переходе между ними.
     <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '6px' }}>
-        Тесты
-      </h1>
-      <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '0 0 20px', lineHeight: 1.5 }}>
-        Обратный взгляд на покрытие: выберите проект — внутри по каждому тесту
-        видно, какие требования он держит и в каком они статусе.
-      </p>
+      {chrome}
 
+      {/* Мягкое появление данных (v1.7.1): и при переходе на экран, и после
+          скелетона контент проявляется теми же 160мс, что модалки. */}
+      <FadeIn>
       {stats.length === 0 ? (
         <div style={{
           padding: '28px', borderRadius: radii.lg,
@@ -237,6 +287,7 @@ export const TestsPage: React.FC = () => {
           })}
         </div>
       )}
+      </FadeIn>
     </div>
   );
 };

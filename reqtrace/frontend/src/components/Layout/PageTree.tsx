@@ -508,10 +508,13 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           // Пусто до порога 200мс, дальше — мягкая строка с фирменным
           // лоадером (тот же loadstate, что у страницы требований).
           showLoader ? (
-            <FadeIn>
+            // height 100% + центрирование: строка стоит по центру колонки
+            // дерева, а не прижата к верхнему левому углу.
+            <FadeIn style={{ height: '100%' }}>
               <div style={{
-                padding: '20px 4px', display: 'flex', alignItems: 'center',
-                gap: '8px', color: colors.textTertiary, fontSize: '12px',
+                height: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: '8px',
+                color: colors.textTertiary, fontSize: '12px',
               }}>
                 <RefreshIcon size={13} spinning />
                 Загружаем дерево…

@@ -223,7 +223,7 @@ export const ProjectTestsPage: React.FC = () => {
           type="text"
           value={q}
           onChange={e => setParam('q', e.target.value)}
-          placeholder="Поиск по ключу или названию…"
+          placeholder="Поиск тестов…"
           style={{
             width: '220px', height: '36px', padding: '0 12px',
             borderRadius: radii.md, border: `1px solid ${colors.border}`,

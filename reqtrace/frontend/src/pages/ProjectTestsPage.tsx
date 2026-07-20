@@ -137,8 +137,13 @@ export const ProjectTestsPage: React.FC = () => {
   // натуральный порядок ключей (REQ-9 выше REQ-10, testOrder.ts).
   const rows = useMemo(() => {
     const needle = q.trim().toUpperCase();
+    // Поиск — по ключу И по названию из Jira (v1.7.1): название человек
+    // помнит чаще, чем номер. Совпадение подсвечивается в обоих местах.
+    const matches = (r: { entry: TestIndexEntry }) =>
+      r.entry.key.includes(needle)
+      || (r.entry.summary ?? '').toUpperCase().includes(needle);
     return allRows
-      .filter(r => !needle || r.entry.key.includes(needle))
+      .filter(r => !needle || matches(r))
       .filter(r => {
         if (filter === 'lost') return r.counts.lost > 0;
         if (filter === 'outdated') return r.counts.outdated > 0;
@@ -218,7 +223,7 @@ export const ProjectTestsPage: React.FC = () => {
           type="text"
           value={q}
           onChange={e => setParam('q', e.target.value)}
-          placeholder="Поиск ключа…"
+          placeholder="Поиск по ключу или названию…"
           style={{
             width: '220px', height: '36px', padding: '0 12px',
             borderRadius: radii.md, border: `1px solid ${colors.border}`,
@@ -383,7 +388,7 @@ export const ProjectTestsPage: React.FC = () => {
                         fontSize: '13.5px', color: colors.textPrimary,
                         lineHeight: 1.45, wordBreak: 'break-word',
                       }}>
-                        {entry.summary}
+                        {highlightMatch(entry.summary, q)}
                       </span>
                     )}
                     <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>

@@ -8,7 +8,8 @@ import type { HighlightRenderReport } from '../components/PageView/HighlightLaye
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
-import { useFadeToggle } from '../components/fadePresence';
+import { FadeIn, useFadeToggle } from '../components/fadePresence';
+import { useDelayedFlag } from '../components/Skeleton';
 import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
@@ -49,6 +50,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const [page, setPage] = useState<PageDetail | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [loading, setLoading] = useState(true);
+  // Индикатор загрузки — только если ответ не мгновенный (v1.7.1):
+  // мелькание «Загрузки…» на быстрых ответах хуже её отсутствия.
+  const showLoader = useDelayedFlag(loading);
   const [viewMode, setViewMode] = useState<ViewMode>('coverage');
   const [selectedHighlight, setSelectedHighlight] = useState<Highlight | null>(null);
   const [renderReport, setRenderReport] = useState<HighlightRenderReport | null>(null);
@@ -450,9 +454,25 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // (v1.5.7) и «прыгающих» подсветок невозможен.
 
   if (loading) {
+    // Пустой экран до порога задержки; дальше — мягко проявляющаяся строка
+    // с фирменным лоадером (скелетон для произвольного Confluence-контента
+    // не построить — количество и форма блоков известны только после ответа).
     return (
-      <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary }}>
-        Загрузка...
+      <div style={{
+        height: '100%', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        {showLoader && (
+          <FadeIn>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              color: colors.textSecondary, fontSize: '13px',
+            }}>
+              <RefreshIcon size={16} spinning />
+              Загружаем страницу из последнего снимка…
+            </div>
+          </FadeIn>
+        )}
       </div>
     );
   }
@@ -676,6 +696,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         !renderReport.rendered.has(selectedHighlight.id)));
 
   return (
+    // Мягкое появление страницы (v1.7.1): key по id — переход на другую
+    // страницу проявляет новый контент теми же 160мс, что модалки.
+    <FadeIn key={page.id} style={{ height: '100%' }}>
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
 
@@ -1230,6 +1253,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </Modal>
       )}
     </div>
+    </FadeIn>
   );
 };
 

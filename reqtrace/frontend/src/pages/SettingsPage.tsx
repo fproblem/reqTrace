@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { Project } from '../types';
-import { useFadeToggle } from '../components/fadePresence';
+import { FadeIn, useFadeToggle } from '../components/fadePresence';
+import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { OnboardingModal } from '../components/OnboardingModal';
 import { markOnboardingShown, shouldAutoShowOnboarding } from '../components/onboardingAutoShow';
@@ -1044,6 +1045,8 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Каркас — только если ответ не мгновенный: мигание хуже его отсутствия.
+  const showSkeleton = useDelayedFlag(loading);
   const { showToast } = useToast();
   const { refreshTree } = useTreeRefresh();
   const { user } = useAuth();
@@ -1100,9 +1103,48 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   if (loading) {
+    // Заголовок — настоящий с первого кадра; скелетоны занимают место
+    // карточки профиля и карточек проектов.
     return (
-      <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary }}>
-        Загрузка...
+      <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
+          Профиль
+        </h1>
+        {showSkeleton && (
+          <FadeIn>
+            <div style={{
+              background: colors.cardBg, border: `1px solid ${colors.border}`,
+              borderRadius: radii.lg, padding: '16px 20px', marginBottom: '20px',
+              display: 'flex', alignItems: 'center', gap: '14px',
+            }}>
+              <SkeletonBar width="44px" height={44} radius={22} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <SkeletonBar width="180px" height={12} />
+                <SkeletonBar width="240px" height={10} />
+              </div>
+            </div>
+            <SkeletonBar width="200px" height={22} style={{ marginBottom: '16px' }} />
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+              gap: '14px',
+            }}>
+              {[0, 1].map(i => (
+                <div key={i} style={{
+                  background: 'rgba(255,255,255,0.85)',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: radii.lg, padding: '18px 22px',
+                  display: 'flex', flexDirection: 'column', gap: '14px',
+                }}>
+                  <SkeletonBar width="55%" height={14} />
+                  <SkeletonBar width="80%" height={10} />
+                  <SkeletonBar width="100%" height={38} radius={10} />
+                  <SkeletonBar width="45%" height={10} />
+                </div>
+              ))}
+            </div>
+          </FadeIn>
+        )}
       </div>
     );
   }
@@ -1114,6 +1156,8 @@ export const SettingsPage: React.FC = () => {
     // Колонка отцентрована (v1.6.6): прибитая к левому краю, на широком
     // мониторе она оставляла всю «лишнюю» ширину одним пустым полем справа.
     <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
+      {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
+      <FadeIn>
       <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
         Профиль
       </h1>
@@ -1280,6 +1324,7 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {showOnboarding && <OnboardingModal onClose={() => setShowOnboarding(false)} />}
+      </FadeIn>
     </div>
   );
 };

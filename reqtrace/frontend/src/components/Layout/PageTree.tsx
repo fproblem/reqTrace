@@ -5,7 +5,9 @@ import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { Select } from '../Select';
+import { FadeIn } from '../fadePresence';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
+import { useDelayedFlag } from '../Skeleton';
 import { TreeReveal } from '../TreeReveal';
 import { ChevronRightIcon, CrossIcon, DocumentIcon, PlusIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
@@ -126,6 +128,9 @@ interface PageTreeProps {
 export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [projects, setProjects] = useState<ProjectTree[]>([]);
   const [loading, setLoading] = useState(true);
+  // Лоадер — только если ответ не мгновенный (v1.7.1, как у страниц):
+  // мелькание «Загрузки…» на быстрых ответах хуже её отсутствия.
+  const showLoader = useDelayedFlag(loading);
   const [expandState, setExpandState] = useState<Record<string, boolean>>(loadExpandState);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
@@ -500,9 +505,22 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       {/* Tree content */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
         {loading ? (
-          <div style={{ padding: '20px 4px', color: colors.textTertiary, fontSize: '12px' }}>
-            Загрузка...
-          </div>
+          // Пусто до порога 200мс, дальше — мягкая строка с фирменным
+          // лоадером (тот же loadstate, что у страницы требований).
+          showLoader ? (
+            // height 100% + центрирование: строка стоит по центру колонки
+            // дерева, а не прижата к верхнему левому углу.
+            <FadeIn style={{ height: '100%' }}>
+              <div style={{
+                height: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: '8px',
+                color: colors.textTertiary, fontSize: '12px',
+              }}>
+                <RefreshIcon size={13} spinning />
+                Загружаем дерево…
+              </div>
+            </FadeIn>
+          ) : null
         ) : projects.length === 0 ? (
           <div style={{ padding: '20px 4px', textAlign: 'center' }}>
             <div style={{

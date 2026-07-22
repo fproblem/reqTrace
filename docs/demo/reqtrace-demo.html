@@ -56,7 +56,7 @@
   }
   .slide.on { display: flex; }
   .slide.visible { opacity: 1; }
-  .slide-inner { max-width: 1060px; width: 100%; }
+  .slide-inner { max-width: 1180px; width: 100%; }
 
   /* Чипы в стиле кнопок баров ReqTrace */
   .chip {
@@ -77,9 +77,9 @@
     position: fixed; left: 24px; top: 20px; z-index: 5;
   }
 
-  h1 { font-size: 44px; font-weight: 700; letter-spacing: -0.5px; }
-  h2 { font-size: 32px; font-weight: 700; margin-bottom: 28px; letter-spacing: -0.3px; }
-  .sub { color: var(--text-secondary); font-size: 18px; line-height: 1.55; }
+  h1 { font-size: 56px; font-weight: 700; letter-spacing: -0.5px; }
+  h2 { font-size: 40px; font-weight: 700; margin-bottom: 32px; letter-spacing: -0.3px; }
+  .sub { color: var(--text-secondary); font-size: 21px; line-height: 1.55; }
 
   .card {
     background: rgba(255,255,255,0.8);
@@ -87,14 +87,22 @@
     border: 1px solid var(--border);
     border-radius: 20px;
     box-shadow: var(--shadow-card);
-    padding: 22px 26px;
+    padding: 28px 32px;
+    /* Ховер — как у карточек проектов в «Профиле»: рамка темнеет,
+       тень приподнимается. Слайды отвечают на курсор, как приложение. */
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
+  .card:hover {
+    border-color: rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.06);
+  }
+  .card b { font-size: 20px; }
   .grid { display: grid; gap: 16px; }
   .grid-2 { grid-template-columns: 1fr 1fr; }
   .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
 
   .badge {
-    width: 40px; height: 40px; border-radius: 14px;
+    width: 48px; height: 48px; border-radius: 14px;
     display: inline-flex; align-items: center; justify-content: center;
     flex-shrink: 0; box-sizing: border-box;
   }
@@ -116,7 +124,7 @@
   .quote-card {
     border-left: 3px solid var(--green-accent);
     background: var(--white); border-radius: 0 14px 14px 0;
-    padding: 18px 22px; font-size: 19px; line-height: 1.6; color: var(--text-primary);
+    padding: 24px 28px; font-size: 23px; line-height: 1.6; color: var(--text-primary);
     box-shadow: var(--shadow-card);
   }
   .mark {
@@ -132,7 +140,7 @@
     color: var(--green-dark); font-weight: 600; font-size: 14px;
   }
   ul.clean { list-style: none; }
-  ul.clean li { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; font-size: 17px; line-height: 1.5; }
+  ul.clean li { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 18px; font-size: 20px; line-height: 1.55; }
   ul.clean li svg { flex-shrink: 0; margin-top: 3px; }
   .muted { color: var(--text-secondary); }
   .small { font-size: 14px; color: var(--text-tertiary); }
@@ -162,17 +170,26 @@
   <div class="slide-inner">
     <h2>С чего всё началось</h2>
     <div class="grid" style="gap:14px">
-      <div class="card" style="display:flex; gap:16px; align-items:center">
-        <span class="badge gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-        <div style="font-size:18px; line-height:1.5">Burger King: большая команда, очень Agile,<br><b>огромное и быстро меняющееся ТЗ</b></div>
+      <div class="card" style="display:flex; gap:20px; align-items:flex-start">
+        <span class="badge gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+        <div style="font-size:19px; line-height:1.55">
+          <b>Burger King: большая команда, очень Agile</b>
+          <div class="sub" style="font-size:17px; margin-top:6px">Огромное и быстро меняющееся ТЗ в Confluence: каждая новая фича и доработка правят требования на лету. То, что вчера было правдой, сегодня уже переписано.</div>
+        </div>
       </div>
-      <div class="card" style="display:flex; gap:16px; align-items:center">
-        <span class="badge amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
-        <div style="font-size:18px; line-height:1.5">Каждая доработка задевает существующие тесты —<br><b>а какие именно, не знает никто</b></div>
+      <div class="card" style="display:flex; gap:20px; align-items:flex-start">
+        <span class="badge amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+        <div style="font-size:19px; line-height:1.55">
+          <b>Каждая доработка задевает существующие тесты — а какие именно, не знает никто</b>
+          <div class="sub" style="font-size:17px; margin-top:6px">Тесты, написанные месяц назад, тихо устаревают вместе с требованиями. Узнаём об этом в лучшем случае на регрессе, в худшем — от пользователей.</div>
+        </div>
       </div>
-      <div class="card" style="display:flex; gap:16px; align-items:center">
-        <span class="badge red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-        <div style="font-size:18px; line-height:1.5">Тысячи тестов в репозитории: найти тот, который пора<br>актуализировать и взять в прогон, — <b>квест на полдня</b></div>
+      <div class="card" style="display:flex; gap:20px; align-items:flex-start">
+        <span class="badge red"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <div style="font-size:19px; line-height:1.55">
+          <b>Тысячи тестов в репозитории — найти нужный это квест</b>
+          <div class="sub" style="font-size:17px; margin-top:6px">Особенно новичку: чтобы понять, какой тест актуализировать и взять в прогон по фиче, — поиск по ключевым словам, расспросы коллег, полдня времени. И никакой гарантии, что нашёл все.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -185,14 +202,14 @@
     <div class="grid grid-2" style="margin-bottom:18px">
       <div class="card">
         <div style="display:flex; gap:12px; align-items:center; margin-bottom:10px">
-          <span class="badge gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></span>
+          <span class="badge gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></span>
           <b style="font-size:18px">Матрица трассируемости</b>
         </div>
         <p class="sub" style="font-size:16px">Классика из учебника — но в Agile её поддержка дороже пользы: умирает через два спринта</p>
       </div>
       <div class="card">
         <div style="display:flex; gap:12px; align-items:center; margin-bottom:10px">
-          <span class="badge gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
+          <span class="badge gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
           <b style="font-size:18px">Процессные решения</b>
         </div>
         <p class="sub" style="font-size:16px">Требуют участия разработки или аналитиков — для реалий проекта непозволительная роскошь</p>
@@ -200,7 +217,7 @@
     </div>
     <div class="card" style="border: 1px solid var(--tint-green-border); background: rgba(122,224,90,0.06)">
       <div style="display:flex; gap:14px; align-items:flex-start">
-        <span class="badge green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z"/></svg></span>
+        <span class="badge green"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z"/></svg></span>
         <div>
           <b style="font-size:19px">Озарение: inline-комментарии Confluence</b>
           <p class="sub" style="font-size:16px; margin-top:6px">Они переживают правки, переезжают вместе со строками ТЗ и живут ровно столько, сколько нужны. Положи тест «в комментарий» к строке требования — и связь становится точной и живой.<br><b style="color:var(--text-primary)">Так появился ReqTrace — без помощи других команд.</b></p>
@@ -221,17 +238,17 @@
     </div>
     <div class="grid grid-3">
       <div class="card">
-        <div class="badge green" style="margin-bottom:12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg></div>
+        <div class="badge green" style="margin-bottom:12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg></div>
         <b>Живой маркер</b>
         <p class="sub" style="font-size:15px; margin-top:6px">Привязка закреплена за местом в тексте и переезжает вместе с ним при правках — как inline-комментарий</p>
       </div>
       <div class="card">
-        <div class="badge amber" style="margin-bottom:12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="badge amber" style="margin-bottom:12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <b>Решает человек</b>
         <p class="sub" style="font-size:15px; margin-top:6px">Статусы меняют только плановый прогон и вы: никакой магии, «подтвердить» — всегда осознанное действие</p>
       </div>
       <div class="card">
-        <div class="badge gray" style="margin-bottom:12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></div>
+        <div class="badge gray" style="margin-bottom:12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></div>
         <b>Никого не просит</b>
         <p class="sub" style="font-size:15px; margin-top:6px">Личные креды Confluence, Jira — только чтение названий. Ни разработка, ни аналитики не нужны</p>
       </div>
@@ -245,19 +262,19 @@
     <h2>Как выглядит день с ReqTrace</h2>
     <div class="grid grid-2">
       <div class="card" style="display:flex; gap:16px">
-        <span class="badge gray"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+        <span class="badge gray"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
         <div><b>Ночью — сам</b><p class="sub" style="font-size:15px; margin-top:4px">Прогон в 03:00 перечитывает все страницы и переносит привязки; нет VPN — доберёт, когда связь появится</p></div>
       </div>
       <div class="card" style="display:flex; gap:16px">
-        <span class="badge amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 20a2 2 0 01-3.4 0"/></svg></span>
+        <span class="badge amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 20a2 2 0 01-3.4 0"/></svg></span>
         <div><b>Утром — дайджест</b><p class="sub" style="font-size:15px; margin-top:4px">«Изменились 2 страницы, 3 привязки на проверку, затронуты SI-…». Или строка тишины: «изменений нет — проверено в 03:02»</p></div>
       </div>
       <div class="card" style="display:flex; gap:16px">
-        <span class="badge red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+        <span class="badge red"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
         <div><b>Дифф — что именно поменялось</b><p class="sub" style="font-size:15px; margin-top:4px">Пословно: удалённое зачёркнуто, добавленное подсвечено. Решение — актуализировать привязку или сперва править тест</p></div>
       </div>
       <div class="card" style="display:flex; gap:16px">
-        <span class="badge green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="m9 14 2 2 4-4"/></svg></span>
+        <span class="badge green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="m9 14 2 2 4-4"/></svg></span>
         <div><b>Обратный взгляд — «Тесты»</b><p class="sub" style="font-size:15px; margin-top:4px">По каждому тесту: какие требования он держит и в каком они статусе. Ссылку на привязку — прямо в тикет Jira</p></div>
       </div>
     </div>
@@ -290,13 +307,13 @@
   <div class="slide-inner">
     <h2>О чём честно предупрежу</h2>
     <ul class="clean">
-      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <li><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span><b>Привязка — ручная.</b> ReqTrace не «найдёт тесты сам»: он хранит и оберегает связь, которую создали вы. Это дизайн, а не недоработка</span></li>
-      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+      <li><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
         <span><b>Нужен доступ:</b> Confluence и Jira за VPN, вход — корпоративный Google. Пока живёт на офисной машине, сетевой доступ для всех — следующий этап</span></li>
-      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <li><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span><b>Покрытие ≠ качество.</b> ReqTrace отвечает «на требование есть тест и он не устарел», но не оценивает, хорош ли сам тест</span></li>
-      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <li><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         <span><b>Дифф перестраховывается.</b> Экзотические правки (перестановка похожих абзацев) дадут «Требует проверки» лишний раз — лучше лишний взгляд человека, чем молчание</span></li>
     </ul>
   </div>
@@ -308,11 +325,11 @@
     <h2>Что дальше</h2>
     <div class="grid grid-2">
       <div class="card" style="display:flex; gap:16px; align-items:center">
-        <span class="badge green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+        <span class="badge green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
         <div><b>Прод-развёртывание в корпсети</b><p class="sub" style="font-size:15px; margin-top:4px">Поддомен, https — и ReqTrace доступен каждому из вас без моего ноутбука</p></div>
       </div>
       <div class="card" style="display:flex; gap:16px; align-items:center; border:1px solid var(--tint-green-border); background: rgba(122,224,90,0.06)">
-        <span class="badge green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z"/></svg></span>
+        <span class="badge green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3z"/></svg></span>
         <div><b>Ваши идеи</b><p class="sub" style="font-size:15px; margin-top:4px">Инструмент растёт из живых замечаний — самые полезные фичи родились именно так. После демо жду ваших</p></div>
       </div>
     </div>

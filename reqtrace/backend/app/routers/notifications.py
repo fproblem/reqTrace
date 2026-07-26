@@ -113,6 +113,14 @@ def _event_entries(
         for page in details.get("pages", [])
         for key in page.get("affected_tests", [])
     })
+    # Страницы с ошибкой прогона — по названиям (v1.7.2): «3 страницы не
+    # обновились» не даёт понять, КАКИЕ именно; названия в details есть с
+    # v1.6.2. Порядок — как шёл прогон (по алфавиту заголовков).
+    failed_pages = [
+        page["title"]
+        for page in details.get("pages", [])
+        if "error" in page and page.get("title")
+    ]
     entries.append(NotificationEntry(
         id=f"{run.id}:digest", kind="digest",
         pages_total=run.pages_total,
@@ -121,6 +129,7 @@ def _event_entries(
         to_outdated=run.to_outdated,
         to_lost=run.to_lost,
         affected_tests=affected,
+        failed_pages=failed_pages,
         skipped_reason=_skip_reason(run),
         **base,
     ))

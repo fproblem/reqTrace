@@ -22,6 +22,9 @@ class NotificationEntry(BaseModel):
     to_outdated: int = 0
     to_lost: int = 0
     affected_tests: list[str] = []
+    # Названия страниц, не обновившихся в прогоне (ошибки уровня страницы,
+    # v1.7.2): дайджест называет их поимённо, а не абстрактным числом.
+    failed_pages: list[str] = []
     # confluence_unreachable | no_valid_credentials — у run_skipped всегда,
     # у digest — если прогон прерван (обрыв связи посреди прогона).
     skipped_reason: Optional[str] = None

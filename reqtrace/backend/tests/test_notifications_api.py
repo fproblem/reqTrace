@@ -150,10 +150,12 @@ class DigestEntriesTest(NotificationsBase):
         cred = make_cred(project, self.user)
         run = make_run(
             project, to_outdated=4, to_lost=1,
-            pages_total=14, pages_changed=3,
+            pages_total=14, pages_changed=3, pages_failed=2,
             details={"pages": [
                 {"page_id": "p1", "affected_tests": ["PAY-4", "PAY-1"]},
                 {"page_id": "p2", "affected_tests": ["PAY-1", "REQ-2"]},
+                {"page_id": "p3", "title": "Команда", "error": "Failed to fetch"},
+                {"page_id": "p4", "title": "iOS Jailbreak", "error": "ReadTimeout"},
             ]},
         )
         data = self.get_entries([cred], [(run, project.name)])
@@ -167,6 +169,9 @@ class DigestEntriesTest(NotificationsBase):
         self.assertEqual(entry["pages_changed"], 3)
         # Ключи собраны по всем страницам details, без дублей, по алфавиту.
         self.assertEqual(entry["affected_tests"], ["PAY-1", "PAY-4", "REQ-2"])
+        # Страницы с ошибкой — по названиям, в порядке прогона (v1.7.2);
+        # страницы с находками (без "error") в списке не оказываются.
+        self.assertEqual(entry["failed_pages"], ["Команда", "iOS Jailbreak"])
         self.assertTrue(entry["unseen"])
         self.assertEqual(data["unseen_count"], 1)
 

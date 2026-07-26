@@ -6,6 +6,8 @@ import { formatCheckedAt, plural } from '../pages/TestsPage';
 
 /** Сколько ключей тестов называем в дайджесте поимённо; остальные — «и ещё N». */
 const MAX_TEST_KEYS = 2;
+/** Сколько названий не обновившихся страниц называем; остальные — «и ещё N». */
+const MAX_FAILED_PAGES = 2;
 
 export function notificationTitle(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid') return `Подключение к «${e.project_name}» отклонено`;
@@ -68,10 +70,23 @@ export function notificationBody(e: NotificationEntry): string {
     parts.push(`Затронуты тесты ${shown.join(', ')}${rest > 0 ? ` и ещё ${rest}` : ''}`);
   }
   if (e.pages_failed > 0) {
-    parts.push(
-      `${e.pages_failed} ${plural(e.pages_failed,
-        ['страница не обновилась', 'страницы не обновились', 'страниц не обновились'])}`,
-    );
+    // Поимённо, а не абстрактным числом (v1.7.2): какие страницы проверить
+    // руками — главный вопрос читателя этой строки. Фоллбек числом — для
+    // старых записей журнала без названий.
+    const named = (e.failed_pages ?? []).slice(0, MAX_FAILED_PAGES);
+    if (named.length > 0) {
+      const rest = e.pages_failed - named.length;
+      parts.push(
+        `${plural(e.pages_failed,
+          ['Не обновилась страница', 'Не обновились страницы', 'Не обновились страницы'])} `
+        + `${named.map(t => `«${t}»`).join(', ')}${rest > 0 ? ` и ещё ${rest}` : ''}`,
+      );
+    } else {
+      parts.push(
+        `${e.pages_failed} ${plural(e.pages_failed,
+          ['страница не обновилась', 'страницы не обновились', 'страниц не обновились'])}`,
+      );
+    }
   }
   if (e.skipped_reason === 'no_valid_credentials') {
     parts.push('Прогон прерван: закончились работающие подключения');

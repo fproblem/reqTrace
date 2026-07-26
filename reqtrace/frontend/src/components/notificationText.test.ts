@@ -71,7 +71,7 @@ describe('notificationBody: дайджест', () => {
     );
   });
 
-  it('сообщает об ошибках страниц и прерванном прогоне', () => {
+  it('сообщает об ошибках страниц числом, когда названий нет (старый журнал)', () => {
     const e = entry({
       pages_changed: 2, pages_failed: 2, skipped_reason: 'no_valid_credentials',
     });
@@ -79,6 +79,21 @@ describe('notificationBody: дайджест', () => {
       'Изменились 2 страницы из 14. 2 страницы не обновились. '
       + 'Прогон прерван: закончились работающие подключения',
     );
+  });
+
+  it('называет не обновившиеся страницы поимённо, хвост — числом', () => {
+    const e = entry({
+      pages_failed: 3,
+      failed_pages: ['Backend и API', 'iOS Jailbreak', 'Целесообразность автоматизации'],
+    });
+    expect(notificationBody(e)).toBe(
+      'Не обновились страницы «Backend и API», «iOS Jailbreak» и ещё 1',
+    );
+  });
+
+  it('одна не обновившаяся страница — по имени и со склонением', () => {
+    const e = entry({ pages_failed: 1, failed_pages: ['Команда'] });
+    expect(notificationBody(e)).toBe('Не обновилась страница «Команда»');
   });
 });
 

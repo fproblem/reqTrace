@@ -115,12 +115,15 @@ export function notificationDayLabel(iso: string, now: Date = new Date()): strin
   return d.getFullYear() === now.getFullYear() ? label : `${label} ${d.getFullYear()}`;
 }
 
-/** Куда ведёт клик: дайджест — к худшему на экране «Тесты» (фильтры v1.6.1),
- * проблемы кред и пропуски — в профиль, чиниться. */
+/** Куда ведёт клик: дайджест с находками — к худшему на экране «Тесты»
+ * (фильтры v1.6.1); всё, что об ошибках — креды, пропуски и дайджест без
+ * находок (страницы не обновились, прогон прерван), — в профиль, чиниться:
+ * в такой ситуации интересует подключение к проекту, а не тесты (v1.7.2). */
 export function notificationLink(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid' || e.kind === 'run_skipped') return '/settings';
   if (e.to_lost > 0) return `/tests/${e.project_id}?f=lost`;
   if (e.to_outdated > 0) return `/tests/${e.project_id}?f=outdated`;
+  if (e.pages_failed > 0 || e.skipped_reason) return '/settings';
   return `/tests/${e.project_id}`;
 }
 

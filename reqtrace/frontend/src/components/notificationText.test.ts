@@ -191,7 +191,16 @@ describe('notificationLink', () => {
   it('дайджест ведёт к худшему: сначала утраты, потом «требует проверки»', () => {
     expect(notificationLink(entry({ to_lost: 1, to_outdated: 3 }))).toBe('/tests/p1?f=lost');
     expect(notificationLink(entry({ to_outdated: 3 }))).toBe('/tests/p1?f=outdated');
-    expect(notificationLink(entry({ pages_failed: 1 }))).toBe('/tests/p1');
+  });
+
+  it('дайджест только об ошибках ведёт чинить подключение в профиль', () => {
+    expect(notificationLink(entry({ pages_failed: 1 }))).toBe('/settings');
+    expect(notificationLink(entry({ skipped_reason: 'confluence_unreachable' })))
+      .toBe('/settings');
+    // Находки главнее ошибок: если есть переходы привязок, действие — на
+    // «Тестах», а об обрыве расскажет соседняя строка «не выполняется».
+    expect(notificationLink(entry({ to_outdated: 1, pages_failed: 2 })))
+      .toBe('/tests/p1?f=outdated');
   });
 
   it('проблемы кред и пропуски ведут в профиль', () => {

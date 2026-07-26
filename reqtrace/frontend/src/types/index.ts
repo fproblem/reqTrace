@@ -260,18 +260,32 @@ export interface TestLinkRef {
   excerpt: string;
 }
 
+/** Строка ЛЁГКОГО списка тестов (v1.7.3): только нужное закрытой строке —
+ *  ключ, название и счётчики. Привязки с цитатами приезжают отдельным
+ *  запросом при раскрытии (TestKeyLinks). */
 export interface TestIndexEntry {
   key: string;
-  links: TestLinkRef[];
   /** Название теста из Jira (v1.7.0); нет — показывается только ключ. */
   summary?: string | null;
   /** not_found — задачи нет в Jira: ключ серый, без ссылки. */
   jira_status?: 'ok' | 'not_found' | 'error' | null;
+  active: number;
+  outdated: number;
+  lost: number;
+  pages_count: number;
 }
 
 export interface ProjectTestIndex {
   project_id: string;
   project_name: string;
   jira_base_url: string | null;
+  /** Страниц, покрытых хоть одним тестом, — для строки сводки. */
+  pages_covered: number;
   tests: TestIndexEntry[];
+}
+
+/** Привязки одного ключа с цитатами — грузятся при раскрытии строки (v1.7.3). */
+export interface TestKeyLinks {
+  key: string;
+  links: TestLinkRef[];
 }

@@ -84,21 +84,40 @@ class TestLinkRef(BaseModel):
     page_id: UUID
     page_title: str
     status: str
-    excerpt: str        # цитата, обрезанная на сервере — полная не нужна списку
+    excerpt: str        # цитата целиком (v1.6.5); сколько показать — решает фронт
 
 
 class TestIndexEntry(BaseModel):
+    """Строка ЛЁГКОГО списка тестов (v1.7.3): только то, что нужно закрытой
+    строке — ключ, название и счётчики. Привязки с цитатами приезжают
+    отдельным запросом при раскрытии (см. TestKeyLinks): весь индекс с
+    цитатами разом весил бы мегабайты уже на сотнях тестов."""
     key: str
-    links: list[TestLinkRef]
     # Название теста из Jira (v1.7.0); None — имени нет, UI показывает ключ.
     summary: Optional[str] = None
     # ok | not_found | error; None — в Jira не ходили. not_found — задачи нет:
     # чип серый, ссылка снята.
     jira_status: Optional[str] = None
+    # Счётчики привязок по статусам и число страниц, где живёт ключ, —
+    # для пилюль, фильтров и сортировки без загрузки самих привязок.
+    active: int = 0
+    outdated: int = 0
+    lost: int = 0
+    pages_count: int = 0
 
 
 class ProjectTestIndex(BaseModel):
     project_id: UUID
     project_name: str
     jira_base_url: Optional[str] = None   # для ссылок ключей в Jira
+    # Сколько разных страниц покрыто хоть одним тестом — для строки сводки
+    # (сумма pages_count по ключам считала бы общие страницы дважды).
+    pages_covered: int = 0
     tests: list[TestIndexEntry]
+
+
+class TestKeyLinks(BaseModel):
+    """Привязки одного ключа с цитатами — вторая половина реверс-индекса
+    (v1.7.3), грузится при раскрытии строки."""
+    key: str
+    links: list[TestLinkRef]

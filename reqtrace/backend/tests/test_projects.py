@@ -642,33 +642,35 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), [])
 
-    def test_test_index_aggregates_normalizes_and_keeps_full_quote(self):
+    def test_test_index_aggregates_counts_without_quotes(self):
+        """Лёгкий список (v1.7.3): ключи нормализуются и склеиваются, по
+        каждому — счётчики статусов и страниц; цитат в ответе нет вовсе —
+        их отдаёт /test-links при раскрытии строки."""
         project = make_project()
         cred = make_cred(project, self.user)
         self.session.objects[(Project, project.id)] = project
-        long_text = "х" * 200
         pg1, pg2 = uuid.uuid4(), uuid.uuid4()
         h1, h2 = uuid.uuid4(), uuid.uuid4()
-        l1, l2, l3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
         self.session.execute_results = [
             FakeResult(cred),   # членство ok
-            FakeResult([(pg1, "Оплата"), (pg2, "Возвраты")]),
-            FakeResult([(h1, pg1, "active", long_text), (h2, pg2, "lost", "коротко")]),
+            FakeResult([(pg1,), (pg2,)]),
+            # статусы БЕЗ text_content: список цитаты не поднимает
+            FakeResult([(h1, pg1, "active"), (h2, pg2, "lost")]),
             # req-1 в двух написаниях склеивается в REQ-1
-            FakeResult([(l1, h1, "req-1"), (l2, h2, "REQ-1"), (l3, h2, "REQ-2")]),
+            FakeResult([(h1, "req-1"), (h2, "REQ-1"), (h2, "REQ-2")]),
         ]
         resp = self.client.get(f"/api/projects/{project.id}/tests")
         self.assertEqual(resp.status_code, 200, resp.text)
         data = resp.json()
         self.assertEqual([t["key"] for t in data["tests"]], ["REQ-1", "REQ-2"])
-        req1 = data["tests"][0]
-        # привязки отсортированы по названию страницы
-        self.assertEqual([l["page_title"] for l in req1["links"]], ["Возвраты", "Оплата"])
-        # Цитата отдаётся целиком (v1.6.5) — обрезал раньше бэк до 140,
-        # теперь сколько показывать решает фронт (line-clamp).
-        long_link = req1["links"][1]
-        self.assertEqual(long_link["excerpt"], long_text)
-        self.assertEqual(req1["links"][0]["status"], "lost")
+        req1, req2 = data["tests"]
+        self.assertEqual((req1["active"], req1["outdated"], req1["lost"]), (1, 0, 1))
+        self.assertEqual(req1["pages_count"], 2)
+        self.assertEqual((req2["active"], req2["outdated"], req2["lost"]), (0, 0, 1))
+        self.assertEqual(req2["pages_count"], 1)
+        # Общие страницы не двоятся: pg2 несёт и REQ-1, и REQ-2.
+        self.assertEqual(data["pages_covered"], 2)
+        self.assertNotIn("links", req1)
 
     def test_test_index_requires_membership(self):
         project = make_project()
@@ -682,6 +684,50 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         self.session.objects[(Project, project.id)] = project
         resp = self.client.get(f"/api/projects/{project.id}/tests")
         self.assertEqual(resp.status_code, 404)
+
+    def test_test_links_returns_full_quotes_sorted(self):
+        """Раскрытие ключа (v1.7.3): привязки с полными цитатами, порядок —
+        по названию страницы; ключ нормализуется (upper/trim)."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        long_text = "х" * 200
+        pg1, pg2 = uuid.uuid4(), uuid.uuid4()
+        h1, h2 = uuid.uuid4(), uuid.uuid4()
+        l1, l2 = uuid.uuid4(), uuid.uuid4()
+        self.session.execute_results = [
+            FakeResult(cred),   # членство ok
+            # join-строки: link_id, highlight_id, page_id, status, text, title
+            FakeResult([
+                (l1, h1, pg1, "active", long_text, "Оплата"),
+                (l2, h2, pg2, "lost", "коротко", "Возвраты"),
+            ]),
+        ]
+        resp = self.client.get(f"/api/projects/{project.id}/test-links?key=req-1%20")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        self.assertEqual(data["key"], "REQ-1")
+        self.assertEqual([l["page_title"] for l in data["links"]], ["Возвраты", "Оплата"])
+        # Цитата отдаётся целиком (v1.6.5): сколько показывать — line-clamp фронта.
+        self.assertEqual(data["links"][1]["excerpt"], long_text)
+        self.assertEqual(data["links"][0]["status"], "lost")
+
+    def test_test_links_empty_is_ok_not_404(self):
+        """Ключ отвязали, пока строка была открыта, — пустой список, не ошибка."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(cred), FakeResult([])]
+        resp = self.client.get(f"/api/projects/{project.id}/test-links?key=REQ-9")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["links"], [])
+
+    def test_test_links_requires_membership(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(None)]   # кред нет
+        resp = self.client.get(f"/api/projects/{project.id}/test-links?key=REQ-1")
+        self.assertEqual(resp.status_code, 403)
 
 
 class TestManualRefreshRun(ProjectTestBase):

@@ -301,20 +301,25 @@ export const NotificationBell: React.FC = () => {
           role="menu"
           style={{
             position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-            width: '400px', maxHeight: '520px', overflowY: 'auto',
+            width: '400px', maxHeight: '520px',
+            display: 'flex', flexDirection: 'column',
+            // Скроллится только список ниже шапки — как в модалках (Modal,
+            // «История изменений»): скроллбар на самой панели вылезал сбоку
+            // от скруглённого угла и увозил заголовок вместе со списком.
+            overflow: 'hidden',
             background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(20px)',
             border: `1px solid ${colors.border}`, borderRadius: radii.lg,
             boxShadow: shadows.cardHover,
-            padding: '10px', boxSizing: 'border-box',
+            boxSizing: 'border-box',
             zIndex: 30,
             ...panelFade,
           }}
         >
           <div style={{
             display: 'flex', alignItems: 'flex-start', gap: '8px',
-            padding: '6px 6px 10px 10px',
+            padding: '16px 16px 10px 20px',
             borderBottom: `1px solid ${colors.border}`,
-            marginBottom: '6px',
+            flexShrink: 0,
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '14px', fontWeight: 700, color: colors.textPrimary }}>
@@ -349,6 +354,10 @@ export const NotificationBell: React.FC = () => {
             </button>
           </div>
 
+          {/* Скролл-зона списка: minHeight 0 разрешает флекс-ребёнку ужаться
+              под maxHeight панели, прежние отступы панели (10px) переехали
+              сюда. */}
+          <div style={{ overflowY: 'auto', minHeight: 0, padding: '6px 10px 10px' }}>
           {data === null ? (
             <div style={{ padding: '16px 10px', fontSize: '13px', color: colors.textSecondary }}>
               Загрузка…
@@ -424,6 +433,7 @@ export const NotificationBell: React.FC = () => {
               );
             })
           )}
+          </div>
         </div>
       )}
     </div>

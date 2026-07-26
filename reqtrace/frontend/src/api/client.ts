@@ -3,7 +3,7 @@ import type {
   Highlight, TestLink, DiffResponse, BaselineInfo,
   ProjectTree, TreeSyncResult,
   Project, CredentialCheckResult,
-  ProjectTestsStats, ProjectTestIndex,
+  ProjectTestsStats, ProjectTestIndex, TestKeyLinks,
   NotificationsResponse, RefreshStatusResponse,
 } from '../types';
 
@@ -240,6 +240,11 @@ export const api = {
 
   getProjectTests: (projectId: string) =>
     request<ProjectTestIndex>(`/projects/${projectId}/tests`),
+  // Привязки одного ключа (v1.7.3) — при раскрытии строки на «Тестах».
+  // key — query-параметр: нестандартные ключи бывают с «/», сегмент пути
+  // такой ключ сломал бы.
+  getTestLinks: (projectId: string, key: string) =>
+    request<TestKeyLinks>(`/projects/${projectId}/test-links?key=${encodeURIComponent(key)}`),
 
   // Projects (v1.5.1): личные креды, живая проверка подключения
   listProjects: () =>

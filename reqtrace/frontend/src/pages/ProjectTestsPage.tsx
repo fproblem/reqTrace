@@ -6,10 +6,15 @@
 //
 // Поиск и фильтр живут в URL (?q=, ?f=): возврат со страницы привязки и F5
 // не сбрасывают контекст.
+//
+// Производительность (v1.7.3): список приезжает ЛЁГКИМ — ключи, названия и
+// счётчики, без цитат; привязки ключа подтягиваются отдельным запросом при
+// раскрытии строки и запоминаются до конца визита. Поиск/фильтры остаются
+// клиентскими и мгновенными — они и раньше смотрели только на ключ и название.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { ProjectTestIndex, TestIndexEntry } from '../types';
+import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
 import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
@@ -18,6 +23,8 @@ import { FadeIn } from '../components/fadePresence';
 import { KeyIssueInformer } from '../components/KeyIssueInformer';
 import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { TreeReveal } from '../components/TreeReveal';
+import { AnimatedHeight } from '../components/AnimatedHeight';
+import { RefreshIcon } from '../components/RefreshIcon';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
 import { plural, StatusCountPill } from './TestsPage';
@@ -39,22 +46,49 @@ const statusLabel: Record<string, { label: string; color: string }> = {
 
 // Производные строки ключа: счётчики статусов и признак «мёртвого покрытия»
 // (все привязки утрачены — тест формально есть, но не держит ничего живого).
+// Счётчики теперь считает бэкенд (лёгкий список v1.7.3) — здесь только форма.
 function derive(entry: TestIndexEntry) {
-  const counts = { active: 0, outdated: 0, lost: 0 };
-  const pages = new Set<string>();
-  for (const link of entry.links) {
-    if (link.status === 'active') counts.active++;
-    else if (link.status === 'outdated') counts.outdated++;
-    else if (link.status === 'lost') counts.lost++;
-    pages.add(link.page_id);
-  }
+  const total = entry.active + entry.outdated + entry.lost;
   return {
-    counts,
-    pagesCount: pages.size,
-    allLost: entry.links.length > 0 && counts.lost === entry.links.length,
+    counts: { active: entry.active, outdated: entry.outdated, lost: entry.lost },
+    total,
+    pagesCount: entry.pages_count,
+    allLost: total > 0 && entry.lost === total,
     nonstandard: !isLikelyJiraKey(entry.key),
   };
 }
+
+// Общая геометрия строки привязки: ею живут и настоящие строки, и строка
+// ожидания — раскрытие в ожидании ответа держит ровно высоту одной привязки,
+// чтобы приход данных не дёргал раскладку (плавный дорост — AnimatedHeight).
+// Разделитель от строки ключа несёт только ПЕРВАЯ строка блока (как раньше).
+const linkRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: '12px',
+  minHeight: '44px', padding: '8px 14px',
+};
+const linkRowDivider: React.CSSProperties = {
+  borderTop: `1px solid ${colors.border}`,
+};
+
+// Ожидание привязок раскрытого ключа: первые 200мс — пустая строка (быстрые
+// ответы не мигают лоадером, порог v1.7.1), дальше мягко проявляется лоадер
+// с подписью. Той же высоты, что строка с одной привязкой.
+const LinksPending: React.FC = () => {
+  const showLoader = useDelayedFlag(true);
+  return (
+    <div style={{ ...linkRowStyle, ...linkRowDivider }}>
+      {showLoader && (
+        <FadeIn style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          color: colors.textSecondary,
+        }}>
+          <RefreshIcon size={14} spinning />
+          <span style={{ fontSize: '13px' }}>Подтягиваем привязки…</span>
+        </FadeIn>
+      )}
+    </div>
+  );
+};
 
 export const ProjectTestsPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -84,12 +118,19 @@ export const ProjectTestsPage: React.FC = () => {
     setSearchParams(next, { replace: true });
   };
 
+  // Привязки раскрытых ключей (v1.7.3): приезжают отдельным запросом и
+  // запоминаются до конца визита — повторное раскрытие мгновенно и без сети.
+  const [linksByKey, setLinksByKey] = useState<Record<string, TestLinkRef[]>>({});
+  const pendingKeysRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
     setData(null);
     setFailed(false);
     setExpanded(new Set());
+    setLinksByKey({});
+    pendingKeysRef.current.clear();
     api.getProjectTests(projectId)
       .then(d => { if (!cancelled) setData(d); })
       .catch((e: any) => {
@@ -100,6 +141,28 @@ export const ProjectTestsPage: React.FC = () => {
       });
     return () => { cancelled = true; };
   }, [projectId, showToast]);
+
+  // Единая точка загрузки привязок: срабатывает на любое появление ключа в
+  // expanded — клик по строке, ключ прибытия (?key=). Ошибка сворачивает
+  // строку обратно: повторный клик — повторная попытка.
+  useEffect(() => {
+    if (!projectId || !data) return;
+    for (const key of Array.from(expanded)) {
+      if (linksByKey[key] || pendingKeysRef.current.has(key)) continue;
+      pendingKeysRef.current.add(key);
+      api.getTestLinks(projectId, key)
+        .then(r => setLinksByKey(prev => ({ ...prev, [key]: r.links })))
+        .catch((e: any) => {
+          showToast('error', `Не удалось загрузить привязки ${key}`, e.message);
+          setExpanded(prev => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        })
+        .finally(() => pendingKeysRef.current.delete(key));
+    }
+  }, [expanded, data, projectId, linksByKey, showToast]);
 
   // Применение ключа прибытия: данные пришли → строка раскрыта, подкручена
   // в центр и коротко пульсирует (той же анимацией, что «Актуализировать»
@@ -156,18 +219,14 @@ export const ProjectTestsPage: React.FC = () => {
         return true;
       })
       .sort((a, b) =>
-        b.entry.links.length - a.entry.links.length || compareTestKeys(a.entry.key, b.entry.key));
+        b.total - a.total || compareTestKeys(a.entry.key, b.entry.key));
   }, [allRows, q, filter]);
 
   const summary = useMemo(() => {
     if (!data) return null;
-    const pages = new Set<string>();
     let links = 0;
-    for (const t of data.tests) {
-      links += t.links.length;
-      for (const l of t.links) pages.add(l.page_id);
-    }
-    return { tests: data.tests.length, links, pages: pages.size };
+    for (const t of data.tests) links += t.active + t.outdated + t.lost;
+    return { tests: data.tests.length, links, pages: data.pages_covered };
   }, [data]);
 
   // Раскрытие пишет ключ в URL (?key=) как «точку интереса»: возврат со
@@ -337,7 +396,7 @@ export const ProjectTestsPage: React.FC = () => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {rows.map(({ entry, counts, pagesCount, allLost, nonstandard }) => {
+          {rows.map(({ entry, counts, total, pagesCount, allLost, nonstandard }) => {
             const isOpen = expanded.has(entry.key);
             // Jira не знает такой задачи — ключ гаснет и теряет ссылку
             // (/browse дал бы 404); информер объяснит (v1.7.0).
@@ -423,7 +482,7 @@ export const ProjectTestsPage: React.FC = () => {
                       </span>
                     )}
                     <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
-                      {entry.links.length} {plural(entry.links.length, ['привязка', 'привязки', 'привязок'])}
+                      {total} {plural(total, ['привязка', 'привязки', 'привязок'])}
                       {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
                     </span>
                   </div>
@@ -459,12 +518,24 @@ export const ProjectTestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Каскад раскрытия — тот же TreeReveal, что в дереве страниц
-                    (v1.6.6): аккордеон отвечает так же мягко. Разделитель —
-                    на первой строке, а не на контейнере: контейнера нет,
-                    строки анимируются каждая в своей grid-обёртке. */}
+                {/* Раскрытие — TreeReveal (мягкость аккордеона, v1.6.6), внутри
+                    AnimatedHeight: пока привязки едут, блок держит высоту одной
+                    строки (LinksPending), а с приходом ответа плавно дорастает
+                    до реального списка — без рывка лоадер → контент (v1.7.3).
+                    Разделитель — на строках (borderTop): у ожидания и у первой
+                    привязки он одинаковый, граница не прыгает. */}
                 <TreeReveal expanded={isOpen}>
-                  {entry.links.map((link, linkIndex) => {
+                  <AnimatedHeight>
+                  {linksByKey[entry.key] === undefined ? (
+                    <LinksPending />
+                  ) : linksByKey[entry.key].length === 0 ? (
+                    <div style={{
+                      ...linkRowStyle, ...linkRowDivider,
+                      color: colors.textTertiary, fontSize: '13px', fontStyle: 'italic',
+                    }}>
+                      Привязок не осталось — возможно, их только что отвязали
+                    </div>
+                  ) : linksByKey[entry.key].map((link, linkIndex) => {
                       const st = statusLabel[link.status] ?? statusLabel.active;
                       return (
                         <div
@@ -481,11 +552,9 @@ export const ProjectTestsPage: React.FC = () => {
                           }}
                           title="Открыть страницу на этом выделении"
                           style={{
-                            display: 'flex', alignItems: 'center', gap: '12px',
-                            minHeight: '44px', padding: '8px 14px',
+                            ...linkRowStyle,
+                            ...(linkIndex === 0 ? linkRowDivider : undefined),
                             cursor: 'pointer', transition: 'background 0.15s',
-                            borderTop: linkIndex === 0
-                              ? `1px solid ${colors.border}` : 'none',
                           }}
                           onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -523,6 +592,7 @@ export const ProjectTestsPage: React.FC = () => {
                         </div>
                       );
                     })}
+                  </AnimatedHeight>
                 </TreeReveal>
               </div>
             );

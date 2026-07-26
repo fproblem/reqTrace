@@ -42,6 +42,7 @@ from app.schemas.project import (
     ProjectTestsStats,
     ProjectUpdate,
     TestIndexEntry,
+    TestKeyLinks,
     TestLinkRef,
 )
 from app.services import confluence, jira, test_names
@@ -242,11 +243,15 @@ async def project_test_index(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Реверс-индекс тестов проекта: ключ → привязки (страница, статус, цитата).
+    """Реверс-индекс тестов проекта — ЛЁГКИЙ список (v1.7.3): ключ, название,
+    счётчики статусов и страниц. Цитаты сюда сознательно НЕ грузятся (ни из
+    БД, ни в ответ): весь индекс с цитатами весил бы мегабайты уже на сотнях
+    тестов, а закрытой строке списка нужны только счётчики. Привязки ключа
+    отдаёт project_test_links — при раскрытии строки.
 
     Доступ — как к контенту проекта (членство ok; чужое демо «не существует»).
-    Ключи агрегируются по нормализованной форме; порядок ключей и привязок —
-    дело фронта (натуральная сортировка уже живёт там, testOrder.ts).
+    Ключи агрегируются по нормализованной форме; порядок ключей — дело фронта
+    (натуральная сортировка уже живёт там, testOrder.ts).
     """
     project = await db.get(Project, project_id)
     if not project:
@@ -254,57 +259,111 @@ async def project_test_index(
     await require_project_access(db, project, current_user)
 
     page_rows = (await db.execute(
-        select(Page.id, Page.title).where(Page.project_id == project.id)
+        select(Page.id).where(Page.project_id == project.id)
     )).all()
-    page_title = {page_id: title for page_id, title in page_rows}
+    page_ids = [row[0] for row in page_rows]
 
     hl_rows = []
-    if page_title:
+    if page_ids:
         hl_rows = (await db.execute(
-            select(Highlight.id, Highlight.page_id, Highlight.status, Highlight.text_content)
-            .where(Highlight.page_id.in_(list(page_title)))
+            select(Highlight.id, Highlight.page_id, Highlight.status)
+            .where(Highlight.page_id.in_(page_ids))
         )).all()
-    hl_by_id = {hl_id: (page_id, status, text) for hl_id, page_id, status, text in hl_rows}
+    hl_by_id = {hl_id: (page_id, status) for hl_id, page_id, status in hl_rows}
 
     link_rows = []
     if hl_by_id:
         link_rows = (await db.execute(
-            select(HighlightTest.id, HighlightTest.highlight_id, HighlightTest.test_key)
+            select(HighlightTest.highlight_id, HighlightTest.test_key)
             .where(HighlightTest.highlight_id.in_(list(hl_by_id)))
         )).all()
 
-    entries: dict[str, list[TestLinkRef]] = {}
-    for link_id, hl_id, key in link_rows:
-        page_id, status, text = hl_by_id[hl_id]
-        entries.setdefault(_norm_key(key), []).append(TestLinkRef(
-            link_id=link_id,
-            highlight_id=hl_id,
-            page_id=page_id,
-            page_title=page_title[page_id],
-            status=status,
-            # Цитата целиком (v1.6.5): раньше резалась до 140 символов, но
-            # именно текст требования — то, ради чего открывают реверс-индекс;
-            # сколько строк показать, решает фронт (line-clamp).
-            excerpt=text or "",
-        ))
+    counts: dict[str, dict[str, int]] = {}
+    key_pages: dict[str, set] = {}
+    covered_pages: set = set()
+    for hl_id, key in link_rows:
+        page_id, status = hl_by_id[hl_id]
+        norm = _norm_key(key)
+        per_key = counts.setdefault(norm, {"active": 0, "outdated": 0, "lost": 0})
+        if status in per_key:
+            per_key[status] += 1
+        key_pages.setdefault(norm, set()).add(page_id)
+        covered_pages.add(page_id)
 
     # Названия тестов из Jira (v1.7.0) — свойство ключа, не привязки.
     details = await test_names.load_details(db, project.id)
     tests = [
         TestIndexEntry(
             key=key,
-            links=sorted(links, key=lambda l: (l.page_title, l.excerpt)),
             summary=details[key].summary if key in details else None,
             jira_status=details[key].fetch_result if key in details else None,
+            active=per_key["active"],
+            outdated=per_key["outdated"],
+            lost=per_key["lost"],
+            pages_count=len(key_pages[key]),
         )
-        for key, links in sorted(entries.items())
+        for key, per_key in sorted(counts.items())
     ]
     return ProjectTestIndex(
         project_id=project.id,
         project_name=project.name,
         jira_base_url=project.jira_base_url,
+        pages_covered=len(covered_pages),
         tests=tests,
     )
+
+
+@router.get("/{project_id}/test-links", response_model=TestKeyLinks)
+async def project_test_links(
+    project_id: UUID,
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Привязки одного ключа с цитатами — вторая половина реверс-индекса
+    (v1.7.3): грузится при раскрытии строки на экране «Тесты».
+
+    key принимается в любом написании и нормализуется как в списке
+    (upper/trim); нормализация продублирована в SQL, чтобы не поднимать из БД
+    цитаты чужих ключей. key — query-параметр, а не сегмент пути:
+    нестандартные ключи бывают с «/» и ломали бы маршрут.
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_access(db, project, current_user)
+
+    norm = _norm_key(key)
+    rows = (await db.execute(
+        select(
+            HighlightTest.id, Highlight.id, Highlight.page_id,
+            Highlight.status, Highlight.text_content, Page.title,
+        )
+        .join(Highlight, Highlight.id == HighlightTest.highlight_id)
+        .join(Page, Page.id == Highlight.page_id)
+        .where(
+            Page.project_id == project.id,
+            func.upper(func.trim(HighlightTest.test_key)) == norm,
+        )
+    )).all()
+
+    links = [
+        TestLinkRef(
+            link_id=link_id,
+            highlight_id=hl_id,
+            page_id=page_id,
+            page_title=page_title,
+            status=status,
+            # Цитата целиком (v1.6.5): именно текст требования — то, ради
+            # чего открывают реверс-индекс; сколько строк показать, решает
+            # фронт (line-clamp).
+            excerpt=text or "",
+        )
+        for link_id, hl_id, page_id, status, text, page_title in rows
+    ]
+    links.sort(key=lambda l: (l.page_title, l.excerpt))
+    # Пустой список — не 404: ключ могли отвязать, пока строка была открыта.
+    return TestKeyLinks(key=norm, links=links)
 
 
 @router.post("/{project_id}/refresh-run", status_code=202)

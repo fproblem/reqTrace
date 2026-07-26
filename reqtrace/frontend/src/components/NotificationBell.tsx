@@ -14,11 +14,15 @@ import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, ShieldIcon, SyncIc
 import { useFadeToggle } from './fadePresence';
 import { XIcon } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
-import { formatCheckedAt } from '../pages/TestsPage';
 import {
-  notificationBody, notificationLink, notificationTint, notificationTitle,
-  runResultText,
+  notificationBody, notificationDayLabel, notificationLink, notificationTint,
+  notificationTitle, runResultText,
 } from './notificationText';
+
+// Время записи внутри дневного блока: день называет ярлык группы,
+// у самой записи остаются только часы и минуты.
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
 // Ночной цикл событий — бейдж меняется раз в сутки; интервал нужен только
 // вкладкам-долгожителям, чтобы утренний дайджест появился без перезагрузки.
@@ -178,6 +182,18 @@ export const NotificationBell: React.FC = () => {
 
   const unseenEntries = data?.entries.filter(e => e.unseen) ?? [];
   const badgeCount = data?.unseen_count ?? 0;
+
+  // Группировка списка по дням (v1.7.2): события одного дня — один блок,
+  // между блоками дивайдер — приём «Истории изменений», где так отделяются
+  // версии. Записи приходят отсортированными по времени, поэтому достаточно
+  // склеивать соседей с одинаковым ярлыком дня.
+  const dayGroups: { label: string; entries: NotificationEntry[] }[] = [];
+  for (const e of data?.entries ?? []) {
+    const label = notificationDayLabel(e.happened_at);
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.label === label) last.entries.push(e);
+    else dayGroups.push({ label, entries: [e] });
+  }
   const badgeColor = unseenEntries.some(e => notificationTint(e) === 'red')
     ? colors.statusLost
     : colors.statusOutdated;
@@ -374,7 +390,23 @@ export const NotificationBell: React.FC = () => {
               Как только первый пройдёт, его итог появится здесь
             </div>
           ) : (
-            data.entries.map(entry => {
+            dayGroups.map((group, gi) => (
+              <div
+                key={group.label}
+                style={gi > 0 ? {
+                  borderTop: `1px solid ${colors.border}`,
+                  marginTop: '8px',
+                  paddingTop: '8px',
+                } : undefined}
+              >
+                <div style={{
+                  padding: '4px 10px 2px',
+                  fontSize: '11px', fontWeight: 600,
+                  color: colors.textTertiary,
+                }}>
+                  {group.label}
+                </div>
+                {group.entries.map(entry => {
               const Icon = KIND_ICONS[entry.kind];
               return (
                 <button
@@ -419,7 +451,7 @@ export const NotificationBell: React.FC = () => {
                         marginLeft: 'auto', flexShrink: 0,
                         fontSize: '11px', color: colors.textTertiary,
                       }}>
-                        {formatCheckedAt(entry.happened_at)}
+                        {timeOf(entry.happened_at)}
                       </span>
                     </div>
                     <div style={{
@@ -431,7 +463,9 @@ export const NotificationBell: React.FC = () => {
                   </div>
                 </button>
               );
-            })
+                })}
+              </div>
+            ))
           )}
           </div>
         </div>

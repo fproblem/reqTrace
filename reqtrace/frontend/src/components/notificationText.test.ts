@@ -1,6 +1,7 @@
 import { FinishedRunSummary, NotificationEntry } from '../types';
 import {
   notificationBody,
+  notificationDayLabel,
   notificationLink,
   notificationTint,
   notificationTitle,
@@ -94,6 +95,32 @@ describe('notificationBody: дайджест', () => {
   it('одна не обновившаяся страница — по имени и со склонением', () => {
     const e = entry({ pages_failed: 1, failed_pages: ['Команда'] });
     expect(notificationBody(e)).toBe('Не обновилась страница «Команда»');
+  });
+
+  it('обещает добор, когда планировщик перечитает упавшие страницы', () => {
+    const e = entry({
+      pages_failed: 1, failed_pages: ['Команда'], retry_planned: true,
+    });
+    expect(notificationBody(e)).toBe(
+      'Не обновилась страница «Команда». Повторим попытку в течение часа',
+    );
+    // Без флага (прогон не последний или добор выключен) обещания нет.
+    expect(notificationBody(entry({ pages_failed: 1, failed_pages: ['Команда'] })))
+      .not.toContain('Повторим попытку');
+  });
+});
+
+describe('notificationDayLabel (группировка панели по дням)', () => {
+  const now = new Date('2026-07-26T12:00:00');
+
+  it('сегодня и вчера — словами, раньше — датой без года', () => {
+    expect(notificationDayLabel('2026-07-26T08:56:00', now)).toBe('Сегодня');
+    expect(notificationDayLabel('2026-07-25T23:59:00', now)).toBe('Вчера');
+    expect(notificationDayLabel('2026-07-23T16:14:00', now)).toBe('23 июля');
+  });
+
+  it('не текущий год называется явно', () => {
+    expect(notificationDayLabel('2025-12-30T10:00:00', now)).toBe('30 декабря 2025');
   });
 });
 

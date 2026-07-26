@@ -87,6 +87,12 @@ export function notificationBody(e: NotificationEntry): string {
           ['страница не обновилась', 'страницы не обновились', 'страниц не обновились'])}`,
       );
     }
+    // Обещание добора (v1.7.2): неудача не «оставлена как есть» — планировщик
+    // перечитает упавшие страницы. Флаг живёт только у последнего прогона:
+    // успешный ретрай гасит и его, и само обещание.
+    if (e.retry_planned) {
+      parts.push('Повторим попытку в течение часа');
+    }
   }
   if (e.skipped_reason === 'no_valid_credentials') {
     parts.push('Прогон прерван: закончились работающие подключения');
@@ -94,6 +100,19 @@ export function notificationBody(e: NotificationEntry): string {
     parts.push('Прогон прерван: Confluence стал недоступен, доберём при появлении связи');
   }
   return parts.join('. ');
+}
+
+/** Ярлык дня для группировки панели (v1.7.2): «Сегодня», «Вчера», дальше —
+ * дата словами («23 июля»; год добавляется, только когда он не текущий).
+ * Родня formatCheckedAt: тот же отсчёт по началу локального дня. */
+export function notificationDayLabel(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (days <= 0) return 'Сегодня';
+  if (days === 1) return 'Вчера';
+  const label = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  return d.getFullYear() === now.getFullYear() ? label : `${label} ${d.getFullYear()}`;
 }
 
 /** Куда ведёт клик: дайджест — к худшему на экране «Тесты» (фильтры v1.6.1),

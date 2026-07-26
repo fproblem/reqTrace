@@ -150,10 +150,12 @@ class DigestEntriesTest(NotificationsBase):
         cred = make_cred(project, self.user)
         run = make_run(
             project, to_outdated=4, to_lost=1,
-            pages_total=14, pages_changed=3,
+            pages_total=14, pages_changed=3, pages_failed=2,
             details={"pages": [
                 {"page_id": "p1", "affected_tests": ["PAY-4", "PAY-1"]},
                 {"page_id": "p2", "affected_tests": ["PAY-1", "REQ-2"]},
+                {"page_id": "p3", "title": "Команда", "error": "Failed to fetch"},
+                {"page_id": "p4", "title": "iOS Jailbreak", "error": "ReadTimeout"},
             ]},
         )
         data = self.get_entries([cred], [(run, project.name)])
@@ -167,6 +169,9 @@ class DigestEntriesTest(NotificationsBase):
         self.assertEqual(entry["pages_changed"], 3)
         # Ключи собраны по всем страницам details, без дублей, по алфавиту.
         self.assertEqual(entry["affected_tests"], ["PAY-1", "PAY-4", "REQ-2"])
+        # Страницы с ошибкой — по названиям, в порядке прогона (v1.7.2);
+        # страницы с находками (без "error") в списке не оказываются.
+        self.assertEqual(entry["failed_pages"], ["Команда", "iOS Jailbreak"])
         self.assertTrue(entry["unseen"])
         self.assertEqual(data["unseen_count"], 1)
 
@@ -182,6 +187,45 @@ class DigestEntriesTest(NotificationsBase):
         self.assertFalse(entry["unseen"])
         self.assertEqual(data["unseen_count"], 0)
         self.assertEqual(data["unseen_count"], 0)
+
+    def test_retry_promise_on_latest_settled_run_with_failures_today(self):
+        """Обещание добора (v1.7.2): последний состоявшийся прогон проекта —
+        сегодняшний partial с ошибками страниц → планировщик доберёт их,
+        и дайджест обязан это сказать."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        run = make_run(
+            project, status="partial", pages_total=5, pages_failed=1,
+            finished_at=datetime.now(timezone.utc),
+            details={"pages": [{"page_id": "p1", "title": "Команда", "error": "boom"}]},
+        )
+        data = self.get_entries([cred], [(run, project.name)])
+        [entry] = data["entries"]
+        self.assertEqual(entry["failed_pages"], ["Команда"])
+        self.assertTrue(entry["retry_planned"])
+
+    def test_no_retry_promise_when_newer_run_settled(self):
+        """Успешный ретрай (или любой более свежий состоявшийся прогон)
+        гасит обещание у старого дайджеста."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        now = datetime.now(timezone.utc)
+        old_failed = make_run(
+            project, status="partial", pages_total=5, pages_failed=1,
+            finished_at=now - timedelta(hours=3),
+            details={"pages": [{"page_id": "p1", "title": "Команда", "error": "boom"}]},
+        )
+        newer_ok = make_run(
+            project, status="ok", pages_total=1, pages_changed=1, to_outdated=1,
+            finished_at=now,
+        )
+        data = self.get_entries(
+            [cred], [(newer_ok, project.name), (old_failed, project.name)]
+        )
+        old_digest = next(
+            e for e in data["entries"] if e["id"] == f"{old_failed.id}:digest"
+        )
+        self.assertFalse(old_digest["retry_planned"])
 
     def test_interrupted_run_carries_reason_on_digest(self):
         project = make_project()

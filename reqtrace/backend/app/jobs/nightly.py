@@ -102,6 +102,43 @@ def pick_retry_projects(rows, now_utc: datetime, retry_after_minutes: int = 60) 
     return result
 
 
+def pick_failed_page_retries(rows, now_utc: datetime, retry_after_minutes: int = 60) -> dict:
+    """Точечный добор упавших страниц (v1.7.2): {project_id: [page_id, …]}.
+
+    rows — (project_id, status, started_at, finished_at, details) за
+    СЕГОДНЯШНИЙ локальный день. Прогон со статусом partial «сделан на
+    сегодня» (pick_retry_projects его не трогает), но страницы, упавшие в нём
+    сетевой ошибкой (таймаут на тяжёлой странице, обрыв), без добора ждали бы
+    следующей ночи. Добираем ТОЛЬКО их: если последний СОСТОЯВШИЙСЯ прогон
+    проекта (ok|partial; пропуски серию не разрывают) — partial с ошибками
+    страниц, а последняя попытка старше retry_after_minutes. Успешный ретрай
+    гасит серию сам — последним состоявшимся становится он.
+    """
+    by_project: dict = {}
+    for project_id, status, started_at, finished_at, details in rows:
+        by_project.setdefault(project_id, []).append((status, started_at, finished_at, details))
+
+    result: dict = {}
+    for project_id, attempts in by_project.items():
+        starts = [st for _, st, _, _ in attempts if st is not None]
+        if starts and now_utc - max(starts) < timedelta(minutes=retry_after_minutes):
+            continue  # свежая попытка — возможно, ещё идёт; подождём час
+        finished = sorted(
+            (a for a in attempts if a[2] is not None and a[0] in ("ok", "partial")),
+            key=lambda a: a[2], reverse=True,
+        )
+        if not finished or finished[0][0] != "partial":
+            continue  # без успехов вовсе — забота pick_retry_projects
+        page_ids = [
+            p["page_id"]
+            for p in (finished[0][3] or {}).get("pages", [])
+            if "error" in p
+        ]
+        if page_ids:
+            result[project_id] = page_ids
+    return result
+
+
 def status_transitions(before: dict, after: dict) -> tuple[list, list]:
     """Переходы статусов привязок за refresh (id → status до/после).
 
@@ -248,7 +285,8 @@ async def _refresh_one_page(session_factory, project: Project, cred_id, page_id)
 
 
 async def run_project(
-    session_factory, project: Project, *, trigger: str, prefer_user_id=None
+    session_factory, project: Project, *, trigger: str, prefer_user_id=None,
+    only_page_ids=None,
 ) -> uuid.UUID:
     """Прогон одного проекта: креды → sync-tree → refresh страниц; журналирует.
 
@@ -256,6 +294,10 @@ async def run_project(
     от имени нажавшего — он дал согласие кликом. Возвращает id строки журнала.
     Строка создаётся сразу (маркер «прогон идёт»); смерть процесса оставит её
     без finished_at — честный след.
+
+    only_page_ids — точечный добор упавших страниц (v1.7.2): refresh только
+    их, сверка дерева пропускается (она — работа полного прогона). Журнал
+    честный: pages_total = число добираемых страниц.
     """
     async with session_factory() as db:
         run = RefreshRun(project_id=project.id, trigger=trigger)
@@ -295,7 +337,8 @@ async def run_project(
                 skipped_reason = "confluence_unreachable" if unreachable else "no_valid_credentials"
 
     # Шаг 2: сверка дерева рабочими кредами (новые/перемещённые страницы).
-    if skipped_reason is None:
+    # Точечный добор её пропускает: дерево сверил полный прогон этого дня.
+    if skipped_reason is None and only_page_ids is None:
         async with session_factory() as db:
             while usable:
                 cred = usable[0]
@@ -328,15 +371,20 @@ async def run_project(
 
     # Шаг 3: refresh отслеживаемых страниц.
     if skipped_reason is None and usable:
+        page_query = (
+            select(Page.id, Page.title)
+            .where(
+                Page.project_id == project.id,
+                Page.is_virtual == False,  # noqa: E712
+            )
+            .order_by(Page.title)
+        )
+        if only_page_ids is not None:
+            # details хранит id строками — приводим к UUID для asyncpg.
+            ids = [uuid.UUID(x) if isinstance(x, str) else x for x in only_page_ids]
+            page_query = page_query.where(Page.id.in_(ids))
         async with session_factory() as db:
-            page_rows = (await db.execute(
-                select(Page.id, Page.title)
-                .where(
-                    Page.project_id == project.id,
-                    Page.is_virtual == False,  # noqa: E712
-                )
-                .order_by(Page.title)
-            )).all()
+            page_rows = (await db.execute(page_query)).all()
         pages_total = len(page_rows)
         delay = max(settings.AUTO_REFRESH_PAGE_DELAY_MS, 0) / 1000
 
@@ -494,6 +542,33 @@ async def run_projects(project_ids, *, trigger: str, session_factory=async_sessi
             await run_project(session_factory, project, trigger=trigger)
         except Exception:
             logger.exception("auto-refresh: добор проекта «%s» упал", project.name)
+    return len(projects)
+
+
+async def run_page_retries(
+    page_map, *, trigger: str = "retry", session_factory=async_session
+) -> int:
+    """Точечный добор упавших страниц (v1.7.2): {project_id: [page_ids]}.
+
+    Прогон run_project только по этим страницам — с той же изоляцией ошибок,
+    что у run_sweep/run_projects. Сверка дерева внутри пропускается."""
+    if not page_map:
+        return 0
+    async with session_factory() as db:
+        projects = list((await db.execute(
+            select(Project)
+            .where(Project.id.in_(list(page_map)), Project.is_demo == False)  # noqa: E712
+            .order_by(Project.name)
+        )).scalars().all())
+
+    for project in projects:
+        try:
+            await run_project(
+                session_factory, project, trigger=trigger,
+                only_page_ids=page_map[project.id],
+            )
+        except Exception:
+            logger.exception("auto-refresh: добор страниц проекта «%s» упал", project.name)
     return len(projects)
 
 

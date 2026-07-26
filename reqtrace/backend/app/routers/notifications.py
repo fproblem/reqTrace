@@ -78,7 +78,8 @@ def failure_unseen_marker(finished_desc: list[datetime], today_local, tz) -> dat
 
 
 def _event_entries(
-    run: RefreshRun, project_name: str, user_id, digest_visible: bool
+    run: RefreshRun, project_name: str, user_id, digest_visible: bool,
+    retry_planned: bool = False,
 ) -> list[NotificationEntry]:
     """СОБЫТИЙНЫЕ записи одной строки журнала: дайджест изменений и личная
     «ваши креды отклонены». «Не выполнено» здесь нет — это состояние проекта,
@@ -113,6 +114,14 @@ def _event_entries(
         for page in details.get("pages", [])
         for key in page.get("affected_tests", [])
     })
+    # Страницы с ошибкой прогона — по названиям (v1.7.2): «3 страницы не
+    # обновились» не даёт понять, КАКИЕ именно; названия в details есть с
+    # v1.6.2. Порядок — как шёл прогон (по алфавиту заголовков).
+    failed_pages = [
+        page["title"]
+        for page in details.get("pages", [])
+        if "error" in page and page.get("title")
+    ]
     entries.append(NotificationEntry(
         id=f"{run.id}:digest", kind="digest",
         pages_total=run.pages_total,
@@ -121,6 +130,8 @@ def _event_entries(
         to_outdated=run.to_outdated,
         to_lost=run.to_lost,
         affected_tests=affected,
+        failed_pages=failed_pages,
+        retry_planned=retry_planned,
         skipped_reason=_skip_reason(run),
         **base,
     ))
@@ -239,9 +250,23 @@ async def list_notifications(
     for project_id, project_runs in runs_by_project.items():
         project_runs.sort(key=lambda r: r.finished_at, reverse=True)
         digest_visible = project_id in ok_ids
+        # Обещание добора (v1.7.2) — только у последнего СОСТОЯВШЕГОСЯ прогона
+        # (ok|partial) и только за сегодня: точечный добор смотрит на тот же
+        # прогон и тот же локальный день (pick_failed_page_retries). Успешный
+        # ретрай становится последним сам — старое обещание гаснет.
+        latest_settled_id = next(
+            (r.id for r in project_runs if r.status in ("ok", "partial")), None
+        )
         for run in project_runs:
+            retry_planned = (
+                settings.AUTO_REFRESH_ENABLED
+                and run.id == latest_settled_id
+                and run.pages_failed > 0
+                and run.finished_at.astimezone(tz).date() == today_local
+            )
             entries.extend(_event_entries(
                 run, names[project_id], current_user.id, digest_visible,
+                retry_planned=retry_planned,
             ))
         if digest_visible:
             state = _failure_state_entry(project_runs, names[project_id])

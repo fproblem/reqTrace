@@ -202,6 +202,11 @@ export interface NotificationEntry {
   to_outdated: number;
   to_lost: number;
   affected_tests: string[];
+  /** Названия страниц, не обновившихся в прогоне, — дайджест называет их
+   *  поимённо, а не абстрактным числом (v1.7.2). */
+  failed_pages?: string[];
+  /** Планировщик доберёт упавшие страницы в течение часа (v1.7.2). */
+  retry_planned?: boolean;
   /** confluence_unreachable | no_valid_credentials (у digest — если прогон прерван). */
   skipped_reason?: string | null;
   /** run_skipped и run_quiet — состояния («не обновляется» / «изменений нет,

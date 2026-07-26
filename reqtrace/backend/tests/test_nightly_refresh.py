@@ -34,6 +34,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.crypto import encrypt_secret
 from app.jobs.nightly import (
+    pick_failed_page_retries,
     pick_retry_projects,
     prune_journal,
     run_project,
@@ -477,6 +478,31 @@ class RunProjectTest(RunProjectBase):
         # Ошибка одной страницы — не повод трогать креды.
         self.assertIsNone(run.cred_issues)
 
+    def test_page_retry_skips_tree_sync_and_journals_subset(self):
+        """Точечный добор (v1.7.2): only_page_ids — refresh только их, сверка
+        дерева пропускается (её сделал полный прогон), журнал честный —
+        pages_total равен числу добираемых страниц. id приходят строками
+        из details журнала."""
+        cred = self.add_cred()
+        page = self.add_page()
+        h1 = uuid.uuid4()
+        self.session.execute_results = [
+            [cred],
+            [(page.id, page.title)],
+            [(h1, "active")],
+            [(h1, "active")],
+        ]
+        with patch(CHECK_CONNECTION, new=AsyncMock()), \
+             patch(SYNC_TREE, new=AsyncMock()) as sync, \
+             patch(REFRESH, new=AsyncMock(return_value=True)) as refresh:
+            run_id = self.run_job(only_page_ids=[str(page.id)])
+
+        run = self.journal(run_id)
+        self.assertEqual(run.status, "ok")
+        self.assertEqual((run.pages_total, run.pages_changed, run.pages_failed), (1, 1, 0))
+        sync.assert_not_awaited()
+        refresh.assert_awaited_once()
+
 
 class PreferUserCredsTest(RunProjectBase):
     def test_manual_run_tries_initiator_credentials_first(self):
@@ -541,6 +567,64 @@ class PickRetryProjectsTest(unittest.TestCase):
 
     def test_project_without_attempts_is_main_sweep_business(self):
         self.assertEqual(pick_retry_projects([], self.NOW), [])
+
+
+class PickFailedPageRetriesTest(unittest.TestCase):
+    """Точечный добор упавших страниц (v1.7.2): чьи страницы перечитывать."""
+
+    NOW = datetime(2026, 7, 26, 12, 0, tzinfo=UTC)
+    FAILED = [{"page_id": "p-1", "title": "Команда", "error": "boom"}]
+
+    def partial(self, pid, *, hours_ago, pages):
+        t = self.NOW - timedelta(hours=hours_ago)
+        return (pid, "partial", t, t, {"pages": pages})
+
+    def test_failed_pages_of_latest_partial_are_retried(self):
+        pid = uuid.uuid4()
+        # Страницы с находками (без "error") в добор не попадают.
+        rows = [self.partial(
+            pid, hours_ago=3,
+            pages=self.FAILED + [{"page_id": "p-2", "title": "Б", "changed": True}],
+        )]
+        self.assertEqual(pick_failed_page_retries(rows, self.NOW), {pid: ["p-1"]})
+
+    def test_successful_retry_extinguishes_the_debt(self):
+        pid = uuid.uuid4()
+        ok_t = self.NOW - timedelta(hours=1, minutes=30)
+        rows = [
+            self.partial(pid, hours_ago=3, pages=self.FAILED),
+            (pid, "ok", ok_t, ok_t, None),
+        ]
+        self.assertEqual(pick_failed_page_retries(rows, self.NOW), {})
+
+    def test_skip_after_partial_keeps_the_debt(self):
+        # Обрыв связи ПОСЛЕ partial-прогона не списывает долг: последним
+        # СОСТОЯВШИМСЯ (ok|partial) остаётся partial с ошибками.
+        pid = uuid.uuid4()
+        skip_t = self.NOW - timedelta(hours=2)
+        rows = [
+            self.partial(pid, hours_ago=4, pages=self.FAILED),
+            (pid, "skipped", skip_t, skip_t, {"skipped_reason": "confluence_unreachable"}),
+        ]
+        self.assertEqual(pick_failed_page_retries(rows, self.NOW), {pid: ["p-1"]})
+
+    def test_recent_attempt_waits_its_hour(self):
+        pid = uuid.uuid4()
+        rows = [self.partial(pid, hours_ago=0, pages=self.FAILED)]
+        self.assertEqual(pick_failed_page_retries(rows, self.NOW), {})
+
+    def test_partial_without_page_errors_is_left_alone(self):
+        # partial из-за выбывших кред (stopped_early): страницы тут ни при чём,
+        # чинится кредами, а не добором.
+        pid = uuid.uuid4()
+        rows = [self.partial(pid, hours_ago=3, pages=[])]
+        self.assertEqual(pick_failed_page_retries(rows, self.NOW), {})
+
+    def test_projects_without_settled_runs_are_full_retry_business(self):
+        pid = uuid.uuid4()
+        t = self.NOW - timedelta(hours=3)
+        rows = [(pid, "skipped", t, t, {"skipped_reason": "confluence_unreachable"})]
+        self.assertEqual(pick_failed_page_retries(rows, self.NOW), {})
 
 
 class RunSweepTest(unittest.TestCase):

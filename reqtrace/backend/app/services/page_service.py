@@ -123,7 +123,13 @@ async def refresh_from_confluence(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch from Confluence: {e}")
+        # str(e) у httpx-таймаутов бывает пустым — тогда хотя бы класс
+        # исключения: журнал прогонов получал «Failed to fetch from
+        # Confluence: » без причины (замечено на прогоне 26.07.2026).
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch from Confluence: {str(e) or type(e).__name__}",
+        )
 
     # Заголовок и место страницы в дереве — до раннего выхода «контент не
     # изменился»: переименование и перемещение страницы в Confluence не трогают

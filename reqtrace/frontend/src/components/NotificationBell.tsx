@@ -14,11 +14,15 @@ import { BellIcon, ClockIcon, IconBadge, IconProps, LockIcon, ShieldIcon, SyncIc
 import { useFadeToggle } from './fadePresence';
 import { XIcon } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
-import { formatCheckedAt } from '../pages/TestsPage';
 import {
-  notificationBody, notificationLink, notificationTint, notificationTitle,
-  runResultText,
+  notificationBody, notificationDayLabel, notificationLink, notificationTint,
+  notificationTitle, runResultText,
 } from './notificationText';
+
+// Время записи внутри дневного блока: день называет ярлык группы,
+// у самой записи остаются только часы и минуты.
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
 // Ночной цикл событий — бейдж меняется раз в сутки; интервал нужен только
 // вкладкам-долгожителям, чтобы утренний дайджест появился без перезагрузки.
@@ -178,6 +182,18 @@ export const NotificationBell: React.FC = () => {
 
   const unseenEntries = data?.entries.filter(e => e.unseen) ?? [];
   const badgeCount = data?.unseen_count ?? 0;
+
+  // Группировка списка по дням (v1.7.2): события одного дня — один блок,
+  // между блоками дивайдер — приём «Истории изменений», где так отделяются
+  // версии. Записи приходят отсортированными по времени, поэтому достаточно
+  // склеивать соседей с одинаковым ярлыком дня.
+  const dayGroups: { label: string; entries: NotificationEntry[] }[] = [];
+  for (const e of data?.entries ?? []) {
+    const label = notificationDayLabel(e.happened_at);
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.label === label) last.entries.push(e);
+    else dayGroups.push({ label, entries: [e] });
+  }
   const badgeColor = unseenEntries.some(e => notificationTint(e) === 'red')
     ? colors.statusLost
     : colors.statusOutdated;
@@ -301,20 +317,25 @@ export const NotificationBell: React.FC = () => {
           role="menu"
           style={{
             position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-            width: '400px', maxHeight: '520px', overflowY: 'auto',
+            width: '400px', maxHeight: '520px',
+            display: 'flex', flexDirection: 'column',
+            // Скроллится только список ниже шапки — как в модалках (Modal,
+            // «История изменений»): скроллбар на самой панели вылезал сбоку
+            // от скруглённого угла и увозил заголовок вместе со списком.
+            overflow: 'hidden',
             background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(20px)',
             border: `1px solid ${colors.border}`, borderRadius: radii.lg,
             boxShadow: shadows.cardHover,
-            padding: '10px', boxSizing: 'border-box',
+            boxSizing: 'border-box',
             zIndex: 30,
             ...panelFade,
           }}
         >
           <div style={{
             display: 'flex', alignItems: 'flex-start', gap: '8px',
-            padding: '6px 6px 10px 10px',
+            padding: '16px 16px 10px 20px',
             borderBottom: `1px solid ${colors.border}`,
-            marginBottom: '6px',
+            flexShrink: 0,
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '14px', fontWeight: 700, color: colors.textPrimary }}>
@@ -349,6 +370,10 @@ export const NotificationBell: React.FC = () => {
             </button>
           </div>
 
+          {/* Скролл-зона списка: minHeight 0 разрешает флекс-ребёнку ужаться
+              под maxHeight панели, прежние отступы панели (10px) переехали
+              сюда. */}
+          <div style={{ overflowY: 'auto', minHeight: 0, padding: '6px 10px 10px' }}>
           {data === null ? (
             <div style={{ padding: '16px 10px', fontSize: '13px', color: colors.textSecondary }}>
               Загрузка…
@@ -365,7 +390,23 @@ export const NotificationBell: React.FC = () => {
               Как только первый пройдёт, его итог появится здесь
             </div>
           ) : (
-            data.entries.map(entry => {
+            dayGroups.map((group, gi) => (
+              <div
+                key={group.label}
+                style={gi > 0 ? {
+                  borderTop: `1px solid ${colors.border}`,
+                  marginTop: '8px',
+                  paddingTop: '8px',
+                } : undefined}
+              >
+                <div style={{
+                  padding: '4px 10px 2px',
+                  fontSize: '11px', fontWeight: 600,
+                  color: colors.textTertiary,
+                }}>
+                  {group.label}
+                </div>
+                {group.entries.map(entry => {
               const Icon = KIND_ICONS[entry.kind];
               return (
                 <button
@@ -410,7 +451,7 @@ export const NotificationBell: React.FC = () => {
                         marginLeft: 'auto', flexShrink: 0,
                         fontSize: '11px', color: colors.textTertiary,
                       }}>
-                        {formatCheckedAt(entry.happened_at)}
+                        {timeOf(entry.happened_at)}
                       </span>
                     </div>
                     <div style={{
@@ -422,8 +463,11 @@ export const NotificationBell: React.FC = () => {
                   </div>
                 </button>
               );
-            })
+                })}
+              </div>
+            ))
           )}
+          </div>
         </div>
       )}
     </div>

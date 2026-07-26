@@ -1,6 +1,7 @@
 import { FinishedRunSummary, NotificationEntry } from '../types';
 import {
   notificationBody,
+  notificationDayLabel,
   notificationLink,
   notificationTint,
   notificationTitle,
@@ -71,7 +72,7 @@ describe('notificationBody: дайджест', () => {
     );
   });
 
-  it('сообщает об ошибках страниц и прерванном прогоне', () => {
+  it('сообщает об ошибках страниц числом, когда названий нет (старый журнал)', () => {
     const e = entry({
       pages_changed: 2, pages_failed: 2, skipped_reason: 'no_valid_credentials',
     });
@@ -79,6 +80,47 @@ describe('notificationBody: дайджест', () => {
       'Изменились 2 страницы из 14. 2 страницы не обновились. '
       + 'Прогон прерван: закончились работающие подключения',
     );
+  });
+
+  it('называет не обновившиеся страницы поимённо, хвост — числом', () => {
+    const e = entry({
+      pages_failed: 3,
+      failed_pages: ['Backend и API', 'iOS Jailbreak', 'Целесообразность автоматизации'],
+    });
+    expect(notificationBody(e)).toBe(
+      'Не обновились страницы «Backend и API», «iOS Jailbreak» и ещё 1',
+    );
+  });
+
+  it('одна не обновившаяся страница — по имени и со склонением', () => {
+    const e = entry({ pages_failed: 1, failed_pages: ['Команда'] });
+    expect(notificationBody(e)).toBe('Не обновилась страница «Команда»');
+  });
+
+  it('обещает добор, когда планировщик перечитает упавшие страницы', () => {
+    const e = entry({
+      pages_failed: 1, failed_pages: ['Команда'], retry_planned: true,
+    });
+    expect(notificationBody(e)).toBe(
+      'Не обновилась страница «Команда». Повторим попытку в течение часа',
+    );
+    // Без флага (прогон не последний или добор выключен) обещания нет.
+    expect(notificationBody(entry({ pages_failed: 1, failed_pages: ['Команда'] })))
+      .not.toContain('Повторим попытку');
+  });
+});
+
+describe('notificationDayLabel (группировка панели по дням)', () => {
+  const now = new Date('2026-07-26T12:00:00');
+
+  it('сегодня и вчера — словами, раньше — датой без года', () => {
+    expect(notificationDayLabel('2026-07-26T08:56:00', now)).toBe('Сегодня');
+    expect(notificationDayLabel('2026-07-25T23:59:00', now)).toBe('Вчера');
+    expect(notificationDayLabel('2026-07-23T16:14:00', now)).toBe('23 июля');
+  });
+
+  it('не текущий год называется явно', () => {
+    expect(notificationDayLabel('2025-12-30T10:00:00', now)).toBe('30 декабря 2025');
   });
 });
 
@@ -149,7 +191,16 @@ describe('notificationLink', () => {
   it('дайджест ведёт к худшему: сначала утраты, потом «требует проверки»', () => {
     expect(notificationLink(entry({ to_lost: 1, to_outdated: 3 }))).toBe('/tests/p1?f=lost');
     expect(notificationLink(entry({ to_outdated: 3 }))).toBe('/tests/p1?f=outdated');
-    expect(notificationLink(entry({ pages_failed: 1 }))).toBe('/tests/p1');
+  });
+
+  it('дайджест только об ошибках ведёт чинить подключение в профиль', () => {
+    expect(notificationLink(entry({ pages_failed: 1 }))).toBe('/settings');
+    expect(notificationLink(entry({ skipped_reason: 'confluence_unreachable' })))
+      .toBe('/settings');
+    // Находки главнее ошибок: если есть переходы привязок, действие — на
+    // «Тестах», а об обрыве расскажет соседняя строка «не выполняется».
+    expect(notificationLink(entry({ to_outdated: 1, pages_failed: 2 })))
+      .toBe('/tests/p1?f=outdated');
   });
 
   it('проблемы кред и пропуски ведут в профиль', () => {

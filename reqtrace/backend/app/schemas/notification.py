@@ -22,6 +22,13 @@ class NotificationEntry(BaseModel):
     to_outdated: int = 0
     to_lost: int = 0
     affected_tests: list[str] = []
+    # Названия страниц, не обновившихся в прогоне (ошибки уровня страницы,
+    # v1.7.2): дайджест называет их поимённо, а не абстрактным числом.
+    failed_pages: list[str] = []
+    # Планировщик доберёт упавшие страницы в течение часа (v1.7.2) —
+    # неудача не «оставлена как есть». True только у последнего
+    # состоявшегося прогона проекта: успешный ретрай гасит обещание.
+    retry_planned: bool = False
     # confluence_unreachable | no_valid_credentials — у run_skipped всегда,
     # у digest — если прогон прерван (обрыв связи посреди прогона).
     skipped_reason: Optional[str] = None

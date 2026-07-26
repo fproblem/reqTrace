@@ -6,6 +6,8 @@ import { formatCheckedAt, plural } from '../pages/TestsPage';
 
 /** Сколько ключей тестов называем в дайджесте поимённо; остальные — «и ещё N». */
 const MAX_TEST_KEYS = 2;
+/** Сколько названий не обновившихся страниц называем; остальные — «и ещё N». */
+const MAX_FAILED_PAGES = 2;
 
 export function notificationTitle(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid') return `Подключение к «${e.project_name}» отклонено`;
@@ -68,10 +70,29 @@ export function notificationBody(e: NotificationEntry): string {
     parts.push(`Затронуты тесты ${shown.join(', ')}${rest > 0 ? ` и ещё ${rest}` : ''}`);
   }
   if (e.pages_failed > 0) {
-    parts.push(
-      `${e.pages_failed} ${plural(e.pages_failed,
-        ['страница не обновилась', 'страницы не обновились', 'страниц не обновились'])}`,
-    );
+    // Поимённо, а не абстрактным числом (v1.7.2): какие страницы проверить
+    // руками — главный вопрос читателя этой строки. Фоллбек числом — для
+    // старых записей журнала без названий.
+    const named = (e.failed_pages ?? []).slice(0, MAX_FAILED_PAGES);
+    if (named.length > 0) {
+      const rest = e.pages_failed - named.length;
+      parts.push(
+        `${plural(e.pages_failed,
+          ['Не обновилась страница', 'Не обновились страницы', 'Не обновились страницы'])} `
+        + `${named.map(t => `«${t}»`).join(', ')}${rest > 0 ? ` и ещё ${rest}` : ''}`,
+      );
+    } else {
+      parts.push(
+        `${e.pages_failed} ${plural(e.pages_failed,
+          ['страница не обновилась', 'страницы не обновились', 'страниц не обновились'])}`,
+      );
+    }
+    // Обещание добора (v1.7.2): неудача не «оставлена как есть» — планировщик
+    // перечитает упавшие страницы. Флаг живёт только у последнего прогона:
+    // успешный ретрай гасит и его, и само обещание.
+    if (e.retry_planned) {
+      parts.push('Повторим попытку в течение часа');
+    }
   }
   if (e.skipped_reason === 'no_valid_credentials') {
     parts.push('Прогон прерван: закончились работающие подключения');
@@ -81,12 +102,28 @@ export function notificationBody(e: NotificationEntry): string {
   return parts.join('. ');
 }
 
-/** Куда ведёт клик: дайджест — к худшему на экране «Тесты» (фильтры v1.6.1),
- * проблемы кред и пропуски — в профиль, чиниться. */
+/** Ярлык дня для группировки панели (v1.7.2): «Сегодня», «Вчера», дальше —
+ * дата словами («23 июля»; год добавляется, только когда он не текущий).
+ * Родня formatCheckedAt: тот же отсчёт по началу локального дня. */
+export function notificationDayLabel(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (days <= 0) return 'Сегодня';
+  if (days === 1) return 'Вчера';
+  const label = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  return d.getFullYear() === now.getFullYear() ? label : `${label} ${d.getFullYear()}`;
+}
+
+/** Куда ведёт клик: дайджест с находками — к худшему на экране «Тесты»
+ * (фильтры v1.6.1); всё, что об ошибках — креды, пропуски и дайджест без
+ * находок (страницы не обновились, прогон прерван), — в профиль, чиниться:
+ * в такой ситуации интересует подключение к проекту, а не тесты (v1.7.2). */
 export function notificationLink(e: NotificationEntry): string {
   if (e.kind === 'cred_invalid' || e.kind === 'run_skipped') return '/settings';
   if (e.to_lost > 0) return `/tests/${e.project_id}?f=lost`;
   if (e.to_outdated > 0) return `/tests/${e.project_id}?f=outdated`;
+  if (e.pages_failed > 0 || e.skipped_reason) return '/settings';
   return `/tests/${e.project_id}`;
 }
 

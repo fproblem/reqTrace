@@ -17,7 +17,10 @@ from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.database import async_session, engine
-from app.jobs.nightly import pick_retry_projects, run_project, run_projects, run_sweep
+from app.jobs.nightly import (
+    pick_failed_page_retries, pick_retry_projects,
+    run_page_retries, run_project, run_projects, run_sweep,
+)
 from app.models.project import Project
 from app.models.refresh_run import RefreshRun
 
@@ -102,9 +105,11 @@ async def run_sweep_locked(*, trigger: str) -> bool:
     return await _run_locked(lambda: run_sweep(trigger=trigger))
 
 
-async def _retry_candidates(now_utc: datetime) -> list:
-    """Проекты для самолечебного добора: попытки за сегодняшний ЛОКАЛЬНЫЙ день
-    были, успешной нет, последняя — старше RETRY_AFTER_MINUTES."""
+async def _retry_candidates(now_utc: datetime) -> tuple[list, dict]:
+    """Кандидаты самолечения за сегодняшний ЛОКАЛЬНЫЙ день: (полный добор,
+    точечный добор страниц). Полный — проекты с попытками, но без успешного
+    прогона; точечный (v1.7.2) — страницы, упавшие в последнем состоявшемся
+    partial-прогоне. Оба — не раньше часа после последней попытки."""
     tz = _zone(settings.AUTO_REFRESH_TZ)
     local_now = now_utc.astimezone(tz)
     day_start = datetime.combine(local_now.date(), dtime(0, 0), tzinfo=tz).astimezone(timezone.utc)
@@ -113,9 +118,12 @@ async def _retry_candidates(now_utc: datetime) -> list:
             select(
                 RefreshRun.project_id, RefreshRun.status,
                 RefreshRun.started_at, RefreshRun.finished_at,
+                RefreshRun.details,
             ).where(RefreshRun.started_at >= day_start)
         )).all()
-    return pick_retry_projects(rows, now_utc, RETRY_AFTER_MINUTES)
+    full = pick_retry_projects([r[:4] for r in rows], now_utc, RETRY_AFTER_MINUTES)
+    pages = pick_failed_page_retries(rows, now_utc, RETRY_AFTER_MINUTES)
+    return full, pages
 
 
 # Фоновые задачи ручных прогонов: create_task держит только слабую ссылку —
@@ -198,10 +206,18 @@ async def auto_refresh_loop() -> None:
             # (например, выключен VPN на машине с бэкендом) — раз в час
             # добираем проекты, оставшиеся без успешного прогона за сегодня.
             # Дайджест приедет сам, как только связь появится.
-            retry_ids = await _retry_candidates(now)
+            retry_ids, page_retries = await _retry_candidates(now)
             if retry_ids:
                 logger.info("auto-refresh: самолечебный добор %d проектов", len(retry_ids))
                 await _run_locked(lambda: run_projects(retry_ids, trigger="retry"))
+            # 2а) Точечный добор (v1.7.2): partial-прогон «сделан на сегодня»,
+            # но страницы, упавшие в нём сетевой ошибкой, перечитываем через
+            # час — не ждать же им следующей ночи.
+            if page_retries:
+                logger.info(
+                    "auto-refresh: точечный добор страниц в %d проектах", len(page_retries)
+                )
+                await _run_locked(lambda: run_page_retries(page_retries, trigger="retry"))
         except asyncio.CancelledError:
             raise
         except Exception:

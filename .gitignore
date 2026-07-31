@@ -13,5 +13,8 @@ reqtrace/frontend/build/
 # Локальные бэкапы (см. CLAUDE.md — не коммитить)
 backups/
 
+# TLS-сертификаты reqtrace.surf.dev — ключ и серт живут только на сервере
+reqtrace/certs/
+
 # macOS
 .DS_Store

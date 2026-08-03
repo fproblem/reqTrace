@@ -75,6 +75,24 @@ const linkRowDivider: React.CSSProperties = {
   borderTop: `1px solid ${colors.border}`,
 };
 
+// Колонка ключа фиксированной ширины + вертикальный дивайдер (v1.7.5, идея
+// пользователя): номера тестов бывают двух-, трёх- и пятизначными, и когда
+// название стартовало сразу за ключом, строки читались «лесенкой». Ширины
+// хватает ключам вида PROJ-12345; более длинное уходит в эллипсис.
+const keyColStyle: React.CSSProperties = {
+  width: '104px', flexShrink: 0, minWidth: 0,
+  display: 'flex', alignItems: 'center', gap: '6px',
+};
+// Тот же дивайдер, что между кластерами кнопок в шапке (Layout).
+const keyColDivider: React.CSSProperties = {
+  width: '1px', height: '24px', background: colors.border, flexShrink: 0,
+};
+// Ключ внутри колонки: одна строка с эллипсисом, ширину держит колонка.
+const keyTextStyle: React.CSSProperties = {
+  fontWeight: 600, fontSize: '14px', minWidth: 0,
+  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+
 // Ожидание привязок раскрытого ключа: первые 200мс — пустая строка (быстрые
 // ответы не мигают лоадером, порог v1.7.1), дальше мягко проявляется лоадер
 // с подписью. Той же высоты, что строка с одной привязкой.
@@ -388,7 +406,7 @@ export const ProjectTestsPage: React.FC = () => {
                   padding: '8px 14px',
                   display: 'flex', alignItems: 'center', gap: '12px',
                 }}>
-                  <SkeletonBar width="86px" height={12} />
+                  <SkeletonBar width="104px" height={12} />
                   <SkeletonBar width={i % 2 ? '38%' : '52%'} height={12} />
                   <SkeletonBar width="34px" height={18} radius={9} style={{ marginLeft: 'auto' }} />
                 </div>
@@ -544,11 +562,15 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Кликабельный информер — как у проблемных ключей (v1.7.0):
+                  {/* Информер живёт в колонке ключа (своего ключа у строки
+                      нет) — кликабелен, как у проблемных ключей (v1.7.0):
                       по клику объясняет, почему строка появилась. */}
-                  <KeyIssueInformer
-                    text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                  />
+                  <span style={keyColStyle}>
+                    <KeyIssueInformer
+                      text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                    />
+                  </span>
+                  <span style={keyColDivider} />
                   <div style={{
                     flex: 1, minWidth: 0,
                     display: 'flex', flexDirection: 'column', gap: '2px',
@@ -626,44 +648,52 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {(nonstandard || notInJira) && (
-                    <KeyIssueInformer
-                      text={nonstandard
-                        ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
-                        : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
-                    />
-                  )}
-                  {keyIsLink ? (
-                    <a
-                      href={`${data.jira_base_url}/browse/${entry.key}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      title="Открыть тест в Jira"
-                      style={{
-                        color: colors.greenDark, textDecoration: 'none',
-                        fontWeight: 600, fontSize: '14px', flexShrink: 0,
-                        transition: 'color 0.15s',
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.color = '#3F9E27';
-                        e.currentTarget.style.textDecoration = 'underline';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.color = colors.greenDark;
-                        e.currentTarget.style.textDecoration = 'none';
-                      }}
-                    >
-                      {highlightMatch(entry.key, q)}
-                    </a>
-                  ) : (
-                    <span style={{
-                      color: notInJira ? colors.textSecondary : colors.textPrimary,
-                      fontWeight: 600, fontSize: '14px', flexShrink: 0,
-                    }}>
-                      {highlightMatch(entry.key, q)}
-                    </span>
-                  )}
+                  {/* Колонка ключа: ключ слева, информер проблемы — за ним,
+                      названия у всех строк начинаются на одной вертикали. */}
+                  <span style={keyColStyle}>
+                    {keyIsLink ? (
+                      <a
+                        href={`${data.jira_base_url}/browse/${entry.key}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        title={`Открыть ${entry.key} в Jira`}
+                        style={{
+                          ...keyTextStyle,
+                          color: colors.greenDark, textDecoration: 'none',
+                          transition: 'color 0.15s',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.color = '#3F9E27';
+                          e.currentTarget.style.textDecoration = 'underline';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.color = colors.greenDark;
+                          e.currentTarget.style.textDecoration = 'none';
+                        }}
+                      >
+                        {highlightMatch(entry.key, q)}
+                      </a>
+                    ) : (
+                      <span
+                        title={entry.key}
+                        style={{
+                          ...keyTextStyle,
+                          color: notInJira ? colors.textSecondary : colors.textPrimary,
+                        }}
+                      >
+                        {highlightMatch(entry.key, q)}
+                      </span>
+                    )}
+                    {(nonstandard || notInJira) && (
+                      <KeyIssueInformer
+                        text={nonstandard
+                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
+                      />
+                    )}
+                  </span>
+                  <span style={keyColDivider} />
                   {/* Название (целиком, с переносами) + счётчики подстрокой:
                       единый текст в одну строку читался кашей (ревью). */}
                   <div style={{

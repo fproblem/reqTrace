@@ -43,6 +43,10 @@ const FILTERS: { key: FilterKey; label: string; title: string }[] = [
 // раскрытия/кэша/точки интереса под зарезервированным ключом. Столкновение
 // с настоящим ключом исключено: ключи индекса нормализованы в верхний регистр.
 const UNCOVERED_KEY = '__uncovered__';
+// Псевдо-ключ строки (итог ревью): строка говорит на языке тестовых строк —
+// на месте ключа янтарная пометка, дальше только счётчики (как у тестов без
+// названия из Jira) и информер после них, как у проблемных ключей.
+const UNCOVERED_PSEUDO_KEY = 'Без тестов';
 
 // hint — определение статуса для тултипа (QOL v1.7.5): формулировки — те же,
 // что у шапки карточки в панели привязки (SidePanel.statusLabels), модель
@@ -117,12 +121,13 @@ const keyTextStyle: React.CSSProperties = {
 const KEY_COL_MIN = 64;
 const KEY_COL_MAX = 160;
 const KEY_FONT = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-function measureKeyColWidth(tests: TestIndexEntry[]): number {
+function measureKeyColWidth(tests: TestIndexEntry[], extraLabels: string[] = []): number {
   const ctx = document.createElement('canvas').getContext('2d');
   if (!ctx) return 104;
   ctx.font = KEY_FONT;
   let max = 0;
   for (const t of tests) max = Math.max(max, ctx.measureText(t.key).width);
+  for (const label of extraLabels) max = Math.max(max, ctx.measureText(label).width);
   return Math.min(KEY_COL_MAX, Math.max(KEY_COL_MIN, Math.ceil(max)));
 }
 
@@ -272,8 +277,16 @@ export const ProjectTestsPage: React.FC = () => {
     [data],
   );
 
-  // Колонка ключа подгоняется под самый длинный ключ этого проекта.
-  const keyColWidth = useMemo(() => measureKeyColWidth(data?.tests ?? []), [data]);
+  // Колонка ключа подгоняется под самый длинный ключ этого проекта; если в
+  // списке есть строка «Привязки без тестов», её псевдо-ключ — тоже участник.
+  const keyColWidth = useMemo(() => {
+    const hasUncovered = !!data
+      && data.uncovered.active + data.uncovered.outdated + data.uncovered.lost > 0;
+    return measureKeyColWidth(
+      data?.tests ?? [],
+      hasUncovered ? [UNCOVERED_PSEUDO_KEY] : [],
+    );
+  }, [data]);
 
 
   // Привязки без тестов (v1.7.5): без особой строки чип «Требует проверки»
@@ -621,32 +634,33 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Роль ключа играет информер-пилюля (ревью пользователя):
-                      вид чипа-ключа из панели привязки, во всю ширину колонки
-                      — подстраивается под длину ключей проекта; по клику
-                      объясняет, почему строка появилась. */}
+                  {/* Псевдо-ключ «Без тестов» (итог ревью): янтарным
+                      полужирным на месте ключа — строка говорит на языке
+                      тестовых строк, без заголовка-дубля. */}
                   <span style={{ ...keyColStyle, width: keyColWidth }}>
-                    <KeyIssueInformer
-                      size={INFORMER_ICON_SIZE}
-                      pill
-                      width={keyColWidth}
-                      text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                    />
+                    <span style={{ ...keyTextStyle, color: colors.statusOutdated }}>
+                      {UNCOVERED_PSEUDO_KEY}
+                    </span>
                   </span>
                   <span style={keyColDivider} />
                   <div style={{
                     flex: 1, minWidth: 0,
                     display: 'flex', flexDirection: 'column', gap: '2px',
                   }}>
+                    {/* Единственная строка — счётчики (как у тестов без
+                        названия из Jira); информер — сразу после них, ровно
+                        как у проблемных ключей. */}
                     <span style={{
-                      fontSize: '13.5px', fontWeight: 600,
-                      color: colors.textPrimary, lineHeight: 1.45,
+                      fontSize: '12.5px', color: colors.textSecondary,
+                      display: 'flex', alignItems: 'center', gap: '6px',
                     }}>
-                      Привязки без тестов
-                    </span>
-                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
-                      {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
-                      {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
+                      <span>
+                        {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
+                        {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
+                      </span>
+                      <InlineInformer
+                        text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                      />
                     </span>
                   </div>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>

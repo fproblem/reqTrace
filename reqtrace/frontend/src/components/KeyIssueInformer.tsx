@@ -22,7 +22,14 @@ const CENTERED_MAX_WIDTH = 320;
 
 // size — размер значка (кнопка на 8px больше): ярус 2 «Тестов» носит
 // информеры крупнее рядового (v1.7.5) — они несут предупреждающую функцию.
-export const KeyIssueInformer: React.FC<{ text: string; size?: number }> = ({ text, size = 14 }) => {
+// capsule — пунктирная янтарная капсула вместо невидимой квадратной кнопки:
+// строка «Привязки без тестов» носит информер на месте ключа, и голому
+// значку там одиноко (ревью пользователя); пунктир — в языке рамки строки.
+export const KeyIssueInformer: React.FC<{
+  text: string;
+  size?: number;
+  capsule?: boolean;
+}> = ({ text, size = 14, capsule = false }) => {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const { mounted, fadeStyle } = useFadeToggle(open);
@@ -95,8 +102,10 @@ export const KeyIssueInformer: React.FC<{ text: string; size?: number }> = ({ te
         onClick={toggle}
         aria-label="Почему ключ не ведёт в Jira"
         style={{
-          width: `${size + 8}px`, height: `${size + 8}px`, borderRadius: radii.sm,
-          border: 'none',
+          width: capsule ? `${size + 26}px` : `${size + 8}px`,
+          height: `${size + 8}px`,
+          borderRadius: capsule ? radii.pill : radii.sm,
+          border: capsule ? `1px dashed ${colors.statusOutdated}88` : 'none',
           background: open ? `${colors.statusOutdated}26` : 'transparent',
           color: colors.statusOutdated, cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

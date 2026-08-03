@@ -621,14 +621,15 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Роль ключа играет информер-«жетон» (ревью пользователя):
-                      пунктирная капсула в языке рамки строки, по центру
-                      колонки, как ключи, — по клику объясняет, почему строка
-                      появилась. */}
+                  {/* Роль ключа играет информер-пилюля (ревью пользователя):
+                      вид чипа-ключа из панели привязки, во всю ширину колонки
+                      — подстраивается под длину ключей проекта; по клику
+                      объясняет, почему строка появилась. */}
                   <span style={{ ...keyColStyle, width: keyColWidth }}>
                     <KeyIssueInformer
                       size={INFORMER_ICON_SIZE}
-                      capsule
+                      pill
+                      width={keyColWidth}
                       text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
                     />
                   </span>

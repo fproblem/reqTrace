@@ -22,14 +22,17 @@ const CENTERED_MAX_WIDTH = 320;
 
 // size — размер значка (кнопка на 8px больше): ярус 2 «Тестов» носит
 // информеры крупнее рядового (v1.7.5) — они несут предупреждающую функцию.
-// capsule — пунктирная янтарная капсула вместо невидимой квадратной кнопки:
-// строка «Привязки без тестов» носит информер на месте ключа, и голому
-// значку там одиноко (ревью пользователя); пунктир — в языке рамки строки.
+// pill — вид чипа-ключа из панели привязки (постоянная заливка 15 + рамка 33,
+// радиус-пилюля): строка «Привязки без тестов» носит информер на месте ключа,
+// и голому значку там одиноко (ревью; пунктирная капсула отклонена — пунктир
+// внутри пунктирной рамки строки). width — явная ширина кнопки: пилюля
+// растягивается на ширину колонки ключей.
 export const KeyIssueInformer: React.FC<{
   text: string;
   size?: number;
-  capsule?: boolean;
-}> = ({ text, size = 14, capsule = false }) => {
+  pill?: boolean;
+  width?: number;
+}> = ({ text, size = 14, pill = false, width }) => {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const { mounted, fadeStyle } = useFadeToggle(open);
@@ -92,34 +95,36 @@ export const KeyIssueInformer: React.FC<{
     };
   }, [open]);
 
+  // Состояния кнопки — янтарная лестница заливок 15/26/33 (как у чипов
+  // ключей): ховер, пресс и «нажато» (открытый поповер держит заливку
+  // ховера — принадлежность видна, пока поповер жив). Пилюля носит нижнюю
+  // ступень (15) постоянно — покой у неё уже залит, ступени сдвигаются.
+  const tint = colors.statusOutdated;
+  const restBg = pill ? `${tint}15` : 'transparent';
+  const hoverBg = pill ? `${tint}26` : `${tint}15`;
+  const openBg = `${tint}26`;
+  const pressBg = `${tint}33`;
+
   return (
     <>
-      {/* Состояния кнопки — янтарная лестница заливок 15/26/33 (как у
-          чипов ключей): ховер, пресс и «нажато» (открытый поповер держит
-          заливку ховера — принадлежность видна, пока поповер жив). */}
       <button
         ref={btnRef}
         onClick={toggle}
         aria-label="Почему ключ не ведёт в Jira"
         style={{
-          width: capsule ? `${size + 26}px` : `${size + 8}px`,
+          width: width !== undefined ? `${width}px` : `${size + 8}px`,
           height: `${size + 8}px`,
-          borderRadius: capsule ? radii.pill : radii.sm,
-          border: capsule ? `1px dashed ${colors.statusOutdated}88` : 'none',
-          background: open ? `${colors.statusOutdated}26` : 'transparent',
-          color: colors.statusOutdated, cursor: 'pointer',
+          borderRadius: pill ? radii.pill : radii.sm,
+          border: pill ? `1px solid ${tint}33` : 'none',
+          background: open ? openBg : restBg,
+          color: tint, cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, padding: 0, transition: 'background 0.15s',
         }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = `${colors.statusOutdated}${open ? '26' : '15'}`;
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = open
-            ? `${colors.statusOutdated}26` : 'transparent';
-        }}
-        onMouseDown={e => { e.currentTarget.style.background = `${colors.statusOutdated}33`; }}
-        onMouseUp={e => { e.currentTarget.style.background = `${colors.statusOutdated}26`; }}
+        onMouseEnter={e => { e.currentTarget.style.background = open ? openBg : hoverBg; }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? openBg : restBg; }}
+        onMouseDown={e => { e.currentTarget.style.background = pressBg; }}
+        onMouseUp={e => { e.currentTarget.style.background = openBg; }}
       >
         <StatusAlertIcon kind="warning" size={size} />
       </button>

@@ -75,13 +75,14 @@ const linkRowDivider: React.CSSProperties = {
   borderTop: `1px solid ${colors.border}`,
 };
 
-// Колонка ключа фиксированной ширины + вертикальный дивайдер (v1.7.5, идея
-// пользователя): номера тестов бывают двух-, трёх- и пятизначными, и когда
-// название стартовало сразу за ключом, строки читались «лесенкой». Ширины
-// хватает ключам вида PROJ-12345; более длинное уходит в эллипсис.
+// Колонка ключа + вертикальный дивайдер (v1.7.5, идея пользователя): номера
+// тестов бывают двух-, трёх- и пятизначными, и когда название стартовало
+// сразу за ключом, строки читались «лесенкой». Ключи стоят ПО ЦЕНТРУ колонки:
+// разная длина ключей читается спокойнее, чем прижатая к краю рваная кромка
+// (ревью пользователя по скриншоту).
 const keyColStyle: React.CSSProperties = {
-  width: '104px', flexShrink: 0, minWidth: 0,
-  display: 'flex', alignItems: 'center', gap: '6px',
+  flexShrink: 0, minWidth: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
 };
 // Тот же дивайдер, что между кластерами кнопок в шапке (Layout).
 const keyColDivider: React.CSSProperties = {
@@ -92,6 +93,27 @@ const keyTextStyle: React.CSSProperties = {
   fontWeight: 600, fontSize: '14px', minWidth: 0,
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
+
+// Ширина колонки — по самому длинному ключу проекта (ревью пользователя:
+// фиксированные 104px оставляли «воздух» коротким ключам). Замер — canvas
+// тем же шрифтом, что у ключей; строки с информером проблемного ключа
+// учитывают его место. Кламп: экзотически длинный нестандартный ключ уходит
+// в эллипсис, а не раздувает колонку всем остальным.
+const KEY_COL_MIN = 64;
+const KEY_COL_MAX = 160;
+const KEY_INFORMER_SPACE = 22;   // значок 16px + зазор 6px
+const KEY_FONT = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+function measureKeyColWidth(tests: TestIndexEntry[]): number {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return 104;
+  ctx.font = KEY_FONT;
+  let max = 0;
+  for (const t of tests) {
+    const hasInformer = !isLikelyJiraKey(t.key) || t.jira_status === 'not_found';
+    max = Math.max(max, ctx.measureText(t.key).width + (hasInformer ? KEY_INFORMER_SPACE : 0));
+  }
+  return Math.min(KEY_COL_MAX, Math.max(KEY_COL_MIN, Math.ceil(max)));
+}
 
 // Ожидание привязок раскрытого ключа: первые 200мс — пустая строка (быстрые
 // ответы не мигают лоадером, порог v1.7.1), дальше мягко проявляется лоадер
@@ -225,6 +247,9 @@ export const ProjectTestsPage: React.FC = () => {
     () => (data ? data.tests.map(entry => ({ entry, ...derive(entry) })) : []),
     [data],
   );
+
+  // Колонка ключа подгоняется под самый длинный ключ этого проекта.
+  const keyColWidth = useMemo(() => measureKeyColWidth(data?.tests ?? []), [data]);
 
   // Привязки без тестов (v1.7.5): без особой строки чип «Требует проверки»
   // яруса 1 обещал больше, чем ярус 2 показывал.
@@ -562,24 +587,32 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Информер живёт в колонке ключа (своего ключа у строки
-                      нет) — кликабелен, как у проблемных ключей (v1.7.0):
-                      по клику объясняет, почему строка появилась. */}
-                  <span style={keyColStyle}>
-                    <KeyIssueInformer
-                      text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                    />
+                  {/* Ключа у строки нет — колонку держит честный прочерк
+                      (одинокий значок в пустой колонке смотрелся сиротой,
+                      ревью пользователя). */}
+                  <span style={{ ...keyColStyle, width: keyColWidth }}>
+                    <span style={{ fontWeight: 600, fontSize: '14px', color: colors.textTertiary }}>
+                      —
+                    </span>
                   </span>
                   <span style={keyColDivider} />
                   <div style={{
                     flex: 1, minWidth: 0,
                     display: 'flex', flexDirection: 'column', gap: '2px',
                   }}>
-                    <span style={{
-                      fontSize: '13.5px', fontWeight: 600,
-                      color: colors.textPrimary, lineHeight: 1.45,
-                    }}>
-                      Привязки без тестов
+                    {/* Информер — за заголовком, который он объясняет (как у
+                        тестов он стоит за ключом): кликабелен, по клику —
+                        причина появления строки (v1.7.0-механика). */}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontSize: '13.5px', fontWeight: 600,
+                        color: colors.textPrimary, lineHeight: 1.45,
+                      }}>
+                        Привязки без тестов
+                      </span>
+                      <KeyIssueInformer
+                        text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                      />
                     </span>
                     <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
                       {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
@@ -648,9 +681,9 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Колонка ключа: ключ слева, информер проблемы — за ним,
-                      названия у всех строк начинаются на одной вертикали. */}
-                  <span style={keyColStyle}>
+                  {/* Колонка ключа: ключ по центру, информер проблемы — за
+                      ним, названия у всех строк начинаются на одной вертикали. */}
+                  <span style={{ ...keyColStyle, width: keyColWidth }}>
                     {keyIsLink ? (
                       <a
                         href={`${data.jira_base_url}/browse/${entry.key}`}

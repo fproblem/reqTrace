@@ -16,7 +16,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, StatusAlertIcon } from '../components/icons';
+import { ChevronRightIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
@@ -544,10 +544,11 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Красится currentColor (урок v1.7.0) — без span был бы чёрным. */}
-                  <span style={{ color: colors.statusOutdated, display: 'flex', flexShrink: 0 }}>
-                    <StatusAlertIcon kind="warning" size={16} />
-                  </span>
+                  {/* Кликабельный информер — как у проблемных ключей (v1.7.0):
+                      по клику объясняет, почему строка появилась. */}
+                  <KeyIssueInformer
+                    text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                  />
                   <div style={{
                     flex: 1, minWidth: 0,
                     display: 'flex', flexDirection: 'column', gap: '2px',

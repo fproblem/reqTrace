@@ -251,11 +251,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         position: 'relative',
         zIndex: 2,
       }}>
-        {/* Left: brand */}
-        {/* Чип версии — кнопка в общем стиле баров (34px, radii.md, тот же
-            ховер и пресс), всегда прижата к логотипу. Прежняя абсолютная
-            позиция с выравниванием на кнопку синхронизации дерева «ездила»
-            за ресайзом сайдбара — убрана по ревью v1.6.6. */}
+        {/* Left: brand. Чип версии переехал в футер сайдбара (v1.7.5) —
+            шапка осталась чистому логотипу. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
           <img
             src={`${process.env.PUBLIC_URL}/logo-header.svg?v=${currentVersion}`}
@@ -263,40 +260,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             onClick={() => navigate('/')}
             style={{ height: '42px', display: 'block', cursor: 'pointer', flexShrink: 0 }}
           />
-        {currentVersion && (
-          <button
-            onClick={() => setChangelogOpen(true)}
-            title="История изменений"
-            style={{
-              flexShrink: 0,
-              height: '34px',
-              padding: '0 14px',
-              borderRadius: radii.md,
-              border: `1px solid ${colors.border}`,
-              background: colors.white,
-              color: colors.textSecondary,
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-              e.currentTarget.style.borderColor = colors.borderHover;
-              e.currentTarget.style.color = colors.textPrimary;
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = colors.white;
-              e.currentTarget.style.borderColor = colors.border;
-              e.currentTarget.style.color = colors.textSecondary;
-            }}
-            onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
-            onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-          >
-            v{currentVersion}
-          </button>
-        )}
         </div>
 
         {/* Right: профиль и выход. Аватар, имя и экран настроек «склеены» в
@@ -494,11 +457,42 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <PageTree />
               </div>
 
-              {/* Collapse control — bottom-right corner, Confluence-style */}
+              {/* Футер — зеркало футера панели привязки (64px, верхняя линия,
+                  та же сетка): консистентные низы обоих сайдбаров (ревью
+                  v1.7.5). Слева — тихая кнопка версии (открывает «Историю
+                  изменений»; переехала из шапки от логотипа — место лобное,
+                  а функция справочная), справа — кнопка сворачивания. */}
               <div style={{
-                flexShrink: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
-                padding: '4px 14px 8px',
+                height: '64px', flexShrink: 0,
+                padding: '0 14px 0 20px',
+                display: 'flex', alignItems: 'center', gap: '12px',
+                borderTop: `1px solid ${colors.border}`,
               }}>
+                {currentVersion && (
+                  <button
+                    onClick={() => setChangelogOpen(true)}
+                    title="История изменений"
+                    style={{
+                      border: 'none', background: 'transparent',
+                      padding: '6px 8px', marginLeft: '-8px',
+                      borderRadius: radii.sm,
+                      color: colors.textTertiary, fontSize: '12px', fontWeight: 500,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                      e.currentTarget.style.color = colors.textPrimary;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = colors.textTertiary;
+                    }}
+                  >
+                    v{currentVersion}
+                  </button>
+                )}
+                <div style={{ flex: 1 }} />
                 <button
                   onClick={toggleCollapsed}
                   title="Свернуть панель страниц"
@@ -507,6 +501,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     background: 'transparent', color: colors.textTertiary, cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     transition: 'all 0.15s', fontFamily: 'inherit', padding: 0,
+                    flexShrink: 0,
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = colors.greenLight; e.currentTarget.style.color = colors.greenDark; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = colors.textTertiary; }}

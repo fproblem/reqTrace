@@ -39,15 +39,6 @@ const FILTERS: { key: FilterKey; label: string; title: string }[] = [
   { key: 'nonstandard', label: 'Нестандартные ключи', title: 'Тесты с ключом не в формате Jira (TEST-123)' },
 ];
 
-// Оттенок бейджа-счётчика в чипе — цвет смысла фильтра, тем же языком, что
-// пилюли статусов в строках (ревью: числа в скобках выглядели дёшево).
-// У «Все» оттенка нет — нейтральная капсула.
-const FILTER_BADGE_TINT: Partial<Record<FilterKey, string>> = {
-  lost: colors.statusLost,
-  outdated: colors.statusOutdated,
-  nonstandard: colors.statusOutdated,
-};
-
 // Особая строка «Привязки без тестов» (v1.7.5) живёт в общей механике
 // раскрытия/кэша/точки интереса под зарезервированным ключом. Столкновение
 // с настоящим ключом исключено: ключи индекса нормализованы в верхний регистр.
@@ -550,7 +541,6 @@ export const ProjectTestsPage: React.FC = () => {
           // «сюда ходить незачем» честнее, чем «(0)». Активный не глушится
           // никогда — его нужно мочь снять.
           const disabled = count === 0 && !active;
-          const badgeTint = FILTER_BADGE_TINT[f.key];
           return (
             <button
               key={f.key}
@@ -581,20 +571,18 @@ export const ProjectTestsPage: React.FC = () => {
               }}
             >
               {f.label}
-              {/* Счётчик — мини-пилюлей в цвете смысла фильтра (та же
-                  StatusCountPill, что у строк); «Все» — нейтральной капсулой,
-                  наследующей цвет чипа. У заглушённого нуля бейджа нет. */}
-              {!disabled && (badgeTint ? (
-                <StatusCountPill color={badgeTint} count={count} title={f.title} />
-              ) : (
+              {/* Счётчик — нейтральной пилюлей, как у «Привязанных тестов»
+                  в панели (цветные пробовали — на активном зелёном чипе
+                  получалась цветовая каша). У заглушённого нуля бейджа нет. */}
+              {!disabled && (
                 <span style={{
                   padding: '2px 8px', borderRadius: radii.pill,
-                  background: 'rgba(0,0,0,0.06)',
-                  fontSize: '11px', fontWeight: 700, lineHeight: 1.5,
+                  background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+                  fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
                 }}>
                   {count}
                 </span>
-              ))}
+              )}
             </button>
           );
         })}

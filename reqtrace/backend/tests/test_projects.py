@@ -729,6 +729,78 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         resp = self.client.get(f"/api/projects/{project.id}/test-links?key=REQ-1")
         self.assertEqual(resp.status_code, 403)
 
+    def test_test_index_counts_uncovered(self):
+        """Привязки без тестов (v1.7.5): индекс отдаёт их счётчики отдельным
+        блоком — из уже загруженных строк, сами цитаты не поднимаются."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        pg1, pg2 = uuid.uuid4(), uuid.uuid4()
+        h1, h2, h3, h4 = (uuid.uuid4() for _ in range(4))
+        self.session.execute_results = [
+            FakeResult(cred),   # членство ok
+            FakeResult([(pg1,), (pg2,)]),
+            FakeResult([
+                (h1, pg1, "active"),     # покрыта REQ-1
+                (h2, pg1, "outdated"),   # без тестов
+                (h3, pg2, "lost"),       # без тестов
+                (h4, pg2, "active"),     # без тестов
+            ]),
+            FakeResult([(h1, "REQ-1")]),
+        ]
+        resp = self.client.get(f"/api/projects/{project.id}/tests")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        data = resp.json()
+        unc = data["uncovered"]
+        self.assertEqual((unc["active"], unc["outdated"], unc["lost"]), (1, 1, 1))
+        self.assertEqual(unc["pages_count"], 2)
+        # Список тестов непокрытые не трогают: REQ-1 как был один, так и есть.
+        self.assertEqual([t["key"] for t in data["tests"]], ["REQ-1"])
+        self.assertEqual(data["pages_covered"], 1)
+
+    def test_uncovered_links_full_quotes_sorted_without_link_id(self):
+        """Раскрытие «Привязок без тестов» (v1.7.5): полные цитаты, порядок по
+        названию страницы; link_id пуст — записи HighlightTest не существует."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        long_text = "х" * 200
+        pg1, pg2 = uuid.uuid4(), uuid.uuid4()
+        h1, h2 = uuid.uuid4(), uuid.uuid4()
+        self.session.execute_results = [
+            FakeResult(cred),   # членство ok
+            # строки: highlight_id, page_id, status, text, title
+            FakeResult([
+                (h1, pg1, "outdated", long_text, "Оплата"),
+                (h2, pg2, "lost", "коротко", "Возвраты"),
+            ]),
+        ]
+        resp = self.client.get(f"/api/projects/{project.id}/uncovered-links")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        links = resp.json()["links"]
+        self.assertEqual([l["page_title"] for l in links], ["Возвраты", "Оплата"])
+        self.assertEqual(links[0]["status"], "lost")
+        self.assertEqual(links[1]["excerpt"], long_text)
+        self.assertTrue(all(l["link_id"] is None for l in links))
+
+    def test_uncovered_links_empty_is_ok_not_404(self):
+        """Последнюю непокрытую привязку покрыли, пока строка была открыта, —
+        пустой список, не ошибка."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(cred), FakeResult([])]
+        resp = self.client.get(f"/api/projects/{project.id}/uncovered-links")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["links"], [])
+
+    def test_uncovered_links_requires_membership(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(None)]   # кред нет
+        resp = self.client.get(f"/api/projects/{project.id}/uncovered-links")
+        self.assertEqual(resp.status_code, 403)
+
 
 class TestManualRefreshRun(ProjectTestBase):
     """Ручной прогон с карточки проекта (v1.6.4): POST /{id}/refresh-run.

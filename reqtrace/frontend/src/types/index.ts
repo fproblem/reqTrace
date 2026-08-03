@@ -252,7 +252,8 @@ export interface RefreshStatusResponse {
 }
 
 export interface TestLinkRef {
-  link_id: string;
+  /** null у привязок без тестов (v1.7.5): записи HighlightTest не существует. */
+  link_id: string | null;
   highlight_id: string;
   page_id: string;
   page_title: string;
@@ -275,6 +276,15 @@ export interface TestIndexEntry {
   pages_count: number;
 }
 
+/** Счётчики привязок без единого теста (v1.7.5) — для особой строки
+ *  «Привязки без тестов» на ярусе 2; сами привязки — UncoveredLinks. */
+export interface UncoveredStats {
+  active: number;
+  outdated: number;
+  lost: number;
+  pages_count: number;
+}
+
 export interface ProjectTestIndex {
   project_id: string;
   project_name: string;
@@ -282,10 +292,16 @@ export interface ProjectTestIndex {
   /** Страниц, покрытых хоть одним тестом, — для строки сводки. */
   pages_covered: number;
   tests: TestIndexEntry[];
+  uncovered: UncoveredStats;
 }
 
 /** Привязки одного ключа с цитатами — грузятся при раскрытии строки (v1.7.3). */
 export interface TestKeyLinks {
   key: string;
+  links: TestLinkRef[];
+}
+
+/** Привязки без единого теста — пара к TestKeyLinks (v1.7.5). */
+export interface UncoveredLinks {
   links: TestLinkRef[];
 }

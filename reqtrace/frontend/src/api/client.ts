@@ -3,7 +3,7 @@ import type {
   Highlight, TestLink, DiffResponse, BaselineInfo,
   ProjectTree, TreeSyncResult,
   Project, CredentialCheckResult,
-  ProjectTestsStats, ProjectTestIndex, TestKeyLinks,
+  ProjectTestsStats, ProjectTestIndex, TestKeyLinks, UncoveredLinks,
   NotificationsResponse, RefreshStatusResponse,
 } from '../types';
 
@@ -245,6 +245,10 @@ export const api = {
   // такой ключ сломал бы.
   getTestLinks: (projectId: string, key: string) =>
     request<TestKeyLinks>(`/projects/${projectId}/test-links?key=${encodeURIComponent(key)}`),
+  // Привязки без единого теста (v1.7.5) — при раскрытии особой строки
+  // «Привязки без тестов».
+  getUncoveredLinks: (projectId: string) =>
+    request<UncoveredLinks>(`/projects/${projectId}/uncovered-links`),
 
   // Projects (v1.5.1): личные креды, живая проверка подключения
   listProjects: () =>

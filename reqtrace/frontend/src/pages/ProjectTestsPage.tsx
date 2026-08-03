@@ -38,6 +38,11 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'nonstandard', label: 'Нестандартные ключи' },
 ];
 
+// Особая строка «Привязки без тестов» (v1.7.5) живёт в общей механике
+// раскрытия/кэша/точки интереса под зарезервированным ключом. Столкновение
+// с настоящим ключом исключено: ключи индекса нормализованы в верхний регистр.
+const UNCOVERED_KEY = '__uncovered__';
+
 const statusLabel: Record<string, { label: string; color: string }> = {
   active: { label: 'Актуально', color: colors.statusActive },
   outdated: { label: 'Требует проверки', color: colors.statusOutdated },
@@ -150,10 +155,17 @@ export const ProjectTestsPage: React.FC = () => {
     for (const key of Array.from(expanded)) {
       if (linksByKey[key] || pendingKeysRef.current.has(key)) continue;
       pendingKeysRef.current.add(key);
-      api.getTestLinks(projectId, key)
-        .then(r => setLinksByKey(prev => ({ ...prev, [key]: r.links })))
+      // Особая строка (v1.7.5) грузится своим эндпоинтом, дальше — та же жизнь:
+      // кэш до конца визита, ошибка сворачивает строку.
+      const load = key === UNCOVERED_KEY
+        ? api.getUncoveredLinks(projectId).then(r => r.links)
+        : api.getTestLinks(projectId, key).then(r => r.links);
+      load
+        .then(links => setLinksByKey(prev => ({ ...prev, [key]: links })))
         .catch((e: any) => {
-          showToast('error', `Не удалось загрузить привязки ${key}`, e.message);
+          showToast('error', key === UNCOVERED_KEY
+            ? 'Не удалось загрузить привязки без тестов'
+            : `Не удалось загрузить привязки ${key}`, e.message);
           setExpanded(prev => {
             const next = new Set(prev);
             next.delete(key);
@@ -171,7 +183,11 @@ export const ProjectTestsPage: React.FC = () => {
     const key = arrivalKeyRef.current;
     if (!data || !key) return;
     arrivalKeyRef.current = null;
-    if (!data.tests.some(t => t.key === key)) return;
+    const hasUncovered =
+      data.uncovered.active + data.uncovered.outdated + data.uncovered.lost > 0;
+    if (key === UNCOVERED_KEY
+      ? !hasUncovered
+      : !data.tests.some(t => t.key === key)) return;
     setExpanded(prev => {
       const next = new Set(prev);
       next.add(key);
@@ -192,14 +208,26 @@ export const ProjectTestsPage: React.FC = () => {
     [data],
   );
 
+  // Привязки без тестов (v1.7.5): без особой строки чип «Требует проверки»
+  // яруса 1 обещал больше, чем ярус 2 показывал.
+  const uncoveredTotal = data
+    ? data.uncovered.active + data.uncovered.outdated + data.uncovered.lost
+    : 0;
+
   // Счётчики в фильтрах: масштаб проблем виден до клика, ноль честно говорит
-  // «сюда ходить незачем».
-  const filterCounts = useMemo<Record<FilterKey, number>>(() => ({
-    all: allRows.length,
-    lost: allRows.filter(r => r.counts.lost > 0).length,
-    outdated: allRows.filter(r => r.counts.outdated > 0).length,
-    nonstandard: allRows.filter(r => r.nonstandard).length,
-  }), [allRows]);
+  // «сюда ходить незачем». Особая строка — тоже строка списка: фильтры, под
+  // которыми она видна, считают её как +1.
+  const filterCounts = useMemo<Record<FilterKey, number>>(() => {
+    const unc = data?.uncovered;
+    return {
+      all: allRows.length + (uncoveredTotal > 0 ? 1 : 0),
+      lost: allRows.filter(r => r.counts.lost > 0).length
+        + ((unc?.lost ?? 0) > 0 ? 1 : 0),
+      outdated: allRows.filter(r => r.counts.outdated > 0).length
+        + ((unc?.outdated ?? 0) > 0 ? 1 : 0),
+      nonstandard: allRows.filter(r => r.nonstandard).length,
+    };
+  }, [allRows, data, uncoveredTotal]);
 
   // Порядок строк: несущие больше всего привязок — сверху, внутри равных —
   // натуральный порядок ключей (REQ-9 выше REQ-10, testOrder.ts).
@@ -222,6 +250,15 @@ export const ProjectTestsPage: React.FC = () => {
         b.total - a.total || compareTestKeys(a.entry.key, b.entry.key));
   }, [allRows, q, filter]);
 
+  // Особая строка видна под «Все» и под фильтрами тех статусов, которые в ней
+  // есть, — цифры чипов яруса 1 сходятся с ярусом 2. Текстовый поиск строку
+  // прячет: поиск — про тесты, у строки нет ни ключа, ни названия.
+  const showUncoveredRow = uncoveredTotal > 0
+    && !q.trim()
+    && (filter === 'all'
+      || (filter === 'outdated' && (data?.uncovered.outdated ?? 0) > 0)
+      || (filter === 'lost' && (data?.uncovered.lost ?? 0) > 0));
+
   const summary = useMemo(() => {
     if (!data) return null;
     let links = 0;
@@ -243,6 +280,85 @@ export const ProjectTestsPage: React.FC = () => {
     if (opening) setParam('key', key);
     else if (searchParams.get('key') === key) setParam('key', '');
   };
+
+  // Строки привязок раскрытого блока — общие для строк тестов и «Привязок
+  // без тестов» (v1.7.5): разметка одна, различаются точка интереса в URL и
+  // текст опустевшего блока. key строки — highlight_id: у привязок без тестов
+  // link_id не существует, а внутри одного блока подсветка не повторяется.
+  const renderLinkRows = (
+    links: TestLinkRef[] | undefined,
+    interestKey: string,
+    emptyText: string,
+  ) => (
+    <AnimatedHeight>
+    {links === undefined ? (
+      <LinksPending />
+    ) : links.length === 0 ? (
+      <div style={{
+        ...linkRowStyle, ...linkRowDivider,
+        color: colors.textTertiary, fontSize: '13px', fontStyle: 'italic',
+      }}>
+        {emptyText}
+      </div>
+    ) : links.map((link, linkIndex) => {
+        const st = statusLabel[link.status] ?? statusLabel.active;
+        return (
+          <div
+            key={link.highlight_id}
+            onClick={() => {
+              // Точка интереса — именно ЭТОТ блок (открытых строк может быть
+              // несколько): возврат назад вернёт к нему. replaceState, а не
+              // setSearchParams: два роутерных перехода в одном тике гоняются
+              // между собой.
+              const next = new URLSearchParams(searchParams);
+              next.set('key', interestKey);
+              window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
+              navigate(`/pages/${link.page_id}?highlight=${link.highlight_id}`);
+            }}
+            title="Открыть страницу на этом выделении"
+            style={{
+              ...linkRowStyle,
+              ...(linkIndex === 0 ? linkRowDivider : undefined),
+              cursor: 'pointer', transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{
+              width: '160px', flexShrink: 0, fontSize: '12.5px',
+              color: colors.textSecondary, overflow: 'hidden',
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {link.page_title}
+            </span>
+            {/* Цитата — суть строки, ей до 3 строк (v1.6.5): типичное
+                требование читается целиком на месте, не заставляя ходить
+                на страницу; совсем длинное клампится — полный контекст
+                по клику. */}
+            <span style={{
+              flex: 1, minWidth: 0, fontSize: '13px', color: colors.textPrimary,
+              lineHeight: 1.5, overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+            }}>
+              «{link.excerpt}»
+            </span>
+            <span style={{
+              padding: '3px 10px', borderRadius: radii.pill, flexShrink: 0,
+              background: `${st.color}15`, border: `1px solid ${st.color}33`,
+              color: st.color, fontSize: '11px', fontWeight: 600,
+            }}>
+              {st.label}
+            </span>
+            <span style={{ color: colors.textTertiary, display: 'flex', flexShrink: 0 }}>
+              <ChevronRightIcon size={14} />
+            </span>
+          </div>
+        );
+      })}
+    </AnimatedHeight>
+  );
 
   if (failed) {
     return (
@@ -379,9 +495,13 @@ export const ProjectTestsPage: React.FC = () => {
         Всего: {summary.tests} {plural(summary.tests, ['тест', 'теста', 'тестов'])}
         {' · '}покрывают {summary.links} {plural(summary.links, ['привязку', 'привязки', 'привязок'])}
         {' '}на {summary.pages} {plural(summary.pages, ['странице', 'страницах', 'страницах'])}
+        {/* Разрыв цифр ярусов объясняется словами (v1.7.5). */}
+        {uncoveredTotal > 0 && (
+          <>{' · '}ещё {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])} без тестов</>
+        )}
       </div>
 
-      {data.tests.length === 0 ? (
+      {data.tests.length === 0 && uncoveredTotal === 0 ? (
         <div style={{
           padding: '28px', borderRadius: radii.lg,
           border: `1px solid ${colors.border}`, background: 'rgba(255,255,255,0.85)',
@@ -390,12 +510,88 @@ export const ProjectTestsPage: React.FC = () => {
           В проекте пока нет привязанных тестов. Откройте страницу, выделите
           текст требования и привяжите к нему ключ теста — он появится здесь.
         </div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && !showUncoveredRow ? (
         <div style={{ padding: '28px 0', color: colors.textTertiary, fontSize: '13px', fontStyle: 'italic' }}>
           Ничего не нашлось — измените запрос или фильтр.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Особая строка «Привязки без тестов» (v1.7.5) — закреплена над
+              списком: это долг покрытия, а не тест, поэтому пунктирная рамка
+              в янтаре и значок вместо ключа. Раскрытие, кэш и точка интереса —
+              общие с тестовыми строками (UNCOVERED_KEY). */}
+          {showUncoveredRow && data.uncovered && (() => {
+            const unc = data.uncovered;
+            const isOpen = expanded.has(UNCOVERED_KEY);
+            return (
+              <div
+                data-test-key={UNCOVERED_KEY}
+                className={pulseKey === UNCOVERED_KEY ? 'tests-row-pulse' : undefined}
+                style={{
+                  border: `1px dashed ${colors.statusOutdated}88`,
+                  borderRadius: radii.md,
+                  background: colors.white,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={() => toggle(UNCOVERED_KEY)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    minHeight: '48px', padding: '8px 14px', cursor: 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {/* Красится currentColor (урок v1.7.0) — без span был бы чёрным. */}
+                  <span style={{ color: colors.statusOutdated, display: 'flex', flexShrink: 0 }}>
+                    <StatusAlertIcon kind="warning" size={16} />
+                  </span>
+                  <div style={{
+                    flex: 1, minWidth: 0,
+                    display: 'flex', flexDirection: 'column', gap: '2px',
+                  }}>
+                    <span style={{
+                      fontSize: '13.5px', fontWeight: 600,
+                      color: colors.textPrimary, lineHeight: 1.45,
+                    }}>
+                      Привязки без тестов
+                    </span>
+                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
+                      {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
+                      {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
+                    </span>
+                  </div>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {unc.active > 0 && (
+                      <StatusCountPill color={colors.statusActive} count={unc.active} title="Актуально" />
+                    )}
+                    {unc.outdated > 0 && (
+                      <StatusCountPill color={colors.statusOutdated} count={unc.outdated} title="Требует проверки" />
+                    )}
+                    {unc.lost > 0 && (
+                      <StatusCountPill color={colors.statusLost} count={unc.lost} title="Утрачено" />
+                    )}
+                    <ChevronRightIcon
+                      size={14}
+                      style={{
+                        color: colors.textTertiary,
+                        transition: 'transform 0.18s ease',
+                        transform: isOpen ? 'rotate(90deg)' : 'none',
+                      }}
+                    />
+                  </span>
+                </div>
+                <TreeReveal expanded={isOpen}>
+                  {renderLinkRows(
+                    linksByKey[UNCOVERED_KEY], UNCOVERED_KEY,
+                    'Непокрытых привязок не осталось — возможно, тесты только что привязали',
+                  )}
+                </TreeReveal>
+              </div>
+            );
+          })()}
           {rows.map(({ entry, counts, total, pagesCount, allLost, nonstandard }) => {
             const isOpen = expanded.has(entry.key);
             // Jira не знает такой задачи — ключ гаснет и теряет ссылку
@@ -525,74 +721,10 @@ export const ProjectTestsPage: React.FC = () => {
                     Разделитель — на строках (borderTop): у ожидания и у первой
                     привязки он одинаковый, граница не прыгает. */}
                 <TreeReveal expanded={isOpen}>
-                  <AnimatedHeight>
-                  {linksByKey[entry.key] === undefined ? (
-                    <LinksPending />
-                  ) : linksByKey[entry.key].length === 0 ? (
-                    <div style={{
-                      ...linkRowStyle, ...linkRowDivider,
-                      color: colors.textTertiary, fontSize: '13px', fontStyle: 'italic',
-                    }}>
-                      Привязок не осталось — возможно, их только что отвязали
-                    </div>
-                  ) : linksByKey[entry.key].map((link, linkIndex) => {
-                      const st = statusLabel[link.status] ?? statusLabel.active;
-                      return (
-                        <div
-                          key={link.link_id}
-                          onClick={() => {
-                            // Точка интереса — именно ЭТОТ ключ (открытых строк
-                            // может быть несколько): возврат назад вернёт к нему.
-                            // replaceState, а не setSearchParams: два роутерных
-                            // перехода в одном тике гоняются между собой.
-                            const next = new URLSearchParams(searchParams);
-                            next.set('key', entry.key);
-                            window.history.replaceState(null, '', `${window.location.pathname}?${next}`);
-                            navigate(`/pages/${link.page_id}?highlight=${link.highlight_id}`);
-                          }}
-                          title="Открыть страницу на этом выделении"
-                          style={{
-                            ...linkRowStyle,
-                            ...(linkIndex === 0 ? linkRowDivider : undefined),
-                            cursor: 'pointer', transition: 'background 0.15s',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          <span style={{
-                            width: '160px', flexShrink: 0, fontSize: '12.5px',
-                            color: colors.textSecondary, overflow: 'hidden',
-                            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {link.page_title}
-                          </span>
-                          {/* Цитата — суть строки, ей до 3 строк (v1.6.5):
-                              типичное требование читается целиком на месте,
-                              не заставляя ходить на страницу; совсем длинное
-                              клампится — полный контекст по клику. */}
-                          <span style={{
-                            flex: 1, minWidth: 0, fontSize: '13px', color: colors.textPrimary,
-                            lineHeight: 1.5, overflow: 'hidden',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: 'vertical',
-                          }}>
-                            «{link.excerpt}»
-                          </span>
-                          <span style={{
-                            padding: '3px 10px', borderRadius: radii.pill, flexShrink: 0,
-                            background: `${st.color}15`, border: `1px solid ${st.color}33`,
-                            color: st.color, fontSize: '11px', fontWeight: 600,
-                          }}>
-                            {st.label}
-                          </span>
-                          <span style={{ color: colors.textTertiary, display: 'flex', flexShrink: 0 }}>
-                            <ChevronRightIcon size={14} />
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </AnimatedHeight>
+                  {renderLinkRows(
+                    linksByKey[entry.key], entry.key,
+                    'Привязок не осталось — возможно, их только что отвязали',
+                  )}
                 </TreeReveal>
               </div>
             );

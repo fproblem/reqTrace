@@ -39,6 +39,15 @@ const FILTERS: { key: FilterKey; label: string; title: string }[] = [
   { key: 'nonstandard', label: 'Нестандартные ключи', title: 'Тесты с ключом не в формате Jira (TEST-123)' },
 ];
 
+// Оттенок бейджа-счётчика в чипе — цвет смысла фильтра, тем же языком, что
+// пилюли статусов в строках (ревью: числа в скобках выглядели дёшево).
+// У «Все» оттенка нет — нейтральная капсула.
+const FILTER_BADGE_TINT: Partial<Record<FilterKey, string>> = {
+  lost: colors.statusLost,
+  outdated: colors.statusOutdated,
+  nonstandard: colors.statusOutdated,
+};
+
 // Особая строка «Привязки без тестов» (v1.7.5) живёт в общей механике
 // раскрытия/кэша/точки интереса под зарезервированным ключом. Столкновение
 // с настоящим ключом исключено: ключи индекса нормализованы в верхний регистр.
@@ -536,31 +545,56 @@ export const ProjectTestsPage: React.FC = () => {
         />
         {FILTERS.map(f => {
           const active = filter === f.key;
+          const count = filterCounts[f.key];
+          // Нулевой фильтр глушится: приглушённый некликабельный чип говорит
+          // «сюда ходить незачем» честнее, чем «(0)». Активный не глушится
+          // никогда — его нужно мочь снять.
+          const disabled = count === 0 && !active;
+          const badgeTint = FILTER_BADGE_TINT[f.key];
           return (
             <button
               key={f.key}
-              title={f.title}
-              onClick={() => setParam('f', f.key === 'all' ? '' : f.key)}
+              title={disabled ? 'Таких тестов сейчас нет' : f.title}
+              // Охрана в onClick, а не disabled-атрибут: с атрибутом не живут
+              // title и cursor (урок v1.6.0).
+              onClick={() => { if (!disabled) setParam('f', f.key === 'all' ? '' : f.key); }}
               style={{
                 height: '36px', padding: '0 14px', borderRadius: radii.pill,
                 border: `1px solid ${active ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
                 background: active ? colors.greenLight : colors.white,
-                color: active ? colors.greenDark : colors.textSecondary,
-                fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                color: active ? colors.greenDark
+                  : disabled ? colors.textTertiary : colors.textSecondary,
+                fontSize: '13px', fontWeight: 600,
+                cursor: disabled ? 'default' : 'pointer',
                 fontFamily: 'inherit', transition: 'all 0.15s', flexShrink: 0,
+                display: 'inline-flex', alignItems: 'center', gap: '7px',
               }}
               onMouseEnter={e => {
-                if (active) return;
+                if (active || disabled) return;
                 e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
                 e.currentTarget.style.borderColor = colors.borderHover;
               }}
               onMouseLeave={e => {
-                if (active) return;
+                if (active || disabled) return;
                 e.currentTarget.style.background = colors.white;
                 e.currentTarget.style.borderColor = colors.border;
               }}
             >
-              {f.label} ({filterCounts[f.key]})
+              {f.label}
+              {/* Счётчик — мини-пилюлей в цвете смысла фильтра (та же
+                  StatusCountPill, что у строк); «Все» — нейтральной капсулой,
+                  наследующей цвет чипа. У заглушённого нуля бейджа нет. */}
+              {!disabled && (badgeTint ? (
+                <StatusCountPill color={badgeTint} count={count} title={f.title} />
+              ) : (
+                <span style={{
+                  padding: '2px 8px', borderRadius: radii.pill,
+                  background: 'rgba(0,0,0,0.06)',
+                  fontSize: '11px', fontWeight: 700, lineHeight: 1.5,
+                }}>
+                  {count}
+                </span>
+              ))}
             </button>
           );
         })}

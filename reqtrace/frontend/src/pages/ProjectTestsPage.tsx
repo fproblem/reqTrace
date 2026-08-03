@@ -96,24 +96,31 @@ const keyTextStyle: React.CSSProperties = {
 
 // Ширина колонки — по самому длинному ключу проекта (ревью пользователя:
 // фиксированные 104px оставляли «воздух» коротким ключам). Замер — canvas
-// тем же шрифтом, что у ключей; строки с информером проблемного ключа
-// учитывают его место. Кламп: экзотически длинный нестандартный ключ уходит
-// в эллипсис, а не раздувает колонку всем остальным.
+// тем же шрифтом, что у ключей. Кламп: экзотически длинный нестандартный
+// ключ уходит в эллипсис, а не раздувает колонку всем остальным.
 const KEY_COL_MIN = 64;
 const KEY_COL_MAX = 160;
-const KEY_INFORMER_SPACE = 22;   // значок 16px + зазор 6px
 const KEY_FONT = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 function measureKeyColWidth(tests: TestIndexEntry[]): number {
   const ctx = document.createElement('canvas').getContext('2d');
   if (!ctx) return 104;
   ctx.font = KEY_FONT;
   let max = 0;
-  for (const t of tests) {
-    const hasInformer = !isLikelyJiraKey(t.key) || t.jira_status === 'not_found';
-    max = Math.max(max, ctx.measureText(t.key).width + (hasInformer ? KEY_INFORMER_SPACE : 0));
-  }
+  for (const t of tests) max = Math.max(max, ctx.measureText(t.key).width);
   return Math.min(KEY_COL_MAX, Math.max(KEY_COL_MIN, Math.ceil(max)));
 }
+
+// Жёлоб предупреждений (v1.7.5, ревью пользователя): ВСЕ информеры живут
+// своей колонкой сразу справа от дивайдера — по вертикальному центру строки
+// (внутри строки заголовка информер центровался по первой строке текста),
+// крупнее рядового значка (несут предупреждающую функцию) и не в колонке
+// ключа, где сдвигали сами ключи. Жёлоб резервируется, только когда в
+// списке вообще есть о чём предупреждать, — иначе был бы мёртвой полосой.
+const INFORMER_ICON_SIZE = 18;
+const informerSlotStyle: React.CSSProperties = {
+  width: `${INFORMER_ICON_SIZE + 8}px`, flexShrink: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
 
 // Ожидание привязок раскрытого ключа: первые 200мс — пустая строка (быстрые
 // ответы не мигают лоадером, порог v1.7.1), дальше мягко проявляется лоадер
@@ -250,6 +257,17 @@ export const ProjectTestsPage: React.FC = () => {
 
   // Колонка ключа подгоняется под самый длинный ключ этого проекта.
   const keyColWidth = useMemo(() => measureKeyColWidth(data?.tests ?? []), [data]);
+
+  // Жёлоб предупреждений нужен, пока в проекте есть хоть один повод для
+  // информера (проблемный ключ или привязки без тестов) — от фильтров и
+  // поиска не зависит, чтобы колонки не «дышали» при их переключении.
+  const showInformerGutter = useMemo(
+    () => (data
+      ? data.uncovered.active + data.uncovered.outdated + data.uncovered.lost > 0
+      : false)
+      || allRows.some(r => r.nonstandard || r.entry.jira_status === 'not_found'),
+    [data, allRows],
+  );
 
   // Привязки без тестов (v1.7.5): без особой строки чип «Требует проверки»
   // яруса 1 обещал больше, чем ярус 2 показывал.
@@ -596,23 +614,24 @@ export const ProjectTestsPage: React.FC = () => {
                     </span>
                   </span>
                   <span style={keyColDivider} />
+                  {/* Информер — в жёлобе предупреждений, по центру высоты
+                      строки (жёлоб зарезервирован: строка видима ⇒ он есть):
+                      кликабелен, по клику — причина появления строки. */}
+                  <span style={informerSlotStyle}>
+                    <KeyIssueInformer
+                      size={INFORMER_ICON_SIZE}
+                      text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                    />
+                  </span>
                   <div style={{
                     flex: 1, minWidth: 0,
                     display: 'flex', flexDirection: 'column', gap: '2px',
                   }}>
-                    {/* Информер — за заголовком, который он объясняет (как у
-                        тестов он стоит за ключом): кликабелен, по клику —
-                        причина появления строки (v1.7.0-механика). */}
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{
-                        fontSize: '13.5px', fontWeight: 600,
-                        color: colors.textPrimary, lineHeight: 1.45,
-                      }}>
-                        Привязки без тестов
-                      </span>
-                      <KeyIssueInformer
-                        text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                      />
+                    <span style={{
+                      fontSize: '13.5px', fontWeight: 600,
+                      color: colors.textPrimary, lineHeight: 1.45,
+                    }}>
+                      Привязки без тестов
                     </span>
                     <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
                       {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
@@ -718,15 +737,23 @@ export const ProjectTestsPage: React.FC = () => {
                         {highlightMatch(entry.key, q)}
                       </span>
                     )}
-                    {(nonstandard || notInJira) && (
-                      <KeyIssueInformer
-                        text={nonstandard
-                          ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
-                          : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
-                      />
-                    )}
                   </span>
                   <span style={keyColDivider} />
+                  {/* Жёлоб предупреждений: информер проблемного ключа — по
+                      центру высоты строки; у здоровых строк слот пуст, чтобы
+                      названия не съезжали. */}
+                  {showInformerGutter && (
+                    <span style={informerSlotStyle}>
+                      {(nonstandard || notInJira) && (
+                        <KeyIssueInformer
+                          size={INFORMER_ICON_SIZE}
+                          text={nonstandard
+                            ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                            : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
+                        />
+                      )}
+                    </span>
+                  )}
                   {/* Название (целиком, с переносами) + счётчики подстрокой:
                       единый текст в одну строку читался кашей (ревью). */}
                   <div style={{

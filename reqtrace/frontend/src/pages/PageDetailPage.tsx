@@ -10,9 +10,7 @@ import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { FadeIn, useFadeToggle } from '../components/fadePresence';
 import { useDelayedFlag } from '../components/Skeleton';
-import {
-  ClipboardCheckIcon, DocumentIcon, IconBadge, PencilIcon, SyncIcon,
-} from '../components/icons';
+import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -576,31 +574,12 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             <div style={{
               fontSize: '14px',
               color: colors.textSecondary,
-              marginBottom: '20px',
+              marginBottom: '28px',
               lineHeight: 1.5,
             }}>
               Она появилась в дереве как элемент иерархии — содержимое
-              ReqTrace ещё не забирал. Подключите её, и по этой странице
-              заработает всё то же, что по остальным:
-            </div>
-            {/* Что даст подключение — тезисы на IconBadge, языком экрана
-                входа (v1.7.5: пустое состояние читалось безжизненным). */}
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: '12px',
-              width: 'fit-content', margin: '0 auto 28px', textAlign: 'left',
-            }}>
-              {[
-                { icon: <SyncIcon size={15} />, text: 'Снимки содержимого и ночная проверка изменений' },
-                { icon: <PencilIcon size={15} />, text: 'Выделение требований прямо в тексте страницы' },
-                { icon: <ClipboardCheckIcon size={15} />, text: 'Привязка тестов и живая картина покрытия' },
-              ].map((b, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <IconBadge tint="green" size={30} radius={10}>{b.icon}</IconBadge>
-                  <span style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.45 }}>
-                    {b.text}
-                  </span>
-                </div>
-              ))}
+              ReqTrace ещё не забирал. Начните отслеживание, чтобы подтянуть
+              её из Confluence и работать с покрытием требований.
             </div>
             {/* ModalButton несёт все состояния (ховер, пресс) — у прежней
                 самодельной кнопки их не было (ревью v1.6.6). На время

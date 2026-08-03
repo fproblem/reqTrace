@@ -596,13 +596,14 @@ export const ProjectTestsPage: React.FC = () => {
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  {/* Ключа у строки нет — колонку держит честный прочерк
-                      (одинокий значок в пустой колонке смотрелся сиротой,
-                      ревью пользователя). */}
+                  {/* Роль ключа играет информер (ревью пользователя): по
+                      центру колонки, как ключи, — по клику объясняет, почему
+                      строка появилась. */}
                   <span style={{ ...keyColStyle, width: keyColWidth }}>
-                    <span style={{ fontWeight: 600, fontSize: '14px', color: colors.textTertiary }}>
-                      —
-                    </span>
+                    <KeyIssueInformer
+                      size={INFORMER_ICON_SIZE}
+                      text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                    />
                   </span>
                   <span style={keyColDivider} />
                   <div style={{
@@ -615,19 +616,9 @@ export const ProjectTestsPage: React.FC = () => {
                     }}>
                       Привязки без тестов
                     </span>
-                    <span style={{
-                      fontSize: '12.5px', color: colors.textSecondary,
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                    }}>
-                      <span>
-                        {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
-                        {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
-                      </span>
-                      {/* По клику — причина появления строки (как у
-                          проблемных ключей). */}
-                      <InlineInformer
-                        text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                      />
+                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
+                      {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
+                      {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
                     </span>
                   </div>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>

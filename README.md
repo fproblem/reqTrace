@@ -119,12 +119,16 @@ cp .env.example .env
 # заполните: POSTGRES_PASSWORD, GOOGLE_CLIENT_ID,
 #   SESSION_SECRET   ← openssl rand -hex 32
 #   CREDENTIALS_KEY  ← python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# прод-машина: дополнительно COMPOSE_PROFILES=prod и сертификаты в certs/
 
 # 2. Запуск
 docker compose up -d --build
 ```
 
-Приложение: **http://localhost:3000** (API: :8000, Postgres: :5432).
+Приложение: в проде — **https://\<ваш домен\>** (nginx на 80/443); на
+дев-машине фронтенд-контейнер не поднимается — запустите `npm start` в
+`reqtrace/frontend` и открывайте **http://localhost:3000** (API: :8000,
+Postgres: :5432). Подробнее о ролях машин — раздел «Полигон и прод».
 
 Первые шаги в приложении: вход Google-аккаунтом разрешённого домена →
 «Профиль и проекты» → создать/присоединиться к проекту, введя свои креды
@@ -136,7 +140,9 @@ ReqTrace» в профиле.
 
 | Переменная | Значение |
 |---|---|
+| `COMPOSE_PROFILES` | роль машины: `prod` — офисный стенд (фронт на 80/443 с сертами), `preview` — смоук прод-сборки без TLS на :3000; не задана — дев-набор postgres+backend |
 | `POSTGRES_PASSWORD` | пароль БД (используется компоузом и бэкендом) |
+| `POSTGRES_HOST_PORT` | хостовый порт postgres для отладки (по умолчанию 5432); смените, если порт занят локальным PostgreSQL |
 | `GOOGLE_CLIENT_ID` | Client ID Google OAuth (не секрет) |
 | `SESSION_SECRET` | ключ подписи сессионных JWT — `openssl rand -hex 32` |
 | `CREDENTIALS_KEY` | Fernet-ключ шифрования кред участников. ⚠ Потеря/смена = сохранённые пароли нечитаемы, участники вводят заново |
@@ -146,6 +152,26 @@ ReqTrace» в профиле.
 | `AUTO_REFRESH_ENABLED` | ночное автообновление (по умолчанию `true`) |
 | `AUTO_REFRESH_AT` / `AUTO_REFRESH_TZ` | время старта прогона в указанной зоне (по умолчанию `03:00` `Europe/Moscow`) |
 | `AUTO_REFRESH_PAGE_DELAY_MS` | пауза между запросами к Confluence в прогоне (по умолчанию 300) |
+
+## Полигон и прод
+
+Проект живёт на двух машинах с разными ролями; между ними через git едет
+**только код** — данные и `.env` не синхронизируются никогда (разные
+`CREDENTIALS_KEY` делают перенос кред невозможным по построению).
+
+- **Дев-машина («полигон»)** — тестовые данные, свои секреты,
+  `COOKIE_SECURE=false`, без `COMPOSE_PROFILES`. Запуск: `docker compose
+  up -d` (postgres+backend) + `npm start` (фронт с hot reload). Смоук
+  прод-сборки перед релизом: `COMPOSE_PROFILES=preview docker compose up
+  -d --build frontend-dev` → http://localhost:3000.
+- **Прод-машина (офис)** — боевые данные, свои секреты,
+  `COMPOSE_PROFILES=prod` в `.env`, сертификаты в `reqtrace/certs/`.
+  Всегда чистое рабочее дерево на `main`; единственная ручная команда —
+  `./update.sh`. Разработки на проде нет; вынужденная правка на месте —
+  коммит и пуш сразу же.
+- **Поток релиза:** ветка `release/vX.Y.Z` на полигоне → тесты → merge в
+  `main` + аннотированный тег `v.X.Y.Z` → push → `./update.sh` на проде.
+  Хотфикс — тот же путь.
 
 ## Обновление и откат
 

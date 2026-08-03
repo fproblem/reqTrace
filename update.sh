@@ -43,6 +43,10 @@ main() {
   say "1/5 Проверяю окружение"
   docker info >/dev/null 2>&1 || fail "Docker не отвечает — запустите Docker Desktop и повторите."
   [ -f reqtrace/.env ] || fail "Нет reqtrace/.env — без секретов стек не поднимется."
+  # Роль машины (v1.7.5): без профиля prod compose не поднимет фронтенд —
+  # прод остался бы без интерфейса. На дев-машинах строка сознательно не нужна.
+  grep -Eq '^COMPOSE_PROFILES=.*prod' reqtrace/.env \
+    || fail "В reqtrace/.env нет COMPOSE_PROFILES=prod — прод-фронт (80/443) не поднимется. Допишите строку и повторите."
 
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -102,8 +106,10 @@ main() {
     sleep 2
   done
   note "бэкенд отвечает на /api/health"
-  curl -fsS -o /dev/null http://localhost:3000/ && note "фронтенд отвечает на :3000" \
-    || note "⚠ фронтенд на :3000 пока не ответил — дайте ему полминуты и откройте в браузере"
+  # Прод-фронт живёт на 443 (v1.7.4); -k — серт выписан на reqtrace.surf.dev,
+  # а стучимся на localhost, несовпадение имени здесь не ошибка.
+  curl -fsSk -o /dev/null https://localhost/ && note "фронтенд отвечает на https (:443)" \
+    || note "⚠ фронтенд на :443 пока не ответил — дайте ему полминуты и откройте https://reqtrace.surf.dev"
 
   trap - ERR
   docker image prune -f >/dev/null 2>&1 || true

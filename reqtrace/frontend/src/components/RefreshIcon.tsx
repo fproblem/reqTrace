@@ -49,6 +49,34 @@ function useSpinFinish(active: boolean) {
 const REDUCED_MOTION = typeof window !== 'undefined'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// Минимальная церемония лоадера (v1.7.5, спека пользователя): по тапу
+// стрелки обязаны выехать, сделать два полных оборота и только после этого
+// заехать обратно — даже если ответ пришёл мгновенно. Без этого на быстрой
+// сети слот дёргался «выехал-заехал». Хук держит видимое active, пока не
+// пройдут и операция, и церемония.
+export const SPINNER_CEREMONY_MS = 300 + 2 * 800; // выезд (0.3s) + два оборота (по 0.8s)
+
+export function useSpinnerCeremony(busy: boolean): boolean {
+  const [held, setHeld] = useState(false);
+  const startedAtRef = useRef(0);
+  useEffect(() => {
+    if (busy) {
+      startedAtRef.current = performance.now();
+      setHeld(true);
+      return;
+    }
+    if (!held) return;
+    const left = SPINNER_CEREMONY_MS - (performance.now() - startedAtRef.current);
+    if (left <= 0) {
+      setHeld(false);
+      return;
+    }
+    const t = window.setTimeout(() => setHeld(false), left);
+    return () => window.clearTimeout(t);
+  }, [busy, held]);
+  return held;
+}
+
 export const ExpandingSpinner: React.FC<{ active: boolean; size?: number; gap?: number }> = ({
   active, size = 15, gap = 8,
 }) => (

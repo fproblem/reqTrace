@@ -10,9 +10,8 @@ import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { FadeIn, useFadeToggle } from '../components/fadePresence';
 import { useDelayedFlag } from '../components/Skeleton';
-import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
-import { ExpandingSpinner, RefreshIcon } from '../components/RefreshIcon';
+import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
@@ -74,6 +73,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const [deleting, setDeleting] = useState(false);
   const [showBaselineWarning, setShowBaselineWarning] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  // Видимость лоадера подключения — с церемонией (выезд + два оборота):
+  // мгновенный ответ не дёргает кнопку «выехал-заехал».
+  const promoteSpinnerShown = useSpinnerCeremony(promoting);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   // Мягкое появление/гашение меню «Ещё действия» (v1.6.6).
   const { mounted: actionsMenuMounted, fadeStyle: actionsMenuFade } = useFadeToggle(showActionsMenu);
@@ -548,29 +550,22 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           justifyContent: 'center',
         }}>
           {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
-              текста утяжеляла экран): иконка → заголовок → одна строка сути →
-              кнопка. Отступы — только gap. */}
+              текста и большая иконка документа утяжеляли экран): заголовок →
+              одна строка сути → кнопка, текст крупнее — он теперь главный.
+              Отступы — только gap. */}
           <div style={{
             textAlign: 'center',
-            maxWidth: '420px',
+            maxWidth: '460px',
             padding: '40px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             gap: '16px',
           }}>
-            {/* Библиотечная иконка вместо эмодзи (v1.6.6): глиф выбивался из
-                языка интерфейса. Без плашки и крупно — по ревью; лёгкий серый,
-                тонкий штрих — страница «ещё не в игре». */}
-            <DocumentIcon
-              size={56}
-              strokeWidth={1.5}
-              style={{ color: colors.textTertiary }}
-            />
-            <div style={{ fontSize: '18px', fontWeight: 600, color: colors.textPrimary }}>
+            <div style={{ fontSize: '20px', fontWeight: 600, color: colors.textPrimary }}>
               Страница пока не отслеживается
             </div>
-            <div style={{ fontSize: '14px', color: colors.textSecondary, lineHeight: 1.5 }}>
+            <div style={{ fontSize: '15px', color: colors.textSecondary, lineHeight: 1.55 }}>
               Она попала в дерево как элемент иерархии — содержимое
               ещё не загружалось из Confluence.
             </div>
@@ -590,7 +585,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
                 cursor: promoting ? 'default' : 'pointer',
               }}
             >
-              <ExpandingSpinner active={promoting} size={15} />
+              <ExpandingSpinner active={promoteSpinnerShown} size={15} />
               <span>Начать отслеживание</span>
             </ModalButton>
           </div>

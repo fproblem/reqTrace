@@ -6,7 +6,7 @@ import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { OnboardingModal } from '../components/OnboardingModal';
 import { markOnboardingShown, shouldAutoShowOnboarding } from '../components/onboardingAutoShow';
-import { ExpandingSpinner } from '../components/RefreshIcon';
+import { ExpandingSpinner, useSpinnerCeremony } from '../components/RefreshIcon';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
@@ -696,6 +696,9 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
   // пока оно догасает.
   const { mounted: menuMounted, fadeStyle: menuFade } = useFadeToggle(menuOpen);
   const [checking, setChecking] = useState(false);
+  // Видимость лоадера — с церемонией (выезд + два оборота): мгновенный ответ
+  // не дёргает кнопку «выехал-заехал».
+  const spinnerShown = useSpinnerCeremony(checking);
   const [modal, setModal] = useState<'creds' | 'edit' | 'disconnect' | 'delete' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
@@ -846,7 +849,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           onMouseEnter={e => { if (!checking) iconButtonHoverOn(e); }}
           onMouseLeave={iconButtonHoverOff}
         >
-          <ExpandingSpinner active={checking} size={16} />
+          <ExpandingSpinner active={spinnerShown} size={16} />
           Проверить
         </button>
         <div style={{ position: 'relative' }} ref={menuRef}>

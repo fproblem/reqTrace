@@ -110,13 +110,18 @@ function measureKeyColWidth(tests: TestIndexEntry[]): number {
   return Math.min(KEY_COL_MAX, Math.max(KEY_COL_MIN, Math.ceil(max)));
 }
 
-// Информеры (v1.7.5, два ревью пользователя): живут СПРАВА от контента,
-// перед пилюлями статусов, — правый край строк и так «рваный», поэтому
-// значок никому не сдвигает названия (жёлоб-колонка после дивайдера дала
-// мёртвый воздух здоровым строкам и была снята). Элемент строки-флекса —
-// центр по высоте всей строки бесплатно; крупнее рядового значка — несёт
-// предупреждающую функцию.
+// Информеры (v1.7.5, итог трёх ревью пользователя): живут сразу ПОСЛЕ
+// счётчиков «N привязок · M страниц» — предупреждение читается вместе с
+// фактами строки и не сдвигает ни ключи (жёлоб-колонка дала мёртвый воздух
+// здоровым строкам), ни пилюли справа. Крупнее рядового значка — несёт
+// предупреждающую функцию. Обёртка с отрицательными отступами гасит высоту
+// кнопки (size+8) до высоты строки счётчиков — строки не раздуваются.
 const INFORMER_ICON_SIZE = 18;
+const InlineInformer: React.FC<{ text: string }> = ({ text }) => (
+  <span style={{ display: 'flex', margin: '-4px 0', flexShrink: 0 }}>
+    <KeyIssueInformer size={INFORMER_ICON_SIZE} text={text} />
+  </span>
+);
 
 // Ожидание привязок раскрытого ключа: первые 200мс — пустая строка (быстрые
 // ответы не мигают лоадером, порог v1.7.1), дальше мягко проявляется лоадер
@@ -610,17 +615,21 @@ export const ProjectTestsPage: React.FC = () => {
                     }}>
                       Привязки без тестов
                     </span>
-                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
-                      {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
-                      {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
+                    <span style={{
+                      fontSize: '12.5px', color: colors.textSecondary,
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}>
+                      <span>
+                        {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])}
+                        {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
+                      </span>
+                      {/* По клику — причина появления строки (как у
+                          проблемных ключей). */}
+                      <InlineInformer
+                        text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                      />
                     </span>
                   </div>
-                  {/* Информер — справа от контента, перед пилюлями (как у
-                      проблемных ключей): по клику — причина появления строки. */}
-                  <KeyIssueInformer
-                    size={INFORMER_ICON_SIZE}
-                    text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                  />
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {unc.active > 0 && (
                       <StatusCountPill color={colors.statusActive} count={unc.active} title="Актуально" />
@@ -736,21 +745,23 @@ export const ProjectTestsPage: React.FC = () => {
                         {highlightMatch(entry.summary, q)}
                       </span>
                     )}
-                    <span style={{ fontSize: '12.5px', color: colors.textSecondary }}>
-                      {total} {plural(total, ['привязка', 'привязки', 'привязок'])}
-                      {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
+                    <span style={{
+                      fontSize: '12.5px', color: colors.textSecondary,
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}>
+                      <span>
+                        {total} {plural(total, ['привязка', 'привязки', 'привязок'])}
+                        {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
+                      </span>
+                      {(nonstandard || notInJira) && (
+                        <InlineInformer
+                          text={nonstandard
+                            ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                            : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
+                        />
+                      )}
                     </span>
                   </div>
-                  {/* Информер проблемного ключа — справа от контента, перед
-                      пилюлями (ревью: колонка-жёлоб дала мёртвый воздух). */}
-                  {(nonstandard || notInJira) && (
-                    <KeyIssueInformer
-                      size={INFORMER_ICON_SIZE}
-                      text={nonstandard
-                        ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
-                        : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
-                    />
-                  )}
                   {/* Красная пометка «мёртвого покрытия»: тест есть, но всё,
                       что он держал, утрачено. */}
                   {allLost && (

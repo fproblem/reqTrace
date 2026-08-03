@@ -109,7 +109,10 @@ export const Modal: React.FC<{
     // чтение overlayRef.current здесь вернуло бы null, и призрака не было бы.
     const node = overlayRef.current;
     return () => {
-      if (!node || REDUCED_MOTION) return;
+      // Призрак — только когда узел реально покинул документ (настоящее
+      // размонтирование). Страховка от cleanup на живой модалке (так делает
+      // StrictMode в dev): клон поверх настоящей модалки — двойное моргание.
+      if (!node || node.isConnected || REDUCED_MOTION) return;
       const ghost = node.cloneNode(true) as HTMLElement;
       ghost.setAttribute('aria-hidden', 'true');
       ghost.style.pointerEvents = 'none';

@@ -547,10 +547,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           alignItems: 'center',
           justifyContent: 'center',
         }}>
+          {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
+              текста утяжеляла экран): иконка → заголовок → одна строка сути →
+              кнопка → короткая подпись об ожидании. Отступы — только gap. */}
           <div style={{
             textAlign: 'center',
             maxWidth: '420px',
             padding: '40px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '16px',
           }}>
             {/* Библиотечная иконка вместо эмодзи (v1.6.6): глиф выбивался из
                 языка интерфейса. Без плашки и крупно — по ревью; лёгкий серый,
@@ -558,28 +565,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             <DocumentIcon
               size={56}
               strokeWidth={1.5}
-              style={{
-                color: colors.textTertiary,
-                margin: '0 auto 16px',
-              }}
+              style={{ color: colors.textTertiary }}
             />
-            <div style={{
-              fontSize: '18px',
-              fontWeight: 600,
-              color: colors.textPrimary,
-              marginBottom: '8px',
-            }}>
+            <div style={{ fontSize: '18px', fontWeight: 600, color: colors.textPrimary }}>
               Страница пока не отслеживается
             </div>
-            <div style={{
-              fontSize: '14px',
-              color: colors.textSecondary,
-              marginBottom: '28px',
-              lineHeight: 1.5,
-            }}>
-              Она появилась в дереве как элемент иерархии — содержимое
-              ReqTrace ещё не забирал. Начните отслеживание, чтобы подтянуть
-              её из Confluence и работать с покрытием требований.
+            <div style={{ fontSize: '14px', color: colors.textSecondary, lineHeight: 1.5 }}>
+              Она попала в дерево как элемент иерархии — содержимое
+              ещё не загружалось из Confluence.
             </div>
             {/* ModalButton несёт все состояния (ховер, пресс) — у прежней
                 самодельной кнопки их не было (ревью v1.6.6). На время
@@ -608,8 +601,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               )}
             </ModalButton>
             {/* Ожидание названо заранее: страница больше не выглядит зависшей. */}
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '14px' }}>
-              Подключение занимает несколько секунд — содержимое приедет из Confluence
+            <div style={{ fontSize: '12px', color: colors.textTertiary }}>
+              Подключение займёт несколько секунд
             </div>
           </div>
         </div>

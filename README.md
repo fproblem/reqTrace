@@ -142,7 +142,6 @@ ReqTrace» в профиле.
 |---|---|
 | `COMPOSE_PROFILES` | роль машины: `prod` — офисный стенд (фронт на 80/443 с сертами), `preview` — смоук прод-сборки без TLS на :3000; не задана — дев-набор postgres+backend |
 | `POSTGRES_PASSWORD` | пароль БД (используется компоузом и бэкендом) |
-| `POSTGRES_HOST_PORT` | хостовый порт postgres для отладки (по умолчанию 5432); смените, если порт занят локальным PostgreSQL |
 | `GOOGLE_CLIENT_ID` | Client ID Google OAuth (не секрет) |
 | `SESSION_SECRET` | ключ подписи сессионных JWT — `openssl rand -hex 32` |
 | `CREDENTIALS_KEY` | Fernet-ключ шифрования кред участников. ⚠ Потеря/смена = сохранённые пароли нечитаемы, участники вводят заново |
@@ -160,8 +159,10 @@ ReqTrace» в профиле.
 `CREDENTIALS_KEY` делают перенос кред невозможным по построению).
 
 - **Дев-машина («полигон»)** — тестовые данные, свои секреты,
-  `COOKIE_SECURE=false`, без `COMPOSE_PROFILES`. Запуск: `docker compose
-  up -d` (postgres+backend) + `npm start` (фронт с hot reload). Смоук
+  `COOKIE_SECURE=false`, без `COMPOSE_PROFILES`. Запуск одной командой:
+  `./dev.sh` из корня клона — проверит окружение, поднимет
+  postgres+backend с пересборкой, дождётся health и запустит фронт
+  дев-сервером (hot reload; Ctrl+C останавливает только фронт). Смоук
   прод-сборки перед релизом: `COMPOSE_PROFILES=preview docker compose up
   -d --build frontend-dev` → http://localhost:3000.
 - **Прод-машина (офис)** — боевые данные, свои секреты,

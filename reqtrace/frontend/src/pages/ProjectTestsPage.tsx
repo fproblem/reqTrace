@@ -31,11 +31,12 @@ import { plural, StatusCountPill } from './TestsPage';
 
 type FilterKey = 'all' | 'lost' | 'outdated' | 'nonstandard';
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'all', label: 'Все' },
-  { key: 'lost', label: 'С утраченными' },
-  { key: 'outdated', label: 'С требующими проверки' },
-  { key: 'nonstandard', label: 'Нестандартные ключи' },
+// title — всплывающая подсказка чипа (QOL v1.7.5): фильтр объясняет себя сам.
+const FILTERS: { key: FilterKey; label: string; title: string }[] = [
+  { key: 'all', label: 'Все', title: 'Показать все строки списка' },
+  { key: 'lost', label: 'С утраченными', title: 'Тесты, у которых есть утраченные привязки' },
+  { key: 'outdated', label: 'С требующими проверки', title: 'Тесты, у которых есть привязки, требующие проверки' },
+  { key: 'nonstandard', label: 'Нестандартные ключи', title: 'Тесты с ключом не в формате Jira (TEST-123)' },
 ];
 
 // Особая строка «Привязки без тестов» (v1.7.5) живёт в общей механике
@@ -43,10 +44,25 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 // с настоящим ключом исключено: ключи индекса нормализованы в верхний регистр.
 const UNCOVERED_KEY = '__uncovered__';
 
-const statusLabel: Record<string, { label: string; color: string }> = {
-  active: { label: 'Актуально', color: colors.statusActive },
-  outdated: { label: 'Требует проверки', color: colors.statusOutdated },
-  lost: { label: 'Утрачено', color: colors.statusLost },
+// hint — определение статуса для тултипа (QOL v1.7.5): формулировки — те же,
+// что у шапки карточки в панели привязки (SidePanel.statusLabels), модель
+// должна объясняться одинаково во всех местах.
+const statusLabel: Record<string, { label: string; color: string; hint: string }> = {
+  active: {
+    label: 'Актуально',
+    color: colors.statusActive,
+    hint: 'Актуально: текст выделения подтверждён человеком и после этого не менялся',
+  },
+  outdated: {
+    label: 'Требует проверки',
+    color: colors.statusOutdated,
+    hint: 'Требует проверки: привязка ещё не подтверждена или текст под ней изменился — проверьте и нажмите «Актуализировать»',
+  },
+  lost: {
+    label: 'Утрачено',
+    color: colors.statusLost,
+    hint: 'Утрачено: выделенный текст удалён со страницы, статус окончательный — тесты сохранены для перепривязки',
+  },
 };
 
 // Производные строки ключа: счётчики статусов и признак «мёртвого покрытия»
@@ -376,11 +392,15 @@ export const ProjectTestsPage: React.FC = () => {
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <span style={{
-              width: '160px', flexShrink: 0, fontSize: '12.5px',
-              color: colors.textSecondary, overflow: 'hidden',
-              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
+            {/* Название страницы клипается на 160px — полный текст в тултипе. */}
+            <span
+              title={link.page_title}
+              style={{
+                width: '160px', flexShrink: 0, fontSize: '12.5px',
+                color: colors.textSecondary, overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
               {link.page_title}
             </span>
             {/* Цитата — суть строки, ей до 3 строк (v1.6.5): типичное
@@ -396,11 +416,14 @@ export const ProjectTestsPage: React.FC = () => {
             }}>
               «{link.excerpt}»
             </span>
-            <span style={{
-              padding: '3px 10px', borderRadius: radii.pill, flexShrink: 0,
-              background: `${st.color}15`, border: `1px solid ${st.color}33`,
-              color: st.color, fontSize: '11px', fontWeight: 600,
-            }}>
+            <span
+              title={st.hint}
+              style={{
+                padding: '3px 10px', borderRadius: radii.pill, flexShrink: 0,
+                background: `${st.color}15`, border: `1px solid ${st.color}33`,
+                color: st.color, fontSize: '11px', fontWeight: 600,
+              }}
+            >
               {st.label}
             </span>
             <span style={{ color: colors.textTertiary, display: 'flex', flexShrink: 0 }}>
@@ -503,6 +526,7 @@ export const ProjectTestsPage: React.FC = () => {
           return (
             <button
               key={f.key}
+              title={f.title}
               onClick={() => setParam('f', f.key === 'all' ? '' : f.key)}
               style={{
                 height: '36px', padding: '0 14px', borderRadius: radii.pill,
@@ -588,6 +612,7 @@ export const ProjectTestsPage: React.FC = () => {
               >
                 <div
                   onClick={() => toggle(UNCOVERED_KEY)}
+                  title={isOpen ? 'Свернуть привязки' : 'Показать привязки без тестов'}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '12px',
                     minHeight: '48px', padding: '8px 14px', cursor: 'pointer',
@@ -623,13 +648,13 @@ export const ProjectTestsPage: React.FC = () => {
                   </div>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {unc.active > 0 && (
-                      <StatusCountPill color={colors.statusActive} count={unc.active} title="Актуально" />
+                      <StatusCountPill color={colors.statusActive} count={unc.active} title="Привязок в статусе «Актуально»" />
                     )}
                     {unc.outdated > 0 && (
-                      <StatusCountPill color={colors.statusOutdated} count={unc.outdated} title="Требует проверки" />
+                      <StatusCountPill color={colors.statusOutdated} count={unc.outdated} title="Привязок в статусе «Требует проверки»" />
                     )}
                     {unc.lost > 0 && (
-                      <StatusCountPill color={colors.statusLost} count={unc.lost} title="Утрачено" />
+                      <StatusCountPill color={colors.statusLost} count={unc.lost} title="Привязок в статусе «Утрачено»" />
                     )}
                     <ChevronRightIcon
                       size={14}
@@ -675,6 +700,7 @@ export const ProjectTestsPage: React.FC = () => {
                     строкой — высота держится minHeight. */}
                 <div
                   onClick={() => toggle(entry.key)}
+                  title={isOpen ? 'Свернуть привязки' : 'Показать привязки теста'}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '12px',
                     minHeight: '48px', padding: '8px 14px', cursor: 'pointer',
@@ -756,23 +782,26 @@ export const ProjectTestsPage: React.FC = () => {
                   {/* Красная пометка «мёртвого покрытия»: тест есть, но всё,
                       что он держал, утрачено. */}
                   {allLost && (
-                    <span style={{
-                      padding: '2px 8px', borderRadius: radii.pill,
-                      background: `${colors.statusLost}15`, border: `1px solid ${colors.statusLost}33`,
-                      color: colors.statusLost, fontSize: '11px', fontWeight: 700, flexShrink: 0,
-                    }}>
+                    <span
+                      title="Все привязки теста утрачены — живого покрытия не осталось, требования перепривязываются заново"
+                      style={{
+                        padding: '2px 8px', borderRadius: radii.pill,
+                        background: `${colors.statusLost}15`, border: `1px solid ${colors.statusLost}33`,
+                        color: colors.statusLost, fontSize: '11px', fontWeight: 700, flexShrink: 0,
+                      }}
+                    >
                       все утрачены
                     </span>
                   )}
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {counts.active > 0 && (
-                      <StatusCountPill color={colors.statusActive} count={counts.active} title="Актуально" />
+                      <StatusCountPill color={colors.statusActive} count={counts.active} title="Привязок в статусе «Актуально»" />
                     )}
                     {counts.outdated > 0 && (
-                      <StatusCountPill color={colors.statusOutdated} count={counts.outdated} title="Требует проверки" />
+                      <StatusCountPill color={colors.statusOutdated} count={counts.outdated} title="Привязок в статусе «Требует проверки»" />
                     )}
                     {counts.lost > 0 && (
-                      <StatusCountPill color={colors.statusLost} count={counts.lost} title="Утрачено" />
+                      <StatusCountPill color={colors.statusLost} count={counts.lost} title="Привязок в статусе «Утрачено»" />
                     )}
                     <ChevronRightIcon
                       size={14}

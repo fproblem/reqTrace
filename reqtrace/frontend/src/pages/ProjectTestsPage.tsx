@@ -110,17 +110,13 @@ function measureKeyColWidth(tests: TestIndexEntry[]): number {
   return Math.min(KEY_COL_MAX, Math.max(KEY_COL_MIN, Math.ceil(max)));
 }
 
-// Жёлоб предупреждений (v1.7.5, ревью пользователя): ВСЕ информеры живут
-// своей колонкой сразу справа от дивайдера — по вертикальному центру строки
-// (внутри строки заголовка информер центровался по первой строке текста),
-// крупнее рядового значка (несут предупреждающую функцию) и не в колонке
-// ключа, где сдвигали сами ключи. Жёлоб резервируется, только когда в
-// списке вообще есть о чём предупреждать, — иначе был бы мёртвой полосой.
+// Информеры (v1.7.5, два ревью пользователя): живут СПРАВА от контента,
+// перед пилюлями статусов, — правый край строк и так «рваный», поэтому
+// значок никому не сдвигает названия (жёлоб-колонка после дивайдера дала
+// мёртвый воздух здоровым строкам и была снята). Элемент строки-флекса —
+// центр по высоте всей строки бесплатно; крупнее рядового значка — несёт
+// предупреждающую функцию.
 const INFORMER_ICON_SIZE = 18;
-const informerSlotStyle: React.CSSProperties = {
-  width: `${INFORMER_ICON_SIZE + 8}px`, flexShrink: 0,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-};
 
 // Ожидание привязок раскрытого ключа: первые 200мс — пустая строка (быстрые
 // ответы не мигают лоадером, порог v1.7.1), дальше мягко проявляется лоадер
@@ -258,16 +254,6 @@ export const ProjectTestsPage: React.FC = () => {
   // Колонка ключа подгоняется под самый длинный ключ этого проекта.
   const keyColWidth = useMemo(() => measureKeyColWidth(data?.tests ?? []), [data]);
 
-  // Жёлоб предупреждений нужен, пока в проекте есть хоть один повод для
-  // информера (проблемный ключ или привязки без тестов) — от фильтров и
-  // поиска не зависит, чтобы колонки не «дышали» при их переключении.
-  const showInformerGutter = useMemo(
-    () => (data
-      ? data.uncovered.active + data.uncovered.outdated + data.uncovered.lost > 0
-      : false)
-      || allRows.some(r => r.nonstandard || r.entry.jira_status === 'not_found'),
-    [data, allRows],
-  );
 
   // Привязки без тестов (v1.7.5): без особой строки чип «Требует проверки»
   // яруса 1 обещал больше, чем ярус 2 показывал.
@@ -614,15 +600,6 @@ export const ProjectTestsPage: React.FC = () => {
                     </span>
                   </span>
                   <span style={keyColDivider} />
-                  {/* Информер — в жёлобе предупреждений, по центру высоты
-                      строки (жёлоб зарезервирован: строка видима ⇒ он есть):
-                      кликабелен, по клику — причина появления строки. */}
-                  <span style={informerSlotStyle}>
-                    <KeyIssueInformer
-                      size={INFORMER_ICON_SIZE}
-                      text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
-                    />
-                  </span>
                   <div style={{
                     flex: 1, minWidth: 0,
                     display: 'flex', flexDirection: 'column', gap: '2px',
@@ -638,6 +615,12 @@ export const ProjectTestsPage: React.FC = () => {
                       {' · '}{unc.pages_count} {plural(unc.pages_count, ['страница', 'страницы', 'страниц'])}
                     </span>
                   </div>
+                  {/* Информер — справа от контента, перед пилюлями (как у
+                      проблемных ключей): по клику — причина появления строки. */}
+                  <KeyIssueInformer
+                    size={INFORMER_ICON_SIZE}
+                    text="Эти привязки не связаны ни с одним тестом — требования выделены, но пока ничем не покрыты"
+                  />
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {unc.active > 0 && (
                       <StatusCountPill color={colors.statusActive} count={unc.active} title="Актуально" />
@@ -739,21 +722,6 @@ export const ProjectTestsPage: React.FC = () => {
                     )}
                   </span>
                   <span style={keyColDivider} />
-                  {/* Жёлоб предупреждений: информер проблемного ключа — по
-                      центру высоты строки; у здоровых строк слот пуст, чтобы
-                      названия не съезжали. */}
-                  {showInformerGutter && (
-                    <span style={informerSlotStyle}>
-                      {(nonstandard || notInJira) && (
-                        <KeyIssueInformer
-                          size={INFORMER_ICON_SIZE}
-                          text={nonstandard
-                            ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
-                            : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
-                        />
-                      )}
-                    </span>
-                  )}
                   {/* Название (целиком, с переносами) + счётчики подстрокой:
                       единый текст в одну строку читался кашей (ревью). */}
                   <div style={{
@@ -773,6 +741,16 @@ export const ProjectTestsPage: React.FC = () => {
                       {' · '}{pagesCount} {plural(pagesCount, ['страница', 'страницы', 'страниц'])}
                     </span>
                   </div>
+                  {/* Информер проблемного ключа — справа от контента, перед
+                      пилюлями (ревью: колонка-жёлоб дала мёртвый воздух). */}
+                  {(nonstandard || notInJira) && (
+                    <KeyIssueInformer
+                      size={INFORMER_ICON_SIZE}
+                      text={nonstandard
+                        ? 'Ключ не похож на формат Jira (TEST-123) — проверьте, нет ли опечатки'
+                        : 'Задачи с таким ключом нет в Jira — тест удалён или ключ с опечаткой'}
+                    />
+                  )}
                   {/* Красная пометка «мёртвого покрытия»: тест есть, но всё,
                       что он держал, утрачено. */}
                   {allLost && (

@@ -10,7 +10,9 @@ import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { FadeIn, useFadeToggle } from '../components/fadePresence';
 import { useDelayedFlag } from '../components/Skeleton';
-import { DocumentIcon } from '../components/icons';
+import {
+  ClipboardCheckIcon, DocumentIcon, IconBadge, PencilIcon, SyncIcon,
+} from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -569,28 +571,67 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               color: colors.textPrimary,
               marginBottom: '8px',
             }}>
-              Страница не отслеживается
+              Страница пока не отслеживается
             </div>
             <div style={{
               fontSize: '14px',
               color: colors.textSecondary,
-              marginBottom: '28px',
+              marginBottom: '20px',
               lineHeight: 1.5,
             }}>
-              Эта страница была добавлена автоматически как элемент иерархии.
-              Начните отслеживание, чтобы подтянуть содержимое из Confluence
-              и работать с покрытием требований.
+              Она появилась в дереве как элемент иерархии — содержимое
+              ReqTrace ещё не забирал. Подключите её, и по этой странице
+              заработает всё то же, что по остальным:
             </div>
-            {/* ModalButton несёт все состояния (ховер, пресс, disabled) —
-                у прежней самодельной кнопки их не было (ревью v1.6.6). */}
+            {/* Что даст подключение — тезисы на IconBadge, языком экрана
+                входа (v1.7.5: пустое состояние читалось безжизненным). */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: '12px',
+              width: 'fit-content', margin: '0 auto 28px', textAlign: 'left',
+            }}>
+              {[
+                { icon: <SyncIcon size={15} />, text: 'Снимки содержимого и ночная проверка изменений' },
+                { icon: <PencilIcon size={15} />, text: 'Выделение требований прямо в тексте страницы' },
+                { icon: <ClipboardCheckIcon size={15} />, text: 'Привязка тестов и живая картина покрытия' },
+              ].map((b, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <IconBadge tint="green" size={30} radius={10}>{b.icon}</IconBadge>
+                  <span style={{ fontSize: '13px', color: colors.textSecondary, lineHeight: 1.45 }}>
+                    {b.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* ModalButton несёт все состояния (ховер, пресс) — у прежней
+                самодельной кнопки их не было (ревью v1.6.6). На время
+                подключения — лоадер ПОВЕРХ прозрачной подписи (ширина не
+                меняется, паттерн v1.7.0); охрана в onClick, а не disabled:
+                полупрозрачная disabled-кнопка читалась бы выключенной,
+                а не работающей. */}
             <ModalButton
               variant="primary"
-              onClick={handlePromote}
-              disabled={promoting}
-              style={{ padding: '10px 28px' }}
+              onClick={() => { if (!promoting) void handlePromote(); }}
+              style={{
+                padding: '10px 28px', position: 'relative',
+                cursor: promoting ? 'default' : 'pointer',
+              }}
             >
-              {promoting ? 'Подключение…' : 'Начать отслеживание'}
+              <span style={{ opacity: promoting ? 0 : 1, transition: 'opacity 0.15s' }}>
+                Начать отслеживание
+              </span>
+              {promoting && (
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <RefreshIcon size={16} spinning />
+                </span>
+              )}
             </ModalButton>
+            {/* Ожидание названо заранее: страница больше не выглядит зависшей. */}
+            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '14px' }}>
+              Подключение занимает несколько секунд — содержимое приедет из Confluence
+            </div>
           </div>
         </div>
       </div>

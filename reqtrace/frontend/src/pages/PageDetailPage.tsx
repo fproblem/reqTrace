@@ -10,9 +10,8 @@ import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { FadeIn, useFadeToggle } from '../components/fadePresence';
 import { useDelayedFlag } from '../components/Skeleton';
-import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
-import { RefreshIcon } from '../components/RefreshIcon';
+import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
@@ -74,6 +73,9 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const [deleting, setDeleting] = useState(false);
   const [showBaselineWarning, setShowBaselineWarning] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  // Видимость лоадера подключения — с церемонией (выезд + два оборота):
+  // мгновенный ответ не дёргает кнопку «выехал-заехал».
+  const promoteSpinnerShown = useSpinnerCeremony(promoting);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   // Мягкое появление/гашение меню «Ещё действия» (v1.6.6).
   const { mounted: actionsMenuMounted, fadeStyle: actionsMenuFade } = useFadeToggle(showActionsMenu);
@@ -547,49 +549,44 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           alignItems: 'center',
           justifyContent: 'center',
         }}>
+          {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
+              текста и большая иконка документа утяжеляли экран): заголовок →
+              одна строка сути → кнопка, текст крупнее — он теперь главный.
+              Отступы — только gap. */}
           <div style={{
             textAlign: 'center',
-            maxWidth: '420px',
+            maxWidth: '460px',
             padding: '40px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '16px',
           }}>
-            {/* Библиотечная иконка вместо эмодзи (v1.6.6): глиф выбивался из
-                языка интерфейса. Без плашки и крупно — по ревью; лёгкий серый,
-                тонкий штрих — страница «ещё не в игре». */}
-            <DocumentIcon
-              size={56}
-              strokeWidth={1.5}
-              style={{
-                color: colors.textTertiary,
-                margin: '0 auto 16px',
-              }}
-            />
-            <div style={{
-              fontSize: '18px',
-              fontWeight: 600,
-              color: colors.textPrimary,
-              marginBottom: '8px',
-            }}>
-              Страница не отслеживается
+            <div style={{ fontSize: '20px', fontWeight: 600, color: colors.textPrimary }}>
+              Страница пока не отслеживается
             </div>
-            <div style={{
-              fontSize: '14px',
-              color: colors.textSecondary,
-              marginBottom: '28px',
-              lineHeight: 1.5,
-            }}>
-              Эта страница была добавлена автоматически как элемент иерархии.
-              Начните отслеживание, чтобы подтянуть содержимое из Confluence
-              и работать с покрытием требований.
+            <div style={{ fontSize: '15px', color: colors.textSecondary, lineHeight: 1.55 }}>
+              Она попала в дерево как элемент иерархии — содержимое
+              ещё не загружалось из Confluence.
             </div>
-            {/* ModalButton несёт все состояния (ховер, пресс, disabled) —
-                у прежней самодельной кнопки их не было (ревью v1.6.6). */}
+            {/* ModalButton несёт все состояния (ховер, пресс) — у прежней
+                самодельной кнопки их не было (ревью v1.6.6). На время
+                подключения кнопка плавно дорастает под крутящиеся стрелки
+                (ExpandingSpinner — приём капсулы колокольчика; ревью v1.7.5:
+                лоадер вместо подписи читался зависанием). Охрана в onClick,
+                а не disabled: полупрозрачная disabled-кнопка выглядела бы
+                выключенной, а не работающей. */}
             <ModalButton
               variant="primary"
-              onClick={handlePromote}
-              disabled={promoting}
-              style={{ padding: '10px 28px' }}
+              onClick={() => { if (!promoting) void handlePromote(); }}
+              style={{
+                padding: '10px 28px',
+                display: 'inline-flex', alignItems: 'center',
+                cursor: promoting ? 'default' : 'pointer',
+              }}
             >
-              {promoting ? 'Подключение…' : 'Начать отслеживание'}
+              <ExpandingSpinner active={promoteSpinnerShown} size={15} />
+              <span>Начать отслеживание</span>
             </ModalButton>
           </div>
         </div>

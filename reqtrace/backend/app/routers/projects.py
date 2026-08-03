@@ -44,6 +44,8 @@ from app.schemas.project import (
     TestIndexEntry,
     TestKeyLinks,
     TestLinkRef,
+    UncoveredLinks,
+    UncoveredStats,
 )
 from app.services import confluence, jira, test_names
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
@@ -290,6 +292,25 @@ async def project_test_index(
         key_pages.setdefault(norm, set()).add(page_id)
         covered_pages.add(page_id)
 
+    # Привязки без единого теста (v1.7.5): hl_rows уже подняты целиком, а
+    # covered-множество известно из link_rows — разница считается бесплатно,
+    # без новых запросов. Без этих цифр чип «Требует проверки» яруса 1 обещал
+    # больше, чем ярус 2 показывал.
+    covered_ids = {hl_id for hl_id, _ in link_rows}
+    uncovered = UncoveredStats()
+    uncovered_pages: set = set()
+    for hl_id, (page_id, status) in hl_by_id.items():
+        if hl_id in covered_ids:
+            continue
+        if status == "active":
+            uncovered.active += 1
+        elif status == "outdated":
+            uncovered.outdated += 1
+        elif status == "lost":
+            uncovered.lost += 1
+        uncovered_pages.add(page_id)
+    uncovered.pages_count = len(uncovered_pages)
+
     # Названия тестов из Jira (v1.7.0) — свойство ключа, не привязки.
     details = await test_names.load_details(db, project.id)
     tests = [
@@ -310,6 +331,7 @@ async def project_test_index(
         jira_base_url=project.jira_base_url,
         pages_covered=len(covered_pages),
         tests=tests,
+        uncovered=uncovered,
     )
 
 
@@ -364,6 +386,53 @@ async def project_test_links(
     links.sort(key=lambda l: (l.page_title, l.excerpt))
     # Пустой список — не 404: ключ могли отвязать, пока строка была открыта.
     return TestKeyLinks(key=norm, links=links)
+
+
+@router.get("/{project_id}/uncovered-links", response_model=UncoveredLinks)
+async def project_uncovered_links(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Привязки без единого теста — пара к project_test_links (v1.7.5):
+    грузится при раскрытии строки «Привязки без тестов» на экране «Тесты».
+
+    Форма ссылок та же (TestLinkRef), только link_id пуст — записи
+    HighlightTest не существует по определению. Пустой список — не 404:
+    последнюю непокрытую привязку могли покрыть, пока строка была открыта.
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_access(db, project, current_user)
+
+    rows = (await db.execute(
+        select(
+            Highlight.id, Highlight.page_id,
+            Highlight.status, Highlight.text_content, Page.title,
+        )
+        .join(Page, Page.id == Highlight.page_id)
+        .where(
+            Page.project_id == project.id,
+            ~select(HighlightTest.id)
+            .where(HighlightTest.highlight_id == Highlight.id)
+            .exists(),
+        )
+    )).all()
+
+    links = [
+        TestLinkRef(
+            link_id=None,
+            highlight_id=hl_id,
+            page_id=page_id,
+            page_title=page_title,
+            status=status,
+            excerpt=text or "",
+        )
+        for hl_id, page_id, status, text, page_title in rows
+    ]
+    links.sort(key=lambda l: (l.page_title, l.excerpt))
+    return UncoveredLinks(links=links)
 
 
 @router.post("/{project_id}/refresh-run", status_code=202)

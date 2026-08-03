@@ -210,11 +210,14 @@ export const TestsPage: React.FC = () => {
                     {s.project_name}
                   </span>
                   {s.is_demo && (
-                    <span style={{
-                      padding: '2px 8px', borderRadius: radii.pill,
-                      background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
-                      fontSize: '11px', fontWeight: 600, flexShrink: 0,
-                    }}>
+                    <span
+                      title="Личный демо-проект для знакомства с ReqTrace — с Confluence не связан"
+                      style={{
+                        padding: '2px 8px', borderRadius: radii.pill,
+                        background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+                        fontSize: '11px', fontWeight: 600, flexShrink: 0,
+                      }}
+                    >
                       демо
                     </span>
                   )}

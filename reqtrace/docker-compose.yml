@@ -1,3 +1,8 @@
+# Два стенда из одного файла (v1.7.5) — роль машины объявляется в reqtrace/.env:
+#   офисный прод-Mac:  COMPOSE_PROFILES=prod    → postgres + backend + frontend (80/443, серты)
+#   дев-машина:        строки нет               → только postgres + backend; фронт — npm start
+#   смоук прод-сборки: COMPOSE_PROFILES=preview → + frontend-dev (http://localhost:3000, без TLS)
+# Подробнее — README, раздел «Полигон и прод».
 services:
   postgres:
     image: postgres:16-alpine
@@ -31,7 +36,9 @@ services:
       postgres:
         condition: service_healthy
 
+  # Прод-фронт: только офисный Mac (COMPOSE_PROFILES=prod).
   frontend:
+    profiles: ["prod"]
     build: ./frontend
     restart: unless-stopped
     ports:
@@ -40,6 +47,18 @@ services:
     volumes:
       # Сертификат reqtrace.surf.dev: fullchain.pem + privkey.pem (не в git).
       - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+
+  # Смоук прод-сборки на дев-машине (COMPOSE_PROFILES=preview): тот же образ,
+  # но http-конфиг nginx волюмом поверх прод-конфига — без сертов и редиректа.
+  frontend-dev:
+    profiles: ["preview"]
+    build: ./frontend
+    ports:
+      - "127.0.0.1:3000:80"
+    volumes:
+      - ./frontend/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
 

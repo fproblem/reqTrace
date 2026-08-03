@@ -78,8 +78,11 @@ class ProjectTestsStats(BaseModel):
 
 
 class TestLinkRef(BaseModel):
-    """Одна привязка ключа: где живёт и в каком статусе."""
-    link_id: UUID
+    """Одна привязка ключа: где живёт и в каком статусе.
+
+    Той же формой отдаются и привязки БЕЗ тестов (v1.7.5, UncoveredLinks) —
+    у них link_id пуст: записи HighlightTest не существует."""
+    link_id: Optional[UUID] = None
     highlight_id: UUID
     page_id: UUID
     page_title: str
@@ -106,6 +109,16 @@ class TestIndexEntry(BaseModel):
     pages_count: int = 0
 
 
+class UncoveredStats(BaseModel):
+    """Счётчики привязок без единого теста (v1.7.5) — для особой строки
+    «Привязки без тестов» на ярусе 2. Только цифры, как у TestIndexEntry:
+    сами привязки отдаёт UncoveredLinks при раскрытии строки."""
+    active: int = 0
+    outdated: int = 0
+    lost: int = 0
+    pages_count: int = 0
+
+
 class ProjectTestIndex(BaseModel):
     project_id: UUID
     project_name: str
@@ -114,10 +127,19 @@ class ProjectTestIndex(BaseModel):
     # (сумма pages_count по ключам считала бы общие страницы дважды).
     pages_covered: int = 0
     tests: list[TestIndexEntry]
+    # Привязки без тестов (v1.7.5): без них чип «Требует проверки» яруса 1
+    # обещал больше, чем ярус 2 показывал.
+    uncovered: UncoveredStats = UncoveredStats()
 
 
 class TestKeyLinks(BaseModel):
     """Привязки одного ключа с цитатами — вторая половина реверс-индекса
     (v1.7.3), грузится при раскрытии строки."""
     key: str
+    links: list[TestLinkRef]
+
+
+class UncoveredLinks(BaseModel):
+    """Привязки без единого теста — пара к TestKeyLinks (v1.7.5), грузится
+    при раскрытии строки «Привязки без тестов»."""
     links: list[TestLinkRef]

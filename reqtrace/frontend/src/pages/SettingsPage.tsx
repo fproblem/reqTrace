@@ -6,7 +6,7 @@ import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { OnboardingModal } from '../components/OnboardingModal';
 import { markOnboardingShown, shouldAutoShowOnboarding } from '../components/onboardingAutoShow';
-import { RefreshIcon } from '../components/RefreshIcon';
+import { ExpandingSpinner } from '../components/RefreshIcon';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
@@ -826,6 +826,10 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         }}>
           {project.name}
         </span>
+        {/* Стрелки в покое читались зависшим лоадером (ревью v1.7.5) —
+            теперь кнопка текстовая, а на время проверки плавно дорастает
+            под крутящиеся стрелки (ExpandingSpinner, приём капсулы
+            колокольчика). */}
         <button
           onClick={handleCheck}
           disabled={checking}
@@ -834,7 +838,6 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
             ...iconButtonStyle,
             width: 'auto',
             padding: '0 12px',
-            gap: '8px',
             fontSize: '13px',
             fontWeight: 600,
             fontFamily: 'inherit',
@@ -843,7 +846,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           onMouseEnter={e => { if (!checking) iconButtonHoverOn(e); }}
           onMouseLeave={iconButtonHoverOff}
         >
-          <RefreshIcon spinning={checking} />
+          <ExpandingSpinner active={checking} size={16} />
           Проверить
         </button>
         <div style={{ position: 'relative' }} ref={menuRef}>

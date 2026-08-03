@@ -42,6 +42,36 @@ function useSpinFinish(active: boolean) {
   return { ref, animating };
 }
 
+// Слот лоадера внутри кнопки (v1.7.5): в покое не занимает ширины, при
+// active кнопка плавно дорастает под крутящиеся стрелки — приём капсулы
+// колокольчика (grid 0fr↔1fr; max-width обрывал движение, v1.6.4). Текст
+// кнопки при этом никуда не девается — ожидание видно, кнопка живая.
+const REDUCED_MOTION = typeof window !== 'undefined'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+export const ExpandingSpinner: React.FC<{ active: boolean; size?: number; gap?: number }> = ({
+  active, size = 15, gap = 8,
+}) => (
+  <span style={{
+    display: 'grid',
+    gridTemplateColumns: active ? '1fr' : '0fr',
+    transition: REDUCED_MOTION ? undefined : 'grid-template-columns 0.3s ease-in-out',
+  }}>
+    <span style={{ overflow: 'hidden', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+      {/* Стрелки проявляются чуть позже ширины, а гаснут первыми — как
+          статус в капсуле колокольчика. */}
+      <span style={{
+        display: 'flex', alignItems: 'center', paddingRight: `${gap}px`,
+        opacity: active ? 1 : 0,
+        transition: REDUCED_MOTION ? undefined
+          : active ? 'opacity 0.2s ease 0.1s' : 'opacity 0.15s ease',
+      }}>
+        <RefreshIcon size={size} spinning={active} />
+      </span>
+    </span>
+  </span>
+);
+
 export const RefreshIcon: React.FC<{ size?: number; spinning?: boolean }> = ({
   size = 16, spinning = false,
 }) => {

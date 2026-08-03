@@ -12,7 +12,7 @@ import { FadeIn, useFadeToggle } from '../components/fadePresence';
 import { useDelayedFlag } from '../components/Skeleton';
 import { DocumentIcon } from '../components/icons';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
-import { RefreshIcon } from '../components/RefreshIcon';
+import { ExpandingSpinner, RefreshIcon } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
@@ -549,7 +549,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         }}>
           {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
               текста утяжеляла экран): иконка → заголовок → одна строка сути →
-              кнопка → короткая подпись об ожидании. Отступы — только gap. */}
+              кнопка. Отступы — только gap. */}
           <div style={{
             textAlign: 'center',
             maxWidth: '420px',
@@ -576,34 +576,23 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             </div>
             {/* ModalButton несёт все состояния (ховер, пресс) — у прежней
                 самодельной кнопки их не было (ревью v1.6.6). На время
-                подключения — лоадер ПОВЕРХ прозрачной подписи (ширина не
-                меняется, паттерн v1.7.0); охрана в onClick, а не disabled:
-                полупрозрачная disabled-кнопка читалась бы выключенной,
-                а не работающей. */}
+                подключения кнопка плавно дорастает под крутящиеся стрелки
+                (ExpandingSpinner — приём капсулы колокольчика; ревью v1.7.5:
+                лоадер вместо подписи читался зависанием). Охрана в onClick,
+                а не disabled: полупрозрачная disabled-кнопка выглядела бы
+                выключенной, а не работающей. */}
             <ModalButton
               variant="primary"
               onClick={() => { if (!promoting) void handlePromote(); }}
               style={{
-                padding: '10px 28px', position: 'relative',
+                padding: '10px 28px',
+                display: 'inline-flex', alignItems: 'center',
                 cursor: promoting ? 'default' : 'pointer',
               }}
             >
-              <span style={{ opacity: promoting ? 0 : 1, transition: 'opacity 0.15s' }}>
-                Начать отслеживание
-              </span>
-              {promoting && (
-                <span style={{
-                  position: 'absolute', inset: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <RefreshIcon size={16} spinning />
-                </span>
-              )}
+              <ExpandingSpinner active={promoting} size={15} />
+              <span>Начать отслеживание</span>
             </ModalButton>
-            {/* Ожидание названо заранее: страница больше не выглядит зависшей. */}
-            <div style={{ fontSize: '12px', color: colors.textTertiary }}>
-              Подключение займёт несколько секунд
-            </div>
           </div>
         </div>
       </div>

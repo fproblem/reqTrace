@@ -61,7 +61,16 @@ main() {
   local old_commit
   old_commit="$(git rev-parse --short HEAD)"
   if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then
-    note "Уже актуальная версия ($(current_version)) — обновлять нечего."
+    note "Код уже актуален ($(current_version))."
+    # Контейнеры не обязаны совпадать с кодом: прошлое обновление могло
+    # прерваться до пересборки, или код подтянули вручную. Пересборка
+    # идемпотентна и с кэшем почти мгновенна — прогоняем её и health-check
+    # даже когда git-обновлять нечего (раньше скрипт здесь просто выходил).
+    say "Пересобираю контейнеры из текущего кода"
+    compose up -d --build
+    wait_backend || fail "Бэкенд не ответил за 2 минуты. Логи: $(compose_name) logs backend --tail 50 (из каталога reqtrace/)"
+    docker image prune -f >/dev/null 2>&1 || true
+    say "✓ ReqTrace актуален (v$(current_version)), контейнеры пересобраны"
     exit 0
   fi
   git log --oneline HEAD..origin/main | sed 's/^/   /'
@@ -100,16 +109,7 @@ main() {
 
   # --- 5. проверка живости ---------------------------------------------------
   say "5/5 Жду, пока приложение поднимется"
-  i=0
-  until curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; do
-    i=$((i + 1)); [ "$i" -le 60 ] || { false; }   # false → сработает trap с рецептом отката
-    sleep 2
-  done
-  note "бэкенд отвечает на /api/health"
-  # Прод-фронт живёт на 443 (v1.7.4); -k — серт выписан на reqtrace.surf.dev,
-  # а стучимся на localhost, несовпадение имени здесь не ошибка.
-  curl -fsSk -o /dev/null https://localhost/ && note "фронтенд отвечает на https (:443)" \
-    || note "⚠ фронтенд на :443 пока не ответил — дайте ему полминуты и откройте https://reqtrace.surf.dev"
+  wait_backend   # провал → сработает trap с рецептом отката
 
   trap - ERR
   docker image prune -f >/dev/null 2>&1 || true
@@ -117,6 +117,22 @@ main() {
   say "✓ ReqTrace обновлён до v$(current_version)"
   note "Откат при необходимости: git reset --hard $old_commit && $(compose_name) up -d --build"
   note "Бэкап БД перед обновлением: $BACKUP"
+}
+
+# Ожидание живости после пересборки: бэкенд обязан ответить (иначе не 0),
+# фронт — мягкая проверка. -k у https: серт выписан на reqtrace.surf.dev,
+# а стучимся на localhost — несовпадение имени здесь не ошибка.
+wait_backend() {
+  local i=0
+  until curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; do
+    i=$((i + 1))
+    [ "$i" -le 60 ] || return 1
+    sleep 2
+  done
+  note "бэкенд отвечает на /api/health"
+  curl -fsSk -o /dev/null https://localhost/ && note "фронтенд отвечает на https (:443)" \
+    || note "⚠ фронтенд на :443 пока не ответил — дайте ему полминуты и откройте https://reqtrace.surf.dev"
+  return 0
 }
 
 current_version() {

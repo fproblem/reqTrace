@@ -9,7 +9,7 @@ import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { FadeIn, useFadeToggle } from '../components/fadePresence';
-import { useDelayedFlag } from '../components/Skeleton';
+import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
@@ -462,17 +462,22 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
   // Каркас пары островов «бар + контент» (v1.8.0): виден с первого кадра
   // загрузки и в терминальных состояниях — навигация не мигает голым
-  // полотном, пока едет содержимое. Внутри контент-острова — что передали.
-  const islandFrame = (inner: React.ReactNode) => (
+  // полотном, пока едет содержимое. Внутри контент-острова — что передали;
+  // barInner — содержимое бара (скелетон шапки на медленной загрузке).
+  const islandFrame = (inner: React.ReactNode, barInner?: React.ReactNode) => (
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <div style={{
         height: '64px', flexShrink: 0,
+        padding: '0 24px',
+        display: 'flex', alignItems: 'center',
         background: island.background,
         border: island.border,
         borderRadius: island.radius,
         boxShadow: island.boxShadow,
         marginBottom: island.gap,
-      }} />
+      }}>
+        {barInner}
+      </div>
       <div style={{
         flex: 1, minHeight: 0,
         background: island.background,
@@ -487,9 +492,10 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   );
 
   if (loading) {
-    // Каркас островов — сразу; строка лоадера — после порога задержки
-    // (скелетон для произвольного Confluence-контента не построить —
-    // количество и форма блоков известны только после ответа).
+    // Каркас островов — сразу; скелетон шапки (как на «Тестах»/ярусе 2) и
+    // строка лоадера — после порога задержки (скелетон для произвольного
+    // Confluence-контента не построить — количество и форма блоков известны
+    // только после ответа, шапка же всегда «название + мета»).
     return islandFrame(
       showLoader && (
         <FadeIn>
@@ -500,6 +506,12 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             <RefreshIcon size={16} spinning />
             Загружаем страницу из последнего снимка…
           </div>
+        </FadeIn>
+      ),
+      showLoader && (
+        <FadeIn>
+          <SkeletonBar width="240px" height={16} />
+          <SkeletonBar width="320px" height={10} style={{ marginTop: '6px' }} />
         </FadeIn>
       )
     );

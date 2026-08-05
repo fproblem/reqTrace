@@ -1175,7 +1175,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </div>
 
         {/* Side panel — рендерится всегда: появление/скрытие панель анимирует
-            сама (ширина 0↔360), при условном монтировании анимации закрытия
+            сама (ширина 0↔W), при условном монтировании анимации закрытия
             не было бы — React размонтировал бы её мгновенно. */}
         <SidePanel
           highlight={selectedHighlight}

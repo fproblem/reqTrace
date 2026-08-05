@@ -98,7 +98,7 @@ const SPIN_TURN_MS = 800;
 // итог прежде, чем строка сложится.
 const DONE_HOLD_MS = 600;
 
-// Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
+// Длительность анимации открытия/закрытия панели (ширина 0↔W, W меряется по кнопке «Тесты»). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
 // прицеливаться (контент пере-вёрстывается, координаты цели плывут).
 // 320мс, не 220 (ревью островов v1.8.0): с гэпом-маргином движения стало
@@ -129,7 +129,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const { mounted: confirmMounted, fadeStyle: confirmFade } = useFadeToggle(confirmOpen);
   const confirmRef = useRef<HTMLDivElement>(null);
 
-  // Плавное появление/скрытие: анимируется ширина корня 0↔360 (как у
+  // Плавное появление/скрытие: анимируется ширина корня 0↔W (как у
   // inline-комментариев Confluence). Корень живёт в DOM постоянно (пустой,
   // шириной 0 — см. return ниже): транзишен тогда стартует из уже
   // зафиксированного браузером width:0 при ЛЮБОМ сценарии открытия. Прежний
@@ -140,6 +140,28 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // рисовать последнее выделение (rendered) — активного уже нет — и убираем
   // контент по таймеру чуть длиннее транзишена (PANEL_ANIM_MS).
   const [rendered, setRendered] = useState<Highlight | null>(null);
+  // Ширина панели (ревью v1.8.0): левая грань — по левой грани кнопки
+  // «Тесты» в главной шапке (тот же якорь data-rt-header-tests, что у панели
+  // дайджеста), правая — в island.gap от окна (паддинг ряда Layout). Зависит
+  // от длины имени в чипе профиля — меряется на маунте и ресайзе; кламп
+  // держит панель разумной на экзотических окнах; без якоря — прежние 360.
+  const [panelWidth, setPanelWidth] = useState(360);
+  useEffect(() => {
+    const update = () => {
+      const tests = document.querySelector('[data-rt-header-tests]');
+      if (!tests) {
+        setPanelWidth(360);
+        return;
+      }
+      const w = Math.round(
+        window.innerWidth - parseInt(island.gap, 10) - tests.getBoundingClientRect().left
+      );
+      setPanelWidth(Math.max(320, Math.min(560, w)));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
   // Свежий статус для замыкания onClick «Актуализировать»: галочка успеха
   // показывается только если реанкор реально перевёл привязку в active.
   const renderedStatusRef = useRef<string | undefined>(undefined);
@@ -165,7 +187,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // правого края полотна. Блюра нет: остров непрозрачен, а backdrop-filter
   // ломал бы fixed-потомков (ловушка containing block, Modal.tsx).
   const shellStyle = (opened: boolean, withContent: boolean): React.CSSProperties => ({
-    width: opened ? '360px' : '0px',
+    // border-box: заявленная ширина — внешняя, левая грань встаёт ровно по
+    // якорю (рамки не сдвигают её на 2px).
+    width: opened ? `${panelWidth}px` : '0px',
+    boxSizing: 'border-box',
     flexShrink: 0,
     transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), `
       + `margin-left ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), `
@@ -433,9 +458,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     <div style={shellStyle(open, true)} data-popover-center>
       {/* Контент — на фиксированной ширине панели: при анимации ширины корня
           он не пере-верстается, а «въезжает» справа единым блоком (левый край
-          корня движется вместе с шириной, контент прижат к нему). */}
+          корня движется вместе с шириной, контент прижат к нему). −2px —
+          рамки корня (border-box). */}
       <div style={{
-        width: '360px',
+        width: `${panelWidth - 2}px`,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',

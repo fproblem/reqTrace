@@ -1052,19 +1052,30 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       {/* Content area. minHeight:0 вместо overflow:hidden — иначе тени
           островов резались бы по нижней кромке ряда. */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div
-          ref={contentAreaRef}
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            position: 'relative',
-            // Остров контента: скролл живёт внутри скруглённой карточки.
-            background: island.background,
-            border: island.border,
-            borderRadius: island.radius,
-            boxShadow: island.boxShadow,
-          }}
-        >
+        {/* Остров контента — двухслойный: скругление, рамка и тень на внешней
+            обёртке с overflow:hidden, скроллит внутренний div. Классический
+            скроллбар (мышь или «показывать всегда») тогда подрезается
+            скруглением острова, а не накрывает его углы прямыми концами
+            (ревью фазы 1). Реф остаётся на скроллере. */}
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          background: island.background,
+          border: island.border,
+          borderRadius: island.radius,
+          boxShadow: island.boxShadow,
+          overflow: 'hidden',
+        }}>
+          <div
+            ref={contentAreaRef}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'auto',
+              position: 'relative',
+            }}
+          >
           {viewMode === 'coverage' ? (
             <>
               {page.content_html ? (
@@ -1138,6 +1149,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           ) : (
             <DiffView pageId={pageId!} />
           )}
+          </div>
         </div>
 
         {/* Side panel — рендерится всегда: появление/скрытие панель анимирует

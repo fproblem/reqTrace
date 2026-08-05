@@ -77,6 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const zoneRef = useRef(false); // true while drag width is past MIN_WIDTH (tree shown)
   const [dragging, setDragging] = useState(false);
   const [dragTree, setDragTree] = useState(false);
+  const resizeGlowRef = useRef<HTMLDivElement>(null);
 
   // Persist sidebar state
   useEffect(() => {
@@ -172,40 +173,46 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     : (sidebar.collapsed ? RAIL_WIDTH : sidebar.width);
 
   // Same drag handle works both ways: drag left to collapse, drag right to expand.
-  // Грип-маркер («‖») убран: чёрточки висели поверх контента страницы рядом с
-  // разделителем. Вместо него тянется сама линия: узкая зона захвата (±4px)
-  // оседлала правую границу сайдбара, а визуальный отклик — подсветка линии
-  // ровно по разделителю при наведении и на всё время перетаскивания.
-  const resizeHandle = (
+  // Визуальный отклик (v1.8.0, ревью фазы 1): не линия, а мягкое зелёное
+  // свечение-градиент, огибающее правую грань острова ИЗНУТРИ — скругление
+  // повторяет угол карточки, у самой грани зелень плотнее и сходит в
+  // прозрачность к центру. Намекает, что грань тянется, не крича: сплошная
+  // линия (и тем более неоновая) выбивалась из приглушённой стилистики.
+  const resizeGlow = (
     <div
-      onMouseDown={startDrag}
-      title={sidebar.collapsed ? 'Потяните вправо, чтобы раскрыть' : 'Потяните, чтобы изменить ширину (до упора — свернуть)'}
+      ref={resizeGlowRef}
       style={{
-        position: 'absolute', top: 0, right: '-4px', width: '8px', height: '100%',
-        cursor: 'col-resize', zIndex: 3,
-        display: 'flex', justifyContent: 'center',
-      }}
-      onMouseEnter={e => {
-        // greenLight, не greenAccent: неоновая линия во всю высоту выбивалась
-        // из приглушённой стилистики интерфейса.
-        const line = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (line) line.style.background = colors.greenLight;
-      }}
-      onMouseLeave={e => {
-        // Во время перетаскивания курсор уходит с зоны захвата — линия
-        // остаётся подсвеченной, погасит её ре-рендер по окончании драга.
-        if (draggingRef.current) return;
-        const line = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (line) line.style.background = 'transparent';
-      }}
-    >
-      <div style={{
-        width: '2px', height: '100%',
-        background: dragging ? colors.greenLight : 'transparent',
-        transition: 'background 0.15s',
+        position: 'absolute', top: 0, right: 0, bottom: 0, width: '14px',
+        borderRadius: `0 ${island.radius} ${island.radius} 0`,
+        background: 'linear-gradient(to left, rgba(122, 224, 90, 0.38), rgba(122, 224, 90, 0))',
+        opacity: dragging ? 1 : 0,
+        transition: 'opacity 0.16s ease',
         pointerEvents: 'none',
-      }} />
-    </div>
+        zIndex: 2,
+      }}
+    />
+  );
+  const resizeHandle = (
+    <>
+      {resizeGlow}
+      <div
+        onMouseDown={startDrag}
+        title={sidebar.collapsed ? 'Потяните вправо, чтобы раскрыть' : 'Потяните, чтобы изменить ширину (до упора — свернуть)'}
+        style={{
+          position: 'absolute', top: 0, right: '-4px', width: '8px', height: '100%',
+          cursor: 'col-resize', zIndex: 3,
+        }}
+        onMouseEnter={() => {
+          if (resizeGlowRef.current) resizeGlowRef.current.style.opacity = '1';
+        }}
+        onMouseLeave={() => {
+          // Во время перетаскивания курсор уходит с зоны захвата — свечение
+          // остаётся, погасит его ре-рендер по окончании драга.
+          if (draggingRef.current) return;
+          if (resizeGlowRef.current) resizeGlowRef.current.style.opacity = '0';
+        }}
+      />
+    </>
   );
 
   return (
@@ -407,12 +414,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </header>
 
-      {/* Content row: sidebar + main. Гэп острова — со всех сторон: сверху
-          отделяет острова от шапки-на-полотне, снизу и по бокам — от краёв
-          окна. Гэп между сайдбаром и main отдан гэпу флекса. */}
+      {/* Content row: sidebar + main. Гэп острова — по бокам и снизу; сверху
+          НУЛЬ: воздух под шапкой-на-полотне уже даёт её собственная центровка
+          (64px минус контент), добавка паддинга удваивала отступ (ревью
+          фазы 1). Гэп между сайдбаром и main отдан гэпу флекса. */}
       <div style={{
         display: 'flex', flex: 1, minHeight: 0, position: 'relative', zIndex: 1,
-        padding: island.gap, gap: island.gap,
+        padding: `0 ${island.gap} ${island.gap}`, gap: island.gap,
       }}>
         <aside
           ref={asideRef}

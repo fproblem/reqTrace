@@ -616,15 +616,15 @@ export const ProjectTestsPage: React.FC = () => {
               }}
             >
               {f.label}
-              {/* Счётчик — нейтральной серой пилюлей в ОБОИХ состояниях
-                  (ревью: полупрозрачно-белая на зелёном читалась бледной
-                  зеленью). На активной заливке — непрозрачный светло-серый:
-                  полупрозрачный чёрный зеленел бы вместе с фоном. */}
+              {/* Счётчик — нейтральная пилюля (v1.7.5); на активной зелёной
+                  заливке — полупрозрачно-белая. Непрозрачно-серую (#F1F2F4 +
+                  textSecondary) пробовали по ревью и ВЕРНУЛИ обратно: живьём
+                  белая на зелёном смотрится лучше — не менять по кругу. */}
               {!disabled && (
                 <span style={{
                   padding: '1px 7px', borderRadius: radii.pill,
-                  background: active ? '#F1F2F4' : 'rgba(0,0,0,0.05)',
-                  color: colors.textSecondary,
+                  background: active ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.05)',
+                  color: active ? '#fff' : colors.textSecondary,
                   fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
                 }}>
                   {count}

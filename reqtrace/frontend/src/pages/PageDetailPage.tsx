@@ -15,7 +15,7 @@ import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
-import { colors, radii, shadows } from '../styles/tokens';
+import { colors, radii, shadows, island } from '../styles/tokens';
 
 interface PageDetailPageProps {
   jiraBaseUrl?: string;
@@ -509,16 +509,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
     return (
       <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
-        {/* Top bar */}
+        {/* Top bar — остров, как у обычной страницы. Высота фиксирована
+            (64px): не паддингами — контент разной высоты давал бы разную
+            высоту бара. */}
         <div style={{
-          // Высота фиксирована (64px, как у шапки сайдбара) — их нижние линии
-          // стыкуются в одну сплошную. Не паддингами: контент разной высоты
-          // давал бы разную высоту бара.
           height: '64px',
           padding: '0 24px',
-          background: 'rgba(255,255,255,0.9)',
-          backdropFilter: 'blur(20px)',
-          borderBottom: `1px solid ${colors.border}`,
+          background: island.background,
+          border: island.border,
+          borderRadius: island.radius,
+          boxShadow: island.boxShadow,
+          marginBottom: island.gap,
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
@@ -542,12 +543,18 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           </span>
         </div>
 
-        {/* Promote CTA */}
+        {/* Promote CTA — остров на месте контента: виртуальная страница
+            выглядит той же парой «бар + полотно контента», что и обычная. */}
         <div style={{
           flex: 1,
+          minHeight: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          background: island.background,
+          border: island.border,
+          borderRadius: island.radius,
+          boxShadow: island.boxShadow,
         }}>
           {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
               текста и большая иконка документа утяжеляли экран): заголовок →
@@ -704,15 +711,20 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
 
-      {/* Top bar */}
+      {/* Top bar — остров (v1.8.0). Правый паддинг 13px: с гэпом(10) и
+          рамкой(1) правая колонка кнопок остаётся в 24px от края окна — в одну
+          вертикаль с выходом в главной шапке и крестиком панели (см. island в
+          tokens.ts). ⚠ Без transform/backdrop-filter: ниже живёт fixed-попап
+          «Привязать» (ловушка containing block, Modal.tsx). */}
       <div style={{
-        // 64px — как у шапки сайдбара: нижние линии двух баров стыкуются.
         height: '64px',
-        padding: '0 24px',
+        padding: '0 13px 0 24px',
         flexShrink: 0,
-        background: 'rgba(255,255,255,0.9)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${colors.border}`,
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadow,
+        marginBottom: island.gap,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1037,14 +1049,20 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </div>
       </div>
 
-      {/* Content area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Content area. minHeight:0 вместо overflow:hidden — иначе тени
+          островов резались бы по нижней кромке ряда. */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <div
           ref={contentAreaRef}
           style={{
             flex: 1,
             overflow: 'auto',
             position: 'relative',
+            // Остров контента: скролл живёт внутри скруглённой карточки.
+            background: island.background,
+            border: island.border,
+            borderRadius: island.radius,
+            boxShadow: island.boxShadow,
           }}
         >
           {viewMode === 'coverage' ? (

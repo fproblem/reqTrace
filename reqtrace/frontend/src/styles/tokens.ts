@@ -52,6 +52,26 @@ export const fonts = {
   body: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
 };
 
+/** «Острова» (v1.8.0): рабочие поверхности — дерево страниц, шапка страницы,
+ * контент, панель привязки — непрозрачные скруглённые карточки на общем
+ * полотне colors.background. Хром (главная шапка с лого) лежит на полотне
+ * без собственной поверхности. gap — зазор между островами и краями полотна.
+ *
+ * ⚠ Островам нельзя transform/backdrop-filter: fixed-попапы внутри (кнопка
+ * «Привязать» у выделения и т.п.) привязались бы к острову вместо окна —
+ * ловушка containing block, см. шапку Modal.tsx.
+ *
+ * Вертикаль кнопок (выход ↕ «⋮» ↕ крестик панели): правая колонка во всех
+ * шапках — 24px от края окна; внутри острова это gap(10) + рамка(1) +
+ * внутренний паддинг(13). Меняешь gap — пересчитай паддинги шапок-островов. */
+export const island = {
+  gap: '10px',
+  radius: radii.lg,
+  background: colors.cardBgSolid,
+  border: `1px solid ${colors.border}`,
+  boxShadow: shadows.card,
+} as const;
+
 export const glassmorphism = {
   background: 'rgba(255, 255, 255, 0.8)',
   backdropFilter: 'blur(20px)',

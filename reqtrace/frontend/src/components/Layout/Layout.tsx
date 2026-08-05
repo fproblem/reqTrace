@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
-import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
+import { colors, radii, island, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { PageTree } from './PageTree';
@@ -218,9 +218,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background blobs. Сиреневого в углу шапки/сайдбара сознательно НЕТ:
-          он просвечивал сквозь их полупрозрачный фон и красил разделительные
-          линии в разные оттенки вдоль ширины (линии «разного цвета»). */}
+      {/* Background blobs — живут на полотне, острова непрозрачны и накрывают
+          их. Сиреневого сознательно НЕТ (исторически он красил линии шапки в
+          разные оттенки; с островами возвращать тоже незачем — полотно тихое). */}
       <div style={{
         position: 'fixed', bottom: '-15%', right: '-5%',
         width: '600px', height: '600px', borderRadius: '50%',
@@ -243,11 +243,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         // выделения: кнопка выхода встаёт в одну вертикаль с «Ещё действия»
         // и крестиком закрытия панели (гэп между кнопками у всех баров 10px).
         padding: '0 24px 0 16px',
-        ...glassmorphism,
-        // glassmorphism несёт рамку со всех сторон — шапке нужна только нижняя,
-        // остальные рисовали лишние линии по краям окна.
-        border: 'none',
-        borderBottom: `1px solid ${colors.border}`,
+        // Остров-схема (v1.8.0): главная шапка лежит на полотне без своей
+        // поверхности — белые карточки только у рабочих областей ниже.
+        background: 'transparent',
         position: 'relative',
         zIndex: 2,
       }}>
@@ -409,18 +407,23 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </header>
 
-      {/* Content row: sidebar + main */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', zIndex: 1 }}>
+      {/* Content row: sidebar + main. Гэп острова — со всех сторон: сверху
+          отделяет острова от шапки-на-полотне, снизу и по бокам — от краёв
+          окна. Гэп между сайдбаром и main отдан гэпу флекса. */}
+      <div style={{
+        display: 'flex', flex: 1, minHeight: 0, position: 'relative', zIndex: 1,
+        padding: island.gap, gap: island.gap,
+      }}>
         <aside
           ref={asideRef}
           style={{
             width: `${width}px`,
             flexShrink: 0,
-            ...glassmorphism,
-            // Только правая граница: верхняя из glassmorphism складывалась с
-            // нижней границей шапки в двойную (2px) линию над сайдбаром.
-            border: 'none',
-            borderRight: `1px solid ${colors.border}`,
+            // Остров: и дерево, и свёрнутая рельса — тонкая белая карточка.
+            background: island.background,
+            border: island.border,
+            borderRadius: island.radius,
+            boxShadow: island.boxShadow,
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
@@ -441,6 +444,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   color: colors.textSecondary, cursor: 'pointer', display: 'flex',
                   flexDirection: 'column', alignItems: 'center', paddingTop: '14px',
                   transition: 'background 0.15s, color 0.15s', fontFamily: 'inherit',
+                  // Ховер-заливка не должна выпирать из скруглённых углов острова.
+                  borderRadius: island.radius,
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = colors.greenLight; e.currentTarget.style.color = colors.greenDark; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = colors.textSecondary; }}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
-import { colors, radii, shadows } from '../../styles/tokens';
+import { colors, radii, shadows, island } from '../../styles/tokens';
 import { useFadeToggle } from '../fadePresence';
 import { RefreshIcon } from '../RefreshIcon';
 import { TreeReveal } from '../TreeReveal';
@@ -155,16 +155,24 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   }, [activeHighlight]);
 
   // Оболочка панели — общая для пустого и наполненного состояния, чтобы React
-  // переиспользовал один DOM-узел и транзишен ширины не прерывался. Фон и блюр
+  // переиспользовал один DOM-узел и транзишен ширины не прерывался. Фон и тень
   // только при контенте: у пустой оболочки прозрачная рамка (1px) не должна
   // просвечивать белой полоской у правого края.
+  // Остров (v1.8.0): гэп до контента (margin-left) анимируется ВМЕСТЕ с
+  // шириной — иначе у закрытой панели оставалась бы мёртвая полоса гэпа у
+  // правого края полотна. Блюра нет: остров непрозрачен, а backdrop-filter
+  // ломал бы fixed-потомков (ловушка containing block, Modal.tsx).
   const shellStyle = (opened: boolean, withContent: boolean): React.CSSProperties => ({
     width: opened ? '360px' : '0px',
     flexShrink: 0,
-    transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), border-color ${PANEL_ANIM_MS}ms ease`,
-    borderLeft: `1px solid ${opened ? colors.border : 'transparent'}`,
-    background: withContent ? 'rgba(255,255,255,0.92)' : 'transparent',
-    backdropFilter: withContent ? 'blur(20px)' : undefined,
+    transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), `
+      + `margin-left ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), `
+      + `border-color ${PANEL_ANIM_MS}ms ease`,
+    marginLeft: opened ? island.gap : '0px',
+    border: `1px solid ${opened && withContent ? colors.border : 'transparent'}`,
+    borderRadius: island.radius,
+    background: withContent ? island.background : 'transparent',
+    boxShadow: withContent ? island.boxShadow : undefined,
     height: '100%',
     overflow: 'hidden',
   });
@@ -430,14 +438,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         .test-row:hover .test-row-remove,
         .test-row .test-row-remove:focus-visible { opacity: 1; }
       `}</style>
-      {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
-          (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
-          ровно под «⋮», стрелка «вниз» — под «Обновить». Высота фиксированная
-          64px (с бордером), как у шапок сайдбара и бара страницы, — не гуляет
-          от содержимого. */}
+      {/* Header with navigation. Правый паддинг 13px — остров: гэп(10) +
+          рамка(1) + 13 = те же 24px от края окна, что и раньше, — крестик
+          встаёт ровно под «⋮» бара-острова, стрелка «вниз» — под «Обновить»
+          (см. island в tokens.ts). Размеры кнопок (34×34) и гэп (10px) — как у
+          правого кластера верхнего бара. Высота фиксированная 64px (с
+          бордером), как у шапок сайдбара и бара страницы, — не гуляет от
+          содержимого. */}
       <div style={{
         height: '64px',
-        padding: '0 24px 0 20px',
+        padding: '0 13px 0 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',

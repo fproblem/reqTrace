@@ -616,13 +616,15 @@ export const ProjectTestsPage: React.FC = () => {
               }}
             >
               {f.label}
-              {/* Счётчик — нейтральной пилюлей (v1.7.5); на активной зелёной
-                  заливке — полупрозрачно-белой, чтобы не давать цветовой каши. */}
+              {/* Счётчик — нейтральной серой пилюлей в ОБОИХ состояниях
+                  (ревью: полупрозрачно-белая на зелёном читалась бледной
+                  зеленью). На активной заливке — непрозрачный светло-серый:
+                  полупрозрачный чёрный зеленел бы вместе с фоном. */}
               {!disabled && (
                 <span style={{
                   padding: '1px 7px', borderRadius: radii.pill,
-                  background: active ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.05)',
-                  color: active ? '#fff' : colors.textSecondary,
+                  background: active ? '#F1F2F4' : 'rgba(0,0,0,0.05)',
+                  color: colors.textSecondary,
                   fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
                 }}>
                   {count}
@@ -637,7 +639,14 @@ export const ProjectTestsPage: React.FC = () => {
 
   // Сводка проекта — мета-строкой бара (ревью: у обоих ярусов бар «заголовок
   // + мета», слово «Тесты» не прыгает по вертикали при переходах между ними).
+  // Видимая версия — компактные цифры (полная фраза не помещалась рядом с
+  // поиском и фильтрами — ревью), полная с глаголами — в тултипе меты.
   const summaryMeta =
+    `${summary.tests} ${plural(summary.tests, ['тест', 'теста', 'тестов'])}`
+    + ` · ${summary.links} ${plural(summary.links, ['привязка', 'привязки', 'привязок'])}`
+    + ` · ${summary.pages} ${plural(summary.pages, ['страница', 'страницы', 'страниц'])}`
+    + (uncoveredTotal > 0 ? ` · ${uncoveredTotal} без тестов` : '');
+  const summaryMetaFull =
     `Всего: ${summary.tests} ${plural(summary.tests, ['тест', 'теста', 'тестов'])}`
     + ` · покрывают ${summary.links} ${plural(summary.links, ['привязку', 'привязки', 'привязок'])}`
     + ` на ${summary.pages} ${plural(summary.pages, ['странице', 'страницах', 'страницах'])}`
@@ -652,7 +661,7 @@ export const ProjectTestsPage: React.FC = () => {
     <IslandScreen
       surface="canvas"
       barLeft={(
-        <IslandBarTitle meta={summaryMeta}>
+        <IslandBarTitle meta={summaryMeta} metaTitle={summaryMetaFull}>
           <Link
             to="/tests"
             title="К выбору проекта"

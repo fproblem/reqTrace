@@ -187,7 +187,9 @@ export const IslandScreen: React.FC<{
 export const IslandBarTitle: React.FC<{
   children: React.ReactNode;
   meta?: string;
-}> = ({ children, meta }) => (
+  /** Полная версия меты для тултипа, если видимая — компактная. */
+  metaTitle?: string;
+}> = ({ children, meta, metaTitle }) => (
   <div style={{ minWidth: 0 }}>
     <div style={{
       fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
@@ -197,7 +199,7 @@ export const IslandBarTitle: React.FC<{
     </div>
     {meta && (
       <div
-        title={meta}
+        title={metaTitle ?? meta}
         style={{
           fontSize: '12px', color: colors.textTertiary, marginTop: '2px',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

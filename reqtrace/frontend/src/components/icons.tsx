@@ -279,10 +279,14 @@ export const QuoteIcon = makeIcon(<>
 /** Залитый круг статуса с белым знаком: галочка (ok), «!» (warning), крестик
  *  (error). Цвет круга — через `color` родителя. Единая иконка статус-плашек:
  *  статус привязки в панели выделения, статус подключения на карточке проекта. */
-export const StatusAlertIcon: React.FC<{ kind: 'ok' | 'warning' | 'error'; size?: number }> = ({
-  kind, size = 16,
+export const StatusAlertIcon: React.FC<{
+  kind: 'ok' | 'warning' | 'error';
+  size?: number;
+  style?: React.CSSProperties;
+}> = ({
+  kind, size = 16, style,
 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
+  <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>
     <circle cx="12" cy="12" r="10" fill="currentColor" />
     {kind === 'ok' && (
       <polyline

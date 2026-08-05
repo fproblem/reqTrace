@@ -1,12 +1,87 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
-import { colors, radii, glassmorphism, fonts } from '../../styles/tokens';
+import { colors, radii, island, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { PageTree } from './PageTree';
 import { ClipboardCheckIcon, LogoutIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
+import { PANEL_ANIM_MS } from '../PageView/SidePanel';
+
+// Оба боковых острова дышат в одном ритме (ревью островов): длительность
+// сворачивания/разворачивания дерева — та же, что у панели привязки.
+const SIDEBAR_ANIM = `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+
+// Кастомный скроллбар рабочих областей (v1.8.0): тонкая «пилюля» с воздухом,
+// трек прозрачный — скруглённые углы островов остаются свободными, системная
+// полоса их больше не накрывает. Автоскрытие (ревью-3): пилюля видна только
+// 2.5с после последнего скролла своего контейнера (класс is-scrolling вешает
+// capture-слушатель ниже) — скроллеров на экране много (дерево, контент,
+// панель, цитата, таблицы), постоянные пилюли шумели. Прозрачный бегунок
+// остаётся кликабельным: ховер по его зоне подсвечивает пилюлю светлой
+// зеленью (пастель, не чёрный — ревью-3), пресс — чуть плотнее.
+const islandScrollStyles = `
+  /* Цвет пилюли зарегистрирован как <color> — только так транзишен
+     CSS-переменной анимируется и пилюля ТАЕТ, а не выключается (ревью-4).
+     ⚠ inherits: true обязателен: ::-webkit-scrollbar-thumb получает значение
+     переменной НАСЛЕДОВАНИЕМ от скроллера; с false псевдоэлемент видел лишь
+     initial-value — пилюля в Chrome не появлялась при скролле вовсе
+     (ревью-5). Вложенным скроллерам наследование не мешает: собственное
+     объявление --rt-thumb на элементе всегда сильнее унаследованного. */
+  @property --rt-thumb {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: transparent;
+  }
+  .island-scroll, .table-scroll {
+    --rt-thumb: transparent;
+    /* Гаснет неторопливо… */
+    transition: --rt-thumb 0.45s ease;
+  }
+  .island-scroll.is-scrolling, .table-scroll.is-scrolling {
+    --rt-thumb: rgba(0, 0, 0, 0.15);
+    /* …а появляется на первом же движении почти сразу. */
+    transition: --rt-thumb 0.12s ease;
+  }
+  /* Наведение на жёлоб (класс вешает mousemove-слушатель ниже): пилюля
+     мягко проявляется зелёной тем же анимируемым каналом --rt-thumb.
+     Правило ПОСЛЕ .is-scrolling — при одновременном скролле и наведении
+     зелень главнее серого. */
+  .island-scroll.is-scroll-hover, .table-scroll.is-scroll-hover {
+    --rt-thumb: rgba(122, 224, 90, 0.45);
+    transition: --rt-thumb 0.12s ease;
+  }
+  /* ⚠ Стандартные scrollbar-width/scrollbar-color — ТОЛЬКО для браузеров без
+     ::-webkit-скина (Firefox). В Chrome 121+/Safari задание этих свойств
+     ОТКЛЮЧАЕТ ::-webkit-scrollbar-* целиком: вместо пилюли рисовался тонкий
+     системный бар с системным почти чёрным ховером (ревью-4 — «зелёный ховер
+     не работает»). Не выносить из-под @supports.
+     Firefox остаётся с родным тонким баром (появление/скрытие то же, через
+     is-scrolling): пилюлю-в-воздухе, зелёный ховер и плавное таяние его
+     движок не умеет — предел платформы, принято на ревью-5. */
+  @supports not selector(::-webkit-scrollbar) {
+    .island-scroll, .table-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    .island-scroll.is-scrolling, .table-scroll.is-scrolling { scrollbar-color: rgba(0, 0, 0, 0.15) transparent; }
+    .island-scroll.is-scroll-hover, .table-scroll.is-scroll-hover { scrollbar-color: rgba(122, 224, 90, 0.45) transparent; }
+  }
+  .island-scroll::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+  .island-scroll::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: transparent; }
+  .island-scroll::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: transparent; }
+  .island-scroll::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--rt-thumb);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 8px;
+  }
+  /* Ховер живёт классом is-scroll-hover (см. выше) — webkit-:hover на
+     бегунке менял цвет МГНОВЕННО, «из ниоткуда» (ревью-6). Пресс остаётся
+     мгновенной ступенью: пилюля к этому моменту уже видна, а мгновенный
+     отклик на захват ощущается правильнее плавного. */
+  .island-scroll::-webkit-scrollbar-thumb:active, .table-scroll::-webkit-scrollbar-thumb:active {
+    background-color: rgba(122, 224, 90, 0.65);
+  }
+`;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -77,11 +152,93 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const zoneRef = useRef(false); // true while drag width is past MIN_WIDTH (tree shown)
   const [dragging, setDragging] = useState(false);
   const [dragTree, setDragTree] = useState(false);
+  const resizeIndicatorRef = useRef<HTMLDivElement>(null);
+  const indicatorHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Persist sidebar state
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, JSON.stringify(sidebar));
   }, [sidebar]);
+
+  // Автоскрытие пилюль скролла (ревью-3): скролл не всплывает, но ловится
+  // capture-фазой на документе — один слушатель на все скроллеры приложения,
+  // включая создаваемые динамически обёртки таблиц (.table-scroll). Каждому
+  // скроллеру — свой таймер: пилюля тает через 2.5с после его последнего
+  // скролла, не мешая соседним.
+  // Наведение (ревью-6): mousemove следит за жёлобом скролла (14px от
+  // правого/нижнего края скроллера) и вешает is-scroll-hover — пилюля мягко
+  // проявляется зелёной через тот же анимируемый --rt-thumb; webkit-:hover
+  // на бегунке так не умеет (цвет менялся мгновенно, «из ниоткуда»).
+  // Пока курсор в жёлобе, класс держит пилюлю видимой — таймер её не заберёт.
+  useEffect(() => {
+    const timers = new WeakMap<Element, number>();
+    const onScroll = (e: Event) => {
+      const el = e.target;
+      if (!(el instanceof Element)) return;
+      if (!el.classList.contains('island-scroll') && !el.classList.contains('table-scroll')) return;
+      el.classList.add('is-scrolling');
+      const prev = timers.get(el);
+      if (prev !== undefined) window.clearTimeout(prev);
+      timers.set(el, window.setTimeout(() => el.classList.remove('is-scrolling'), 2500));
+    };
+
+    const HOVER_ZONE = 14;
+    const hovered = new Set<Element>();
+    let pendingMove: MouseEvent | null = null;
+    const processMove = () => {
+      const e = pendingMove;
+      pendingMove = null;
+      if (!e) return;
+      const next = new Set<Element>();
+      // От самого глубокого скроллера вверх по цепочке предков: у вложенных
+      // (цитата в теле панели, таблица в контенте) жёлобы у разных краёв.
+      let node: Element | null = e.target instanceof Element
+        ? e.target.closest('.island-scroll, .table-scroll')
+        : null;
+      while (node) {
+        const r = node.getBoundingClientRect();
+        const nearRight = node.scrollHeight > node.clientHeight
+          && e.clientX <= r.right && r.right - e.clientX <= HOVER_ZONE;
+        const nearBottom = node.scrollWidth > node.clientWidth
+          && e.clientY <= r.bottom && r.bottom - e.clientY <= HOVER_ZONE;
+        if (nearRight || nearBottom) next.add(node);
+        node = node.parentElement?.closest('.island-scroll, .table-scroll') ?? null;
+      }
+      hovered.forEach(el => {
+        if (!next.has(el)) {
+          el.classList.remove('is-scroll-hover');
+          hovered.delete(el);
+        }
+      });
+      next.forEach(el => {
+        if (!hovered.has(el)) {
+          el.classList.add('is-scroll-hover');
+          hovered.add(el);
+        }
+      });
+    };
+    // rAF-троттлинг: обрабатывается последний mousemove кадра, геометрия
+    // меряется не чаще перерисовки.
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!pendingMove) requestAnimationFrame(processMove);
+      pendingMove = ev;
+    };
+    const clearHover = () => {
+      pendingMove = null;
+      hovered.forEach(el => el.classList.remove('is-scroll-hover'));
+      hovered.clear();
+    };
+
+    document.addEventListener('scroll', onScroll, true);
+    document.addEventListener('mousemove', onMouseMove, true);
+    document.documentElement.addEventListener('mouseleave', clearHover);
+    return () => {
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('mousemove', onMouseMove, true);
+      document.documentElement.removeEventListener('mouseleave', clearHover);
+      clearHover();
+    };
+  }, []);
 
   // During drag we mutate the aside width directly (bypassing React) so a large
   // PageTree doesn't re-render on every mouse move; we commit to state on release.
@@ -119,7 +276,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     // the DOM write when the committed value matches its last render (e.g. collapsing
     // back to the rail: 48 → 48). Snap the DOM ourselves and restore the transition.
     if (asideRef.current) {
-      asideRef.current.style.transition = 'width 0.18s ease';
+      asideRef.current.style.transition = SIDEBAR_ANIM;
       asideRef.current.style.width = `${finalWidth}px`;
     }
     if (collapsed) {
@@ -161,6 +318,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     }));
   }, []);
 
+  // Тап по рельсе (ревью-2): разворачивает остров до минимально допустимой
+  // ширины — предсказуемый результат вместо «какой-то прошлой ширины»;
+  // перетаскивание у рельсы отключено, жест один.
+  const expandToMin = useCallback(() => {
+    setSidebar({ width: MIN_WIDTH, collapsed: false });
+  }, []);
+
   const isSettings = location.pathname === '/settings';
   const isTests = location.pathname === '/tests' || location.pathname.startsWith('/tests/');
   // During a drag the contents follow the cursor zone (tree once width >= MIN_WIDTH),
@@ -171,41 +335,53 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     ? Math.min(Math.max(rawXRef.current, RAIL_WIDTH), MAX_WIDTH)
     : (sidebar.collapsed ? RAIL_WIDTH : sidebar.width);
 
-  // Same drag handle works both ways: drag left to collapse, drag right to expand.
-  // Грип-маркер («‖») убран: чёрточки висели поверх контента страницы рядом с
-  // разделителем. Вместо него тянется сама линия: узкая зона захвата (±4px)
-  // оседлала правую границу сайдбара, а визуальный отклик — подсветка линии
-  // ровно по разделителю при наведении и на всё время перетаскивания.
+  // Drag handle: только у РАЗВЁРНУТОГО дерева (drag left to collapse, drag
+  // right to expand). Свёрнутая рельса не тянется — раскрывается тапом
+  // (ревью-2: два жеста на 48px конфликтовали, градиент-подсказка выглядела
+  // резко). Визуальный отклик — как сэш в VS Code: тонкая зелёная черта в
+  // ЗАЗОРЕ между островами, во всю высоту, появляется с задержкой 200мс
+  // (мимолётный проход мыши её не зажигает) и мгновенно гаснет.
+  const resizeIndicator = (
+    <div
+      ref={resizeIndicatorRef}
+      style={{
+        // Черта 4px по центру гэпа(8): остров кончается на right:0,
+        // зазор — [0..-8], центр — -4.
+        position: 'absolute', top: 0, right: '-6px', bottom: 0, width: '4px',
+        borderRadius: '2px',
+        // Пастель (ревью-3): плотный greenDark кричал, светлая фирменная
+        // зелень читается подсказкой, а не сигналом тревоги.
+        background: 'rgba(122, 224, 90, 0.45)',
+        opacity: dragging ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }}
+    />
+  );
   const resizeHandle = (
     <div
       onMouseDown={startDrag}
-      title={sidebar.collapsed ? 'Потяните вправо, чтобы раскрыть' : 'Потяните, чтобы изменить ширину (до упора — свернуть)'}
+      title="Потяните, чтобы изменить ширину (до упора — свернуть)"
       style={{
-        position: 'absolute', top: 0, right: '-4px', width: '8px', height: '100%',
+        // Зона захвата накрывает весь зазор (8) и 2px кромки острова.
+        position: 'absolute', top: 0, right: '-8px', width: '10px', height: '100%',
         cursor: 'col-resize', zIndex: 3,
-        display: 'flex', justifyContent: 'center',
       }}
-      onMouseEnter={e => {
-        // greenLight, не greenAccent: неоновая линия во всю высоту выбивалась
-        // из приглушённой стилистики интерфейса.
-        const line = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (line) line.style.background = colors.greenLight;
+      onMouseEnter={() => {
+        clearTimeout(indicatorHoverTimer.current);
+        indicatorHoverTimer.current = setTimeout(() => {
+          if (resizeIndicatorRef.current) resizeIndicatorRef.current.style.opacity = '1';
+        }, 200);
       }}
-      onMouseLeave={e => {
-        // Во время перетаскивания курсор уходит с зоны захвата — линия
-        // остаётся подсвеченной, погасит её ре-рендер по окончании драга.
+      onMouseLeave={() => {
+        clearTimeout(indicatorHoverTimer.current);
+        // Во время перетаскивания курсор уходит с зоны захвата — черта
+        // остаётся, погасит её ре-рендер по окончании драга.
         if (draggingRef.current) return;
-        const line = e.currentTarget.firstElementChild as HTMLElement | null;
-        if (line) line.style.background = 'transparent';
+        if (resizeIndicatorRef.current) resizeIndicatorRef.current.style.opacity = '0';
       }}
-    >
-      <div style={{
-        width: '2px', height: '100%',
-        background: dragging ? colors.greenLight : 'transparent',
-        transition: 'background 0.15s',
-        pointerEvents: 'none',
-      }} />
-    </div>
+    />
   );
 
   return (
@@ -218,19 +394,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background blobs. Сиреневого в углу шапки/сайдбара сознательно НЕТ:
-          он просвечивал сквозь их полупрозрачный фон и красил разделительные
-          линии в разные оттенки вдоль ширины (линии «разного цвета»). */}
-      <div style={{
-        position: 'fixed', bottom: '-15%', right: '-5%',
-        width: '600px', height: '600px', borderRadius: '50%',
-        background: colors.blobGreen, filter: 'blur(80px)', zIndex: 0,
-      }} />
-      <div style={{
-        position: 'fixed', top: '40%', right: '20%',
-        width: '400px', height: '400px', borderRadius: '50%',
-        background: colors.blobYellow, filter: 'blur(80px)', zIndex: 0,
-      }} />
+      <style>{islandScrollStyles}</style>
+      {/* Блобов на рабочем полотне НЕТ (ревью v1.8.0): с непрозрачными
+          островами цветные пятна выглядывали только в гэпах и отвлекали;
+          фирменная гамма живёт в самих элементах. Блобы остались лишь на
+          экране входа — там они герой-фон под стеклянной карточкой. */}
 
       {/* Top bar */}
       <header style={{
@@ -243,11 +411,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         // выделения: кнопка выхода встаёт в одну вертикаль с «Ещё действия»
         // и крестиком закрытия панели (гэп между кнопками у всех баров 10px).
         padding: '0 24px 0 16px',
-        ...glassmorphism,
-        // glassmorphism несёт рамку со всех сторон — шапке нужна только нижняя,
-        // остальные рисовали лишние линии по краям окна.
-        border: 'none',
-        borderBottom: `1px solid ${colors.border}`,
+        // Остров-схема (v1.8.0): главная шапка лежит на полотне без своей
+        // поверхности — белые карточки только у рабочих областей ниже.
+        background: 'transparent',
         position: 'relative',
         zIndex: 2,
       }}>
@@ -275,6 +441,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <button
               onClick={() => navigate('/tests')}
               title="Тесты проектов: какие требования держит каждый тест"
+              // Якорь панели дайджеста: её левая граница равняется по левой
+              // грани этой кнопки (NotificationBell меряет по атрибуту).
+              data-rt-header-tests=""
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 height: '34px', padding: '0 14px',
@@ -382,6 +551,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <button
               onClick={() => setLogoutConfirmOpen(true)}
               title="Выйти из ReqTrace"
+              // Якорь панели дайджеста: её правая граница равняется по правой
+              // грани этой кнопки.
+              data-rt-header-logout=""
               style={{
                 width: '34px', height: '34px', padding: 0,
                 borderRadius: radii.md,
@@ -409,45 +581,55 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </header>
 
-      {/* Content row: sidebar + main */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', zIndex: 1 }}>
+      {/* Content row: sidebar + main. Гэп острова — по бокам и снизу; сверху
+          НУЛЬ: воздух под шапкой-на-полотне уже даёт её собственная центровка
+          (64px минус контент), добавка паддинга удваивала отступ (ревью
+          фазы 1). Гэп между сайдбаром и main отдан гэпу флекса. */}
+      <div style={{
+        display: 'flex', flex: 1, minHeight: 0, position: 'relative', zIndex: 1,
+        padding: `0 ${island.gap} ${island.gap}`, gap: island.gap,
+      }}>
         <aside
           ref={asideRef}
           style={{
             width: `${width}px`,
             flexShrink: 0,
-            ...glassmorphism,
-            // Только правая граница: верхняя из glassmorphism складывалась с
-            // нижней границей шапки в двойную (2px) линию над сайдбаром.
-            border: 'none',
-            borderRight: `1px solid ${colors.border}`,
+            // Остров: и дерево, и свёрнутая рельса — тонкая белая карточка.
+            background: island.background,
+            border: island.border,
+            borderRadius: island.radius,
+            boxShadow: island.boxShadow,
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
             // No overflow:hidden — the tree clips itself via its own container, and
             // this lets the resize grip sit outside, on the divider (Confluence-style).
             zIndex: 2, // above main so the protruding grip stays visible
-            transition: dragging ? 'none' : 'width 0.18s ease',
+            transition: dragging ? 'none' : SIDEBAR_ANIM,
           }}
         >
           {showRail ? (
             <>
-              {/* Whole rail is the expand target — big click area; thin right edge stays draggable */}
+              {/* Вся рельса — цель тапа; перетаскивания у рельсы нет (ревью-2).
+                  Индикатор рядом — на случай, если драг из развёрнутого
+                  состояния нырнул ниже порога и рельса показалась мид-драгом. */}
               <button
-                onClick={toggleCollapsed}
+                onClick={expandToMin}
                 title="Раскрыть панель страниц"
                 style={{
                   flex: 1, width: '100%', border: 'none', background: 'transparent',
                   color: colors.textSecondary, cursor: 'pointer', display: 'flex',
                   flexDirection: 'column', alignItems: 'center', paddingTop: '14px',
                   transition: 'background 0.15s, color 0.15s', fontFamily: 'inherit',
+                  // Ховер-заливка не должна выпирать из скруглённых углов острова.
+                  borderRadius: island.radius,
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = colors.greenLight; e.currentTarget.style.color = colors.greenDark; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = colors.textSecondary; }}
               >
                 <Chevron dir="right" size={18} />
               </button>
-              {resizeHandle}
+              {resizeIndicator}
             </>
           ) : (
             <>
@@ -510,27 +692,25 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </button>
               </div>
 
-              {/* Resize handle on the right divider */}
+              {/* Черта-индикатор в зазоре + зона захвата ресайза */}
+              {resizeIndicator}
               {resizeHandle}
             </>
           )}
         </aside>
 
-        {/* Main content */}
-        {/* scrollbar-gutter — ТОЛЬКО на экранах, где скроллится сам main
-            (профиль, «Тесты»): резерв держит их центрированные колонки на
-            месте между экранами с прокруткой и без. На странице требований
-            main не скроллится никогда (контент листает внутренний контейнер
-            PageDetailPage) — постоянный жёлоб там был мёртвой полосой у
-            правого края при классических скроллбарах macOS (мышь или
-            «показывать всегда»): верхний бар страницы уезжал влево от шапки.
-            Компенсацию невидимой пробой ширины скроллбара в шапке пробовали
-            (v1.7.2) и откатили: кнопки выравнивались, но у шапки появлялась
-            та же «рваная» пустота справа. */}
+        {/* Main content. Не скроллится НИКОГДА (v1.8.0): каждый экран —
+            IslandScreen или своя пара островов, прокрутка живёт внутри
+            контент-острова. Сага о scrollbar-gutter (v1.6.6–v1.7.2: жёлоб
+            только на скроллящих main экранах, отвергнутая проба-компенсация
+            в шапке) закрыта по построению — скроллбара у main больше нет.
+            ⚠ overflow — visible: гэпы вокруг main принадлежат ряду, и
+            overflow hidden обрубал тени герой-острова ровно по прямоугольнику
+            main — резкие срезы на углах (ревью). Размеры детей держит флекс,
+            скроллят они себя сами — клипать main нечего. */}
         <main style={{
-          flex: 1, position: 'relative', zIndex: 1, overflow: 'auto',
+          flex: 1, position: 'relative', zIndex: 1, overflow: 'visible',
           minWidth: 0,
-          scrollbarGutter: (isSettings || isTests) ? 'stable' : undefined,
         }}>
           {children}
         </main>

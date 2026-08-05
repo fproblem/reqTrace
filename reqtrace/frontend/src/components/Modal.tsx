@@ -206,7 +206,7 @@ export const Modal: React.FC<{
             <XIcon />
           </button>
         </div>
-        <div style={{ padding: '0 24px 24px', overflowY: 'auto' }}>
+        <div className="island-scroll" style={{ padding: '0 24px 24px', overflowY: 'auto' }}>
           {children}
         </div>
       </div>

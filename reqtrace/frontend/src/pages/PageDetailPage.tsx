@@ -9,13 +9,13 @@ import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
 import { FadeIn, useFadeToggle } from '../components/fadePresence';
-import { useDelayedFlag } from '../components/Skeleton';
+import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components/RefreshIcon';
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
-import { colors, radii, shadows } from '../styles/tokens';
+import { colors, radii, shadows, island } from '../styles/tokens';
 
 interface PageDetailPageProps {
   jiraBaseUrl?: string;
@@ -460,39 +460,52 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // не меняет статусы по построению — целый класс багов «самоустаревания»
   // (v1.5.7) и «прыгающих» подсветок невозможен.
 
-  if (loading) {
-    // Пустой экран до порога задержки; дальше — мягко проявляющаяся строка
-    // с фирменным лоадером (скелетон для произвольного Confluence-контента
-    // не построить — количество и форма блоков известны только после ответа).
-    return (
+  // Каркас пары островов «бар + контент» (v1.8.0): виден с первого кадра
+  // загрузки и в терминальных состояниях — навигация не мигает голым
+  // полотном, пока едет содержимое. Внутри контент-острова — что передали;
+  // barInner — содержимое бара (скелетон шапки на медленной загрузке).
+  const islandFrame = (inner: React.ReactNode, barInner?: React.ReactNode) => (
+    <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <div style={{
-        height: '100%', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
+        height: '64px', flexShrink: 0,
+        padding: '0 24px',
+        display: 'flex', alignItems: 'center',
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadow,
+        marginBottom: island.gap,
       }}>
-        {showLoader && (
-          <FadeIn>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              color: colors.textSecondary, fontSize: '13px',
-            }}>
-              <RefreshIcon size={16} spinning />
-              Загружаем страницу из последнего снимка…
-            </div>
-          </FadeIn>
-        )}
+        {barInner}
       </div>
-    );
-  }
+      <div style={{
+        flex: 1, minHeight: 0,
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadowRaised,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {inner}
+      </div>
+    </div>
+  );
 
-  if (!page) {
-    return (
+  // Отдельной loading-ветки НЕТ (ревью): она была другим JSX-деревом, и на
+  // каждом переходе между страницами React размонтировал пару островов
+  // целиком — оболочки моргали. Теперь оболочки стабильны, а загрузка меняет
+  // только их СОДЕРЖИМОЕ (см. readyPage ниже).
+
+  // Страница не найдена — терминально, только после завершившейся загрузки.
+  if (!loading && !page) {
+    return islandFrame(
       <div style={{ padding: '60px', textAlign: 'center', color: colors.statusLost }}>
         Страница не найдена
       </div>
     );
   }
 
-  if (page.is_virtual) {
+  if (!loading && page && page.is_virtual) {
     const handlePromote = async () => {
       if (!pageId) return;
       setPromoting(true);
@@ -509,16 +522,17 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
 
     return (
       <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
-        {/* Top bar */}
+        {/* Top bar — остров, как у обычной страницы. Высота фиксирована
+            (64px): не паддингами — контент разной высоты давал бы разную
+            высоту бара. */}
         <div style={{
-          // Высота фиксирована (64px, как у шапки сайдбара) — их нижние линии
-          // стыкуются в одну сплошную. Не паддингами: контент разной высоты
-          // давал бы разную высоту бара.
           height: '64px',
           padding: '0 24px',
-          background: 'rgba(255,255,255,0.9)',
-          backdropFilter: 'blur(20px)',
-          borderBottom: `1px solid ${colors.border}`,
+          background: island.background,
+          border: island.border,
+          borderRadius: island.radius,
+          boxShadow: island.boxShadow,
+          marginBottom: island.gap,
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
@@ -542,12 +556,18 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           </span>
         </div>
 
-        {/* Promote CTA */}
+        {/* Promote CTA — остров на месте контента: виртуальная страница
+            выглядит той же парой «бар + полотно контента», что и обычная. */}
         <div style={{
           flex: 1,
+          minHeight: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          background: island.background,
+          border: island.border,
+          borderRadius: island.radius,
+          boxShadow: island.boxShadowRaised,
         }}>
           {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
               текста и большая иконка документа утяжеляли экран): заголовок →
@@ -697,22 +717,31 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         renderReport.considered.has(selectedHighlight.id) &&
         !renderReport.rendered.has(selectedHighlight.id)));
 
+  // Готовая к отрисовке страница; null — идёт загрузка (навигация или первый
+  // вход). Оболочки островов ниже живут в ОБОИХ состояниях — не моргают.
+  const readyPage = !loading && page ? page : null;
+
   return (
-    // Мягкое появление страницы (v1.7.1): key по id — переход на другую
-    // страницу проявляет новый контент теми же 160мс, что модалки.
-    <FadeIn key={page.id} style={{ height: '100%' }}>
+    // FadeIn key={page.id} на всём дереве убран (ревью): он размонтировал и
+    // переигрывал оболочки островов на каждом переходе. Мягкое появление
+    // (v1.7.1) переехало на СОДЕРЖИМОЕ шапки и контент-острова ниже.
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
 
-      {/* Top bar */}
+      {/* Top bar — остров (v1.8.0). Правый паддинг 15px: с гэпом(8) и
+          рамкой(1) правая колонка кнопок остаётся в 24px от края окна — в одну
+          вертикаль с выходом в главной шапке и крестиком панели (см. island в
+          tokens.ts). ⚠ Без transform/backdrop-filter: ниже живёт fixed-попап
+          «Привязать» (ловушка containing block, Modal.tsx). */}
       <div style={{
-        // 64px — как у шапки сайдбара: нижние линии двух баров стыкуются.
         height: '64px',
-        padding: '0 24px',
+        padding: '0 15px 0 24px',
         flexShrink: 0,
-        background: 'rgba(255,255,255,0.9)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${colors.border}`,
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadow,
+        marginBottom: island.gap,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -720,24 +749,37 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {page.title}
-            </div>
-            <div style={{
-              fontSize: '12px', color: colors.textTertiary, marginTop: '2px',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              v{page.current_snapshot?.confluence_version || '?'}
-              {' · Снимок: '}{formatDate(page.current_snapshot?.fetched_at)}
-              {' · Baseline: '}{formatDate(page.baseline?.confirmed_at)}
-            </div>
-          </div>
+          {readyPage ? (
+            /* FadeIn по id — мягкая смена названия в стабильной оболочке. */
+            <FadeIn key={readyPage.id} style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {readyPage.title}
+              </div>
+              <div style={{
+                fontSize: '12px', color: colors.textTertiary, marginTop: '2px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                v{readyPage.current_snapshot?.confluence_version || '?'}
+                {' · Снимок: '}{formatDate(readyPage.current_snapshot?.fetched_at)}
+                {' · Baseline: '}{formatDate(readyPage.baseline?.confirmed_at)}
+              </div>
+            </FadeIn>
+          ) : (
+            /* Скелетон шапки — как на «Тестах»/ярусе 2, порог 200мс. */
+            showLoader && (
+              <FadeIn>
+                <SkeletonBar width="240px" height={16} />
+                <SkeletonBar width="320px" height={10} style={{ marginTop: '6px' }} />
+              </FadeIn>
+            )
+          )}
         </div>
 
+        {/* Кнопки — только у готовой страницы (честный loadstate v1.7.1). */}
+        {readyPage && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {/* Coverage indicator. Пока покрытие неполное, чип — кнопка: клик
               циклит по привязкам без тестов (jumpToUncovered). При 100% жать
@@ -1035,24 +1077,55 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             )}
           </div>
         </div>
+        )}
       </div>
 
-      {/* Content area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div
-          ref={contentAreaRef}
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            position: 'relative',
-          }}
-        >
+      {/* Content area. minHeight:0 вместо overflow:hidden — иначе тени
+          островов резались бы по нижней кромке ряда. */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        {/* Остров контента — двухслойный: скругление, рамка и тень на внешней
+            обёртке с overflow:hidden, скроллит внутренний div. Классический
+            скроллбар (мышь или «показывать всегда») тогда подрезается
+            скруглением острова, а не накрывает его углы прямыми концами
+            (ревью фазы 1). Реф остаётся на скроллере. */}
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          background: island.background,
+          border: island.border,
+          borderRadius: island.radius,
+          // Герой-поверхность — приподнята над служебными островами.
+          boxShadow: island.boxShadowRaised,
+          overflow: 'hidden',
+        }}>
+          <div
+            ref={contentAreaRef}
+            className="island-scroll"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'auto',
+              position: 'relative',
+              // both-edges (ревью): пилюля — классический скроллбар и занимает
+              // 10px справа, поэтому правая тень полнокровных таблиц рисовалась
+              // у жёлоба, а левая — у рамки острова (несимметрично). Зеркальный
+              // резерв слева выравнивает обе кромки: тени ведут себя одинаково.
+              // Тень «у самой рамки» справа невозможна честно — контент реально
+              // обрезается до жёлоба; тени-оверлеи отклонены ранее.
+              scrollbarGutter: 'stable both-edges',
+            }}
+          >
+          {readyPage ? (
+            /* Мягкая смена содержимого (v1.7.1) — FadeIn по id ВНУТРИ
+               стабильной оболочки: остров не переигрывается. */
+            <FadeIn key={readyPage.id}>
           {viewMode === 'coverage' ? (
             <>
-              {page.content_html ? (
+              {readyPage.content_html ? (
                 <>
                   <ContentRenderer
-                    html={page.content_html}
+                    html={readyPage.content_html}
                     onContentReady={setContentContainer}
                     suspendTableRefreeze={!!selectedHighlight}
                   />
@@ -1120,10 +1193,28 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           ) : (
             <DiffView pageId={pageId!} />
           )}
+            </FadeIn>
+          ) : (
+            /* Лоадер в центре стабильного острова — после порога 200мс
+               (мелькание на быстрых ответах хуже его отсутствия, v1.7.1). */
+            showLoader && (
+              <FadeIn style={{ height: '100%' }}>
+                <div style={{
+                  height: '100%', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', gap: '10px',
+                  color: colors.textSecondary, fontSize: '13px',
+                }}>
+                  <RefreshIcon size={16} spinning />
+                  Загружаем страницу из последнего снимка…
+                </div>
+              </FadeIn>
+            )
+          )}
+          </div>
         </div>
 
         {/* Side panel — рендерится всегда: появление/скрытие панель анимирует
-            сама (ширина 0↔360), при условном монтировании анимации закрытия
+            сама (ширина 0↔W), при условном монтировании анимации закрытия
             не было бы — React размонтировал бы её мгновенно. */}
         <SidePanel
           highlight={selectedHighlight}
@@ -1206,7 +1297,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       )}
 
       {/* Delete confirmation modal */}
-      {showDeleteModal && (
+      {showDeleteModal && page && (
         <Modal
           title="Удаление страницы"
           onClose={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
@@ -1255,7 +1346,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </Modal>
       )}
     </div>
-    </FadeIn>
   );
 };
 

@@ -16,7 +16,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon } from '../components/icons';
+import { ChevronRightIcon, CrossIcon, SearchIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
@@ -27,16 +27,20 @@ import { AnimatedHeight } from '../components/AnimatedHeight';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
+import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 import { plural, StatusCountPill } from './TestsPage';
 
 type FilterKey = 'all' | 'lost' | 'outdated' | 'nonstandard';
 
 // title — всплывающая подсказка чипа (QOL v1.7.5): фильтр объясняет себя сам.
+// Подписи короткие (ревью v1.8.0: полные «С требующими проверки» разваливали
+// сегмент-контрол в баре) — точный смысл несёт title: подпись «Утрачены»
+// значит «тесты С УТРАЧЕННЫМИ привязками», не «утраченные тесты».
 const FILTERS: { key: FilterKey; label: string; title: string }[] = [
   { key: 'all', label: 'Все', title: 'Показать все строки списка' },
-  { key: 'lost', label: 'С утраченными', title: 'Тесты, у которых есть утраченные привязки' },
-  { key: 'outdated', label: 'С требующими проверки', title: 'Тесты, у которых есть привязки, требующие проверки' },
-  { key: 'nonstandard', label: 'Нестандартные ключи', title: 'Тесты с ключом не в формате Jira (TEST-123)' },
+  { key: 'lost', label: 'Утрачены', title: 'Тесты, у которых есть утраченные привязки' },
+  { key: 'outdated', label: 'Ждут проверки', title: 'Тесты, у которых есть привязки, требующие проверки' },
+  { key: 'nonstandard', label: 'Не по формату', title: 'Тесты с ключом не в формате Jira (TEST-123)' },
 ];
 
 // Особая строка «Привязки без тестов» (v1.7.5) живёт в общей механике
@@ -450,20 +454,25 @@ export const ProjectTestsPage: React.FC = () => {
 
   if (failed) {
     return (
-      <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary, fontSize: '13px' }}>
-        Тесты проекта недоступны.{' '}
-        <Link to="/tests" style={{ color: colors.greenDark, fontWeight: 600 }}>К выбору проекта</Link>
-      </div>
+      <IslandScreen barLeft={<IslandBarTitle>Тесты</IslandBarTitle>} contentMaxWidth="1060px" surface="canvas">
+        <div style={{ padding: '32px 0', textAlign: 'center', color: colors.textSecondary, fontSize: '13px' }}>
+          Тесты проекта недоступны.{' '}
+          <Link to="/tests" style={{ color: colors.greenDark, fontWeight: 600 }}>К выбору проекта</Link>
+        </div>
+      </IslandScreen>
     );
   }
   if (!data || !summary) {
-    // Скелетон яруса: полоска-заголовок (имя проекта неизвестно до ответа),
-    // поле-полоса и типовые строки ключей 48px.
+    // Скелетон яруса: имя проекта неизвестно до ответа — в баре полоска;
+    // ниже поле-полоса и типовые строки ключей 48px.
     return (
-      <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
+      <IslandScreen
+        barLeft={showSkeleton && <SkeletonBar width="220px" height={16} />}
+        contentMaxWidth="1060px"
+        surface="canvas"
+      >
         {showSkeleton && (
           <FadeIn>
-            <SkeletonBar width="260px" height={22} style={{ marginBottom: '20px' }} />
             <SkeletonBar width="420px" height={38} radius={10} style={{ marginBottom: '16px' }} />
             <SkeletonBar width="330px" height={12} style={{ marginBottom: '20px' }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -484,45 +493,40 @@ export const ProjectTestsPage: React.FC = () => {
             </div>
           </FadeIn>
         )}
-      </div>
+      </IslandScreen>
     );
   }
 
-  return (
-    // Скроллит <main> из Layout (как в профиле): свой overflow у контейнера
-    // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
-    // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
-    // оставляла всю «лишнюю» ширину одним пустым полем справа.
-    <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
-      {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
-      <FadeIn>
-      {/* Крошка-заголовок: «Тесты» возвращает на ярус выбора проекта. */}
-      <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 16px', color: colors.textPrimary }}>
-        <Link
-          to="/tests"
-          title="К выбору проекта"
-          style={{ color: colors.textTertiary, textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { e.currentTarget.style.color = colors.greenDark; }}
-          onMouseLeave={e => { e.currentTarget.style.color = colors.textTertiary; }}
-        >
-          Тесты
-        </Link>
-        <span style={{ color: colors.textTertiary, fontWeight: 400 }}> · </span>
-        {data.project_name}
-      </h1>
-
-      {/* Поиск и фильтры. Фокус поля — общий стандарт (focusBorder + кольцо). */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+  // Поиск и фильтры живут в баре-острове (ревью: бар всегда на экране —
+  // фильтры и поиск доступны на любой глубине списка; «прилипание» к кромке
+  // при скролле отклонено как морф с ремаунтом). Высоты 34 — ритм кнопок
+  // баров; крестик очистки — зеркало поиска в дереве страниц.
+  const filtersBar = (
+    <>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        {/* Лупа — зеркало поиска в дереве страниц. */}
+        <SearchIcon
+          size={14}
+          style={{
+            position: 'absolute', left: '10px', top: '50%',
+            transform: 'translateY(-50%)', color: colors.textTertiary,
+            pointerEvents: 'none',
+          }}
+        />
         <input
           type="text"
           value={q}
           onChange={e => setParam('q', e.target.value)}
           placeholder="Поиск тестов…"
           style={{
-            width: '220px', height: '36px', padding: '0 12px',
+            width: '220px', height: '34px',
+            // Слева резерв под лупу; правый — только под реально
+            // существующий крестик.
+            padding: `0 ${q ? 30 : 12}px 0 30px`,
             borderRadius: radii.md, border: `1px solid ${colors.border}`,
             fontSize: '13px', fontFamily: 'inherit', outline: 'none',
             boxSizing: 'border-box', background: colors.white,
+            textOverflow: 'ellipsis',
             transition: 'border-color 0.15s, box-shadow 0.15s',
           }}
           onFocus={e => {
@@ -534,12 +538,50 @@ export const ProjectTestsPage: React.FC = () => {
             e.currentTarget.style.boxShadow = 'none';
           }}
         />
+        {q && (
+          <button
+            onClick={() => setParam('q', '')}
+            title="Очистить поиск"
+            style={{
+              position: 'absolute',
+              right: '9px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '18px',
+              height: '18px',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: 'none',
+              borderRadius: radii.sm,
+              cursor: 'pointer',
+              color: colors.textTertiary,
+            }}
+          >
+            <CrossIcon size={12} />
+          </button>
+        )}
+      </div>
+      {/* Фильтры — один сегмент-контрол в языке «Покрытие | Изменения» бара
+          страницы (ревью: три отдельных чипа сваливали бар в кашу — одна
+          рамка читается одним элементом). Активный сегмент — заливка
+          greenAccent с белым текстом, как активный режим страницы; нулевой
+          глушится (кроме активного — его нужно мочь снять). */}
+      <div style={{
+        display: 'inline-flex',
+        height: '34px',
+        boxSizing: 'border-box',
+        borderRadius: radii.md,
+        border: `1px solid ${colors.border}`,
+        overflow: 'hidden',
+        background: colors.white,
+        flexShrink: 0,
+      }}>
         {FILTERS.map(f => {
           const active = filter === f.key;
           const count = filterCounts[f.key];
-          // Нулевой фильтр глушится: приглушённый некликабельный чип говорит
-          // «сюда ходить незачем» честнее, чем «(0)». Активный не глушится
-          // никогда — его нужно мочь снять.
           const disabled = count === 0 && !active;
           return (
             <button
@@ -549,35 +591,40 @@ export const ProjectTestsPage: React.FC = () => {
               // title и cursor (урок v1.6.0).
               onClick={() => { if (!disabled) setParam('f', f.key === 'all' ? '' : f.key); }}
               style={{
-                height: '36px', padding: '0 14px', borderRadius: radii.pill,
-                border: `1px solid ${active ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
-                background: active ? colors.greenLight : colors.white,
-                color: active ? colors.greenDark
+                height: '100%', padding: '0 12px',
+                border: 'none',
+                background: active ? colors.greenAccent : 'transparent',
+                color: active ? '#fff'
                   : disabled ? colors.textTertiary : colors.textSecondary,
-                fontSize: '13px', fontWeight: 600,
+                fontSize: '12px', fontWeight: 600,
                 cursor: disabled ? 'default' : 'pointer',
-                fontFamily: 'inherit', transition: 'all 0.15s', flexShrink: 0,
-                display: 'inline-flex', alignItems: 'center', gap: '7px',
+                fontFamily: 'inherit', transition: 'all 0.15s',
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
               }}
               onMouseEnter={e => {
-                if (active || disabled) return;
-                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                e.currentTarget.style.borderColor = colors.borderHover;
+                if (active) {
+                  e.currentTarget.style.background = colors.greenDark;
+                } else if (!disabled) {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.color = colors.textPrimary;
+                }
               }}
               onMouseLeave={e => {
-                if (active || disabled) return;
-                e.currentTarget.style.background = colors.white;
-                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.background = active ? colors.greenAccent : 'transparent';
+                e.currentTarget.style.color = active ? '#fff'
+                  : disabled ? colors.textTertiary : colors.textSecondary;
               }}
             >
               {f.label}
-              {/* Счётчик — нейтральной пилюлей, как у «Привязанных тестов»
-                  в панели (цветные пробовали — на активном зелёном чипе
-                  получалась цветовая каша). У заглушённого нуля бейджа нет. */}
+              {/* Счётчик — нейтральная пилюля (v1.7.5); на активной зелёной
+                  заливке — полупрозрачно-белая. Непрозрачно-серую (#F1F2F4 +
+                  textSecondary) пробовали по ревью и ВЕРНУЛИ обратно: живьём
+                  белая на зелёном смотрится лучше — не менять по кругу. */}
               {!disabled && (
                 <span style={{
-                  padding: '2px 8px', borderRadius: radii.pill,
-                  background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+                  padding: '1px 7px', borderRadius: radii.pill,
+                  background: active ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.05)',
+                  color: active ? '#fff' : colors.textSecondary,
                   fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
                 }}>
                   {count}
@@ -587,6 +634,52 @@ export const ProjectTestsPage: React.FC = () => {
           );
         })}
       </div>
+    </>
+  );
+
+  // Сводка проекта — мета-строкой бара (ревью: у обоих ярусов бар «заголовок
+  // + мета», слово «Тесты» не прыгает по вертикали при переходах между ними).
+  // Видимая версия — компактные цифры (полная фраза не помещалась рядом с
+  // поиском и фильтрами — ревью), полная с глаголами — в тултипе меты.
+  const summaryMeta =
+    `${summary.tests} ${plural(summary.tests, ['тест', 'теста', 'тестов'])}`
+    + ` · ${summary.links} ${plural(summary.links, ['привязка', 'привязки', 'привязок'])}`
+    + ` · ${summary.pages} ${plural(summary.pages, ['страница', 'страницы', 'страниц'])}`
+    + (uncoveredTotal > 0 ? ` · ${uncoveredTotal} без тестов` : '');
+  const summaryMetaFull =
+    `Всего: ${summary.tests} ${plural(summary.tests, ['тест', 'теста', 'тестов'])}`
+    + ` · покрывают ${summary.links} ${plural(summary.links, ['привязку', 'привязки', 'привязок'])}`
+    + ` на ${summary.pages} ${plural(summary.pages, ['странице', 'страницах', 'страницах'])}`
+    // Разрыв цифр ярусов объясняется словами (v1.7.5).
+    + (uncoveredTotal > 0
+      ? ` · ещё ${uncoveredTotal} ${plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])} без тестов`
+      : '');
+
+  return (
+    // Контент — на полотне (surface=canvas), скроллит прозрачный скроллер.
+    // Крошка-заголовок в баре: «Тесты» возвращает на ярус выбора проекта.
+    <IslandScreen
+      surface="canvas"
+      barLeft={(
+        <IslandBarTitle meta={summaryMeta} metaTitle={summaryMetaFull}>
+          <Link
+            to="/tests"
+            title="К выбору проекта"
+            style={{ color: colors.textTertiary, textDecoration: 'none', transition: 'color 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = colors.greenDark; }}
+            onMouseLeave={e => { e.currentTarget.style.color = colors.textTertiary; }}
+          >
+            Тесты
+          </Link>
+          <span style={{ color: colors.textTertiary, fontWeight: 400 }}> · </span>
+          {data.project_name}
+        </IslandBarTitle>
+      )}
+      barRight={filtersBar}
+      contentMaxWidth="1060px"
+    >
+      {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
+      <FadeIn>
 
       {/* Пульс строки-«точки интереса» — та же механика, что у кнопки
           «Актуализировать» в панели (0.8s × 2, класс не инлайн — анимация
@@ -602,20 +695,11 @@ export const ProjectTestsPage: React.FC = () => {
         }
       `}</style>
 
-      <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '16px' }}>
-        Всего: {summary.tests} {plural(summary.tests, ['тест', 'теста', 'тестов'])}
-        {' · '}покрывают {summary.links} {plural(summary.links, ['привязку', 'привязки', 'привязок'])}
-        {' '}на {summary.pages} {plural(summary.pages, ['странице', 'страницах', 'страницах'])}
-        {/* Разрыв цифр ярусов объясняется словами (v1.7.5). */}
-        {uncoveredTotal > 0 && (
-          <>{' · '}ещё {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])} без тестов</>
-        )}
-      </div>
 
       {data.tests.length === 0 && uncoveredTotal === 0 ? (
         <div style={{
           padding: '28px', borderRadius: radii.lg,
-          border: `1px solid ${colors.border}`, background: 'rgba(255,255,255,0.85)',
+          border: `1px solid ${colors.border}`, background: colors.cardBgSolid,
           color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
         }}>
           В проекте пока нет привязанных тестов. Откройте страницу, выделите
@@ -871,7 +955,7 @@ export const ProjectTestsPage: React.FC = () => {
         </div>
       )}
       </FadeIn>
-    </div>
+    </IslandScreen>
   );
 };
 

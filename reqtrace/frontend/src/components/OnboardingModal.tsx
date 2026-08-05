@@ -432,7 +432,7 @@ export const OnboardingModal: React.FC<{ onClose: () => void }> = ({ onClose }) 
         <div style={{ width: '280px', flexShrink: 0 }}>
           {current.art}
         </div>
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+        <div className="island-scroll" style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
           <h3 style={{
             fontSize: '15px', fontWeight: 700, color: colors.textPrimary,
             margin: '0 0 10px',

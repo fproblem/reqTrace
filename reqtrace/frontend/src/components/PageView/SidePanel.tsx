@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Highlight, TestLink } from '../../types';
-import { colors, radii, shadows } from '../../styles/tokens';
+import { colors, radii, shadows, island } from '../../styles/tokens';
 import { useFadeToggle } from '../fadePresence';
 import { RefreshIcon } from '../RefreshIcon';
 import { TreeReveal } from '../TreeReveal';
@@ -98,10 +98,12 @@ const SPIN_TURN_MS = 800;
 // итог прежде, чем строка сложится.
 const DONE_HOLD_MS = 600;
 
-// Длительность анимации открытия/закрытия панели (ширина 0↔360). Экспорт —
+// Длительность анимации открытия/закрытия панели (ширина 0↔W, W меряется по кнопке «Тесты»). Экспорт —
 // для PageDetailPage: пока идёт открытие, подскролл к выделению не должен
 // прицеливаться (контент пере-вёрстывается, координаты цели плывут).
-export const PANEL_ANIM_MS = 220;
+// 320мс, не 220 (ревью островов v1.8.0): с гэпом-маргином движения стало
+// больше, на прежней скорости пере-вёрстка соседних островов читалась рывком.
+export const PANEL_ANIM_MS = 320;
 
 function sortedByPosition(highlights: Highlight[]): Highlight[] {
   // Порядок навигации = фактический порядок отрисованных подсветок сверху вниз
@@ -127,7 +129,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const { mounted: confirmMounted, fadeStyle: confirmFade } = useFadeToggle(confirmOpen);
   const confirmRef = useRef<HTMLDivElement>(null);
 
-  // Плавное появление/скрытие: анимируется ширина корня 0↔360 (как у
+  // Плавное появление/скрытие: анимируется ширина корня 0↔W (как у
   // inline-комментариев Confluence). Корень живёт в DOM постоянно (пустой,
   // шириной 0 — см. return ниже): транзишен тогда стартует из уже
   // зафиксированного браузером width:0 при ЛЮБОМ сценарии открытия. Прежний
@@ -136,8 +138,30 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   // (клик по чипу статуса: пересортировка, перерисовка слоя, подскролл), — и
   // панель появлялась скачком. Пока идёт анимация закрытия, продолжаем
   // рисовать последнее выделение (rendered) — активного уже нет — и убираем
-  // контент по таймеру чуть длиннее транзишена (220мс).
+  // контент по таймеру чуть длиннее транзишена (PANEL_ANIM_MS).
   const [rendered, setRendered] = useState<Highlight | null>(null);
+  // Ширина панели (ревью v1.8.0): левая грань — по левой грани кнопки
+  // «Тесты» в главной шапке (тот же якорь data-rt-header-tests, что у панели
+  // дайджеста), правая — в island.gap от окна (паддинг ряда Layout). Зависит
+  // от длины имени в чипе профиля — меряется на маунте и ресайзе; кламп
+  // держит панель разумной на экзотических окнах; без якоря — прежние 360.
+  const [panelWidth, setPanelWidth] = useState(360);
+  useEffect(() => {
+    const update = () => {
+      const tests = document.querySelector('[data-rt-header-tests]');
+      if (!tests) {
+        setPanelWidth(360);
+        return;
+      }
+      const w = Math.round(
+        window.innerWidth - parseInt(island.gap, 10) - tests.getBoundingClientRect().left
+      );
+      setPanelWidth(Math.max(320, Math.min(560, w)));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
   // Свежий статус для замыкания onClick «Актуализировать»: галочка успеха
   // показывается только если реанкор реально перевёл привязку в active.
   const renderedStatusRef = useRef<string | undefined>(undefined);
@@ -155,16 +179,27 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   }, [activeHighlight]);
 
   // Оболочка панели — общая для пустого и наполненного состояния, чтобы React
-  // переиспользовал один DOM-узел и транзишен ширины не прерывался. Фон и блюр
+  // переиспользовал один DOM-узел и транзишен ширины не прерывался. Фон и тень
   // только при контенте: у пустой оболочки прозрачная рамка (1px) не должна
   // просвечивать белой полоской у правого края.
+  // Остров (v1.8.0): гэп до контента (margin-left) анимируется ВМЕСТЕ с
+  // шириной — иначе у закрытой панели оставалась бы мёртвая полоса гэпа у
+  // правого края полотна. Блюра нет: остров непрозрачен, а backdrop-filter
+  // ломал бы fixed-потомков (ловушка containing block, Modal.tsx).
   const shellStyle = (opened: boolean, withContent: boolean): React.CSSProperties => ({
-    width: opened ? '360px' : '0px',
+    // border-box: заявленная ширина — внешняя, левая грань встаёт ровно по
+    // якорю (рамки не сдвигают её на 2px).
+    width: opened ? `${panelWidth}px` : '0px',
+    boxSizing: 'border-box',
     flexShrink: 0,
-    transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), border-color ${PANEL_ANIM_MS}ms ease`,
-    borderLeft: `1px solid ${opened ? colors.border : 'transparent'}`,
-    background: withContent ? 'rgba(255,255,255,0.92)' : 'transparent',
-    backdropFilter: withContent ? 'blur(20px)' : undefined,
+    transition: `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), `
+      + `margin-left ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1), `
+      + `border-color ${PANEL_ANIM_MS}ms ease`,
+    marginLeft: opened ? island.gap : '0px',
+    border: `1px solid ${opened && withContent ? colors.border : 'transparent'}`,
+    borderRadius: island.radius,
+    background: withContent ? island.background : 'transparent',
+    boxShadow: withContent ? island.boxShadow : undefined,
     height: '100%',
     overflow: 'hidden',
   });
@@ -323,6 +358,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     setQuoteFade(el.scrollHeight - el.scrollTop - el.clientHeight > 2);
   }, []);
   useEffect(() => { updateQuoteFade(); }, [rendered, quoteDiffParts, updateQuoteFade]);
+  // Кап карточки — доля высоты панели (50cqh): при ресайзе окна видимая
+  // высота цитаты меняется без единого скролла — фейд пересчитывает
+  // обзервер. Депенденси rendered — скроллер (пере)монтируется с карточкой.
+  useEffect(() => {
+    const el = quoteScrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(updateQuoteFade);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rendered, updateQuoteFade]);
 
   if (!highlight) return <div style={shellStyle(false, false)} />;
 
@@ -413,9 +458,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     <div style={shellStyle(open, true)} data-popover-center>
       {/* Контент — на фиксированной ширине панели: при анимации ширины корня
           он не пере-верстается, а «въезжает» справа единым блоком (левый край
-          корня движется вместе с шириной, контент прижат к нему). */}
+          корня движется вместе с шириной, контент прижат к нему). −2px —
+          рамки корня (border-box). */}
       <div style={{
-        width: '360px',
+        width: `${panelWidth - 2}px`,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -429,15 +475,21 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         .test-row .test-row-remove { opacity: 0; transition: opacity 0.15s; }
         .test-row:hover .test-row-remove,
         .test-row .test-row-remove:focus-visible { opacity: 1; }
+        /* Тело панели — контейнер размеров: карточка привязки меряет свой
+           кап (50cqh) от него. Скроллу контейнерность не мешает — высота
+           тела задана флексом, не содержимым. */
+        .panel-body { container-type: size; }
       `}</style>
-      {/* Header with navigation. Правый паддинг, размеры кнопок (34×34) и гэп
-          (10px) — как у правого кластера верхнего бара страницы: крестик встаёт
-          ровно под «⋮», стрелка «вниз» — под «Обновить». Высота фиксированная
-          64px (с бордером), как у шапок сайдбара и бара страницы, — не гуляет
-          от содержимого. */}
+      {/* Header with navigation. Правый паддинг 15px — остров: гэп(8) +
+          рамка(1) + 15 = те же 24px от края окна, что и раньше, — крестик
+          встаёт ровно под «⋮» бара-острова, стрелка «вниз» — под «Обновить»
+          (см. island в tokens.ts). Размеры кнопок (34×34) и гэп (10px) — как у
+          правого кластера верхнего бара. Высота фиксированная 64px (с
+          бордером), как у шапок сайдбара и бара страницы, — не гуляет от
+          содержимого. */}
       <div style={{
         height: '64px',
-        padding: '0 24px 0 20px',
+        padding: '0 15px 0 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',
@@ -614,7 +666,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div className="island-scroll panel-body" style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -639,7 +691,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             fontSize: '12px',
             lineHeight: 1.45,
           }}>
-            <span style={{ flexShrink: 0 }}>⚠</span>
+            {/* 14px на строке 12px/1.45 (~17px): 1.5px сверху центрируют по первой строке */}
+            <StatusAlertIcon kind="warning" size={14} style={{ marginTop: '1.5px' }} />
             <span>
               Эта привязка <strong>не отображается на странице</strong>: содержимое
               и координаты привязки рассинхронизированы. Нажмите «Обновить» в
@@ -649,12 +702,20 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         )}
 
         {/* Карточка привязки: рамка и линии между зонами — в цвете статуса;
-            лёгкая тень приподнимает героя панели над служебными блоками. */}
+            лёгкая тень приподнимает героя панели над служебными блоками.
+            Кап высоты (ревью-3): цитата показывается ЦЕЛИКОМ, пока карточка
+            не займёт половину тела панели (50cqh от .panel-body) — только
+            тогда зона цитаты уходит в прокрутку (сжимается лишь она:
+            остальные ряды flexShrink 0). В браузерах без container queries
+            капа просто нет — цитата всегда целиком, скроллит само тело. */}
         <div style={{
           borderRadius: radii.md,
           border: `1px solid ${statusInfo.color}33`,
           overflow: 'hidden',
           boxShadow: shadows.card,
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '50cqh',
         }}>
 
         {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
@@ -677,6 +738,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             fontWeight: 600,
             cursor: statusNavigable ? 'pointer' : 'default',
             transition: 'background 0.15s',
+            flexShrink: 0,
           }}
           onMouseEnter={e => {
             if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
@@ -733,6 +795,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             cursor: notOnPage ? 'default' : 'pointer',
             transition: 'background 0.15s',
             position: 'relative',
+            // Единственный сжимаемый ряд карточки: при капе 50cqh ужимается
+            // зона цитаты, и внутренний скроллер получает высоту.
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
           }}
           onMouseEnter={e => {
             if (notOnPage) return;
@@ -748,12 +815,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           <div
             ref={quoteScrollRef}
             onScroll={updateQuoteFade}
+            className="island-scroll"
             style={{
               padding: '12px 16px',
               fontSize: '13px',
               lineHeight: '1.5',
               color: colors.textPrimary,
-              maxHeight: '150px',
+              // Фиксированного капа (150px) больше нет (ревью-3): цитата
+              // целиком, пока карточку не ограничит 50cqh — тогда скролл.
+              minHeight: 0,
               overflow: 'auto',
             }}
           >
@@ -789,6 +859,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* TreeReveal (один ребёнок): после «Актуализировать» строка кнопки
             складывается те же 160мс, что всё в ReqTrace, — карточка привязки
             сжимается плавно, без скачка контента панели (ревью v1.7.0). */}
+        {/* flexShrink 0 — ряд действия не участвует в сжатии карточки под
+            капом 50cqh (сжимается только зона цитаты). */}
+        <div style={{ flexShrink: 0 }}>
         <TreeReveal expanded={(highlight.status === 'outdated' && !!onReanchor) || reanchoring || reanchorDone}>
           <div>
           {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
@@ -913,6 +986,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
           </div>
         </TreeReveal>
+        </div>
 
         {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
             действия: статус терминальный, актуализировать нечего. Полная
@@ -926,6 +1000,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             color: colors.statusLost,
             fontSize: '12px',
             lineHeight: 1.45,
+            flexShrink: 0,
           }}>
             Выделенный текст удалён со страницы — привязка утрачена
             окончательно. Привязанные тесты сохранены: перепривяжите их

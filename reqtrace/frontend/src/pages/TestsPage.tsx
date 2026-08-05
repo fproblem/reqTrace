@@ -9,8 +9,9 @@ import { ProjectTestsStats } from '../types';
 import { FadeIn } from '../components/fadePresence';
 import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, ClipboardCheckIcon } from '../components/icons';
+import { ChevronRightIcon, ClipboardCheckIcon, StatusAlertIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
+import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 
 // Свежесть автообновления: человеческий формат «когда проверено».
 export function formatCheckedAt(iso: string, now: Date = new Date()): string {
@@ -54,12 +55,32 @@ export const StatusCountPill: React.FC<{ color: string; count: number; title: st
   </span>
 );
 
+// Плашка состояния автообновления — зеркало статус-плашки подключения на
+// карточках профиля (statusPlaqueStyle в SettingsPage): заливка 15, рамка 33,
+// жирный 13px, иконка-кружок. flex: 1 — плашка забирает свободное место
+// карточки, и низы соседок в ряду закрываются ровно (грид тянет карточки
+// на одну высоту).
+const freshPlaqueStyle = (color: string): React.CSSProperties => ({
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '10px 12px',
+  borderRadius: radii.md,
+  background: `${color}15`,
+  border: `1px solid ${color}33`,
+  color,
+  fontSize: '13px',
+  fontWeight: 600,
+  lineHeight: 1.35,
+});
+
 // Скелетон карточки проекта — каркас в габаритах настоящей (заголовок,
 // главная цифра, пилюли, свежесть); количество и точные высоты придут
 // только с данными, несовпадение прощает FadeIn контента.
 const ProjectCardSkeleton: React.FC = () => (
   <div style={{
-    background: 'rgba(255,255,255,0.85)',
+    background: colors.cardBgSolid,
     border: `1px solid ${colors.border}`,
     borderRadius: radii.lg,
     padding: '18px 22px',
@@ -105,57 +126,46 @@ export const TestsPage: React.FC = () => {
     return () => window.removeEventListener('reqtrace:refresh-run-finished', onRunFinished);
   }, [loadStats]);
 
-  // Хром экрана (заголовок, подзаголовок) не зависит от данных — он стоит
-  // с первого кадра настоящим, скелетоны занимают только место карточек.
-  const chrome = (
-    <>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '6px' }}>
-        Тесты
-      </h1>
-      <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '0 0 20px', lineHeight: 1.5 }}>
-        Обратный взгляд на покрытие: выберите проект — внутри по каждому тесту
-        видно, какие требования он держит и в каком они статусе.
-      </p>
-    </>
+  // Заголовок и пояснение живут в баре-острове (v1.8.0): каркас всех экранов
+  // единый — «бар + контент», как у страницы; бар стоит с первого кадра
+  // настоящим, скелетоны занимают только место карточек.
+  const bar = (
+    <IslandBarTitle meta="Обратный взгляд на покрытие: выберите проект — внутри по каждому тесту видно, какие требования он держит и в каком они статусе.">
+      Тесты
+    </IslandBarTitle>
   );
 
   if (stats === null) {
     return (
-      <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
-        {chrome}
+      <IslandScreen barLeft={bar} contentMaxWidth="1060px" surface="canvas">
         {showSkeleton && (
           <FadeIn>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-              gap: '16px',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+              gap: '14px',
             }}>
               <ProjectCardSkeleton />
               <ProjectCardSkeleton />
             </div>
           </FadeIn>
         )}
-      </div>
+      </IslandScreen>
     );
   }
 
   return (
-    // Скроллит <main> из Layout (как в профиле): свой overflow у контейнера
-    // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
-    // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
-    // оставляла всю «лишнюю» ширину одним пустым полем справа.
-    // Ширина — как у яруса 2 (1060): ярусы одного экрана не должны «дышать»
-    // при переходе между ними.
-    <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
-      {chrome}
-
+    // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
+    // Ширина колонки — как у яруса 2 (1060): ярусы одного экрана не должны
+    // «дышать» при переходе между ними.
+    <IslandScreen barLeft={bar} contentMaxWidth="1060px" surface="canvas">
       {/* Мягкое появление данных (v1.7.1): и при переходе на экран, и после
           скелетона контент проявляется теми же 160мс, что модалки. */}
       <FadeIn>
       {stats.length === 0 ? (
         <div style={{
           padding: '28px', borderRadius: radii.lg,
-          border: `1px solid ${colors.border}`, background: 'rgba(255,255,255,0.85)',
+          border: `1px solid ${colors.border}`, background: colors.cardBgSolid,
           color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
         }}>
           Пока нет ни одного проекта. Подключитесь к проекту в{' '}
@@ -170,8 +180,8 @@ export const TestsPage: React.FC = () => {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: '16px',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+          gap: '14px',
         }}>
           {stats.map(s => {
             const coverage = s.highlights > 0 ? Math.round((s.covered / s.highlights) * 100) : 0;
@@ -181,8 +191,7 @@ export const TestsPage: React.FC = () => {
                 onClick={() => navigate(`/tests/${s.project_id}`)}
                 title={`Открыть тесты проекта «${s.project_name}»`}
                 style={{
-                  background: 'rgba(255,255,255,0.85)',
-                  backdropFilter: 'blur(20px)',
+                  background: colors.cardBgSolid,
                   border: `1px solid ${colors.border}`,
                   borderRadius: radii.lg,
                   padding: '18px 22px',
@@ -202,6 +211,9 @@ export const TestsPage: React.FC = () => {
                   e.currentTarget.style.boxShadow = shadows.card;
                 }}
               >
+                {/* Точку-индикатор у названия пробовали и убрали (ревью):
+                    на профиле точка про подключение, здесь была бы про статусы
+                    привязок — одинаковый вид с разным смыслом путает. */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{
                     fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
@@ -224,19 +236,41 @@ export const TestsPage: React.FC = () => {
                   <ChevronRightIcon size={14} style={{ color: colors.textTertiary }} />
                 </div>
 
-                {/* Главная цифра карточки — тесты: экран-то про них. */}
+                {/* Главная цифра карточки — тесты: экран-то про них. Процент
+                    покрытия живёт чипом в шапке карточки, строка остаётся
+                    словесной дробью. */}
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                   <ClipboardCheckIcon size={16} style={{ color: colors.greenDark, alignSelf: 'center' }} />
                   <span style={{ fontSize: '20px', fontWeight: 700, color: colors.textPrimary }}>
                     {s.tests}
                   </span>
-                  <span style={{ fontSize: '13px', color: colors.textSecondary }}>
+                  <span style={{ fontSize: '13px', color: colors.textSecondary, minWidth: 0 }}>
                     {plural(s.tests, ['тест', 'теста', 'тестов'])} · покрыто {s.covered} из {s.highlights}{' '}
-                    {plural(s.highlights, ['привязки', 'привязок', 'привязок'])} ({coverage}%)
+                    {plural(s.highlights, ['привязки', 'привязок', 'привязок'])}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {/* Ряд открывает мини-версия чипа «Покрытие: N%» из бара
+                    страницы (ревью: чип в шапке карточки и приписка в строке
+                    цифры отклонены) — тот же текст и вид, ужатый до высоты
+                    статусных пилюль. flexWrap — на минимальной ширине карточки
+                    ряд переносится, а не выталкивает счётчик страниц. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', rowGap: '6px' }}>
+                  <span
+                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
+                    style={{
+                      padding: '2px 10px',
+                      borderRadius: radii.pill,
+                      background: 'rgba(0,0,0,0.05)',
+                      color: colors.textSecondary,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      lineHeight: 1.5,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Покрытие: {coverage}%
+                  </span>
                   {s.active > 0 && (
                     <StatusCountPill color={colors.statusActive} count={s.active} title="Привязок в статусе «Актуально»" />
                   )}
@@ -251,9 +285,11 @@ export const TestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Свежесть автообновления (v1.6.2). Статусы на этом экране
-                    ровно настолько актуальны, насколько свеж последний прогон —
-                    дата отвечает на вопрос «можно ли им верить». Янтарь —
+                {/* Свежесть автообновления (v1.6.2) — статусной ПЛАШКОЙ в языке
+                    карточек профиля (ревью v1.8.0: яркая вставка про состояние
+                    тестов делает карточку значимее). Статусы экрана ровно
+                    настолько актуальны, насколько свеж последний прогон —
+                    плашка отвечает на вопрос «можно ли им верить». Янтарь —
                     последняя попытка не удалась (VPN/сеть/креды, v1.6.4) или
                     прогона не было дольше двух суток (или вовсе). */}
                 {!s.is_demo && (() => {
@@ -263,6 +299,8 @@ export const TestsPage: React.FC = () => {
                   const reasonText = failing === 'no_valid_credentials'
                     ? 'Нет работающих подключений'
                     : 'Confluence недоступен';
+                  const warn = !!failing || stale;
+                  const plaqueColor = warn ? colors.statusOutdated : colors.statusActive;
                   return (
                     <div
                       title={failing
@@ -270,18 +308,18 @@ export const TestsPage: React.FC = () => {
                             ? formatCheckedAt(s.last_attempt_at) : '—'}) не удалась — `
                           + 'показаны данные последнего успешного прогона'
                         : 'Когда автообновление в последний раз проверяло страницы проекта'}
-                      style={{
-                        fontSize: '12px',
-                        color: failing || stale ? colors.statusOutdated : colors.textTertiary,
-                      }}
+                      style={freshPlaqueStyle(plaqueColor)}
                     >
-                      {failing
-                        ? (s.last_auto_refresh_at
-                          ? `${reasonText} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
-                          : `${reasonText} — страницы ещё не проверялись`)
-                        : (s.last_auto_refresh_at
-                          ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
-                          : 'Автообновление ещё не проверяло проект')}
+                      <StatusAlertIcon kind={warn ? 'warning' : 'ok'} size={16} />
+                      <span style={{ minWidth: 0 }}>
+                        {failing
+                          ? (s.last_auto_refresh_at
+                            ? `${reasonText} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
+                            : `${reasonText} — страницы ещё не проверялись`)
+                          : (s.last_auto_refresh_at
+                            ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
+                            : 'Автообновление ещё не проверяло проект')}
+                      </span>
                     </div>
                   );
                 })()}
@@ -291,7 +329,7 @@ export const TestsPage: React.FC = () => {
         </div>
       )}
       </FadeIn>
-    </div>
+    </IslandScreen>
   );
 };
 

@@ -19,6 +19,7 @@ import {
   TrashIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
+import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
 // --- Общие стили форм и модалок ---
@@ -789,8 +790,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.85)',
-        backdropFilter: 'blur(20px)',
+        background: colors.cardBgSolid,
         border: `1px solid ${colors.border}`,
         borderRadius: radii.lg,
         padding: '18px 22px',
@@ -934,17 +934,40 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         </div>
       </div>
 
-      {/* Детали */}
-      <div style={{ marginTop: '10px', fontSize: '13px', color: colors.textSecondary, lineHeight: 1.7 }}>
-        <div>Confluence: {project.confluence_base_url}</div>
-        {project.jira_base_url && <div>Jira: {project.jira_base_url}</div>}
-        <div>
-          Мой логин: {project.my_username}
-          <span style={{ color: colors.textTertiary }}> · пароль (установлен)</span>
+      {/* Детали. Метки — тихой колонкой фиксированной ширины, значения —
+          основным цветом (ревью v1.8.0: одноцветные «метка: значение»
+          сливались в единое целое); значения стоят на одной вертикали. */}
+      <div style={{
+        marginTop: '10px', fontSize: '13px', lineHeight: 1.7,
+        display: 'flex', flexDirection: 'column', gap: '2px',
+      }}>
+        <div style={{ display: 'flex', gap: '10px', minWidth: 0 }}>
+          <span style={{ color: colors.textTertiary, width: '86px', flexShrink: 0 }}>Confluence</span>
+          <span style={{ color: colors.textPrimary, minWidth: 0, overflowWrap: 'anywhere' }}>
+            {project.confluence_base_url}
+          </span>
+        </div>
+        {project.jira_base_url && (
+          <div style={{ display: 'flex', gap: '10px', minWidth: 0 }}>
+            <span style={{ color: colors.textTertiary, width: '86px', flexShrink: 0 }}>Jira</span>
+            <span style={{ color: colors.textPrimary, minWidth: 0, overflowWrap: 'anywhere' }}>
+              {project.jira_base_url}
+            </span>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: '10px', minWidth: 0 }}>
+          <span style={{ color: colors.textTertiary, width: '86px', flexShrink: 0 }}>Мой логин</span>
+          <span style={{ color: colors.textPrimary, minWidth: 0 }}>
+            {project.my_username}
+            <span style={{ color: colors.textTertiary }}> · пароль (установлен)</span>
+          </span>
         </div>
         {/* Прозрачность автообновления (v1.6.2): плановый прогон ходит в
             Confluence личными кредами участников — человек должен знать,
-            что его учётка может засветиться в аудите и без его действий. */}
+            что его учётка может засветиться в аудите и без его действий.
+            Формулировка укорочена (ревью v1.8.0): «Подключение участвует…»
+            на ширине карточки оставляло «проекта» словом-сиротой на второй
+            строке; подлежащее ясно из блока кред выше. */}
         {status === 'ok' && (
           <div
             style={{ color: colors.textTertiary }}
@@ -952,7 +975,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
               + 'кредами одного из участников с работающим подключением, а заодно перепроверяет '
               + 'сами подключения. Чтения могут отображаться в журналах Confluence под вашей учёткой'}
           >
-            Подключение участвует в плановом автообновлении проекта
+            Участвует в плановом автообновлении проекта
           </div>
         )}
       </div>
@@ -1109,13 +1132,10 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   if (loading) {
-    // Заголовок — настоящий с первого кадра; скелетоны занимают место
-    // карточки профиля и карточек проектов.
+    // Заголовок в баре-острове — настоящий с первого кадра; скелетоны
+    // занимают место карточки профиля и карточек проектов.
     return (
-      <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
-          Профиль
-        </h1>
+      <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="1060px" surface="canvas">
         {showSkeleton && (
           <FadeIn>
             <div style={{
@@ -1137,7 +1157,7 @@ export const SettingsPage: React.FC = () => {
             }}>
               {[0, 1].map(i => (
                 <div key={i} style={{
-                  background: 'rgba(255,255,255,0.85)',
+                  background: colors.cardBgSolid,
                   border: `1px solid ${colors.border}`,
                   borderRadius: radii.lg, padding: '18px 22px',
                   display: 'flex', flexDirection: 'column', gap: '14px',
@@ -1151,7 +1171,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           </FadeIn>
         )}
-      </div>
+      </IslandScreen>
     );
   }
 
@@ -1159,14 +1179,12 @@ export const SettingsPage: React.FC = () => {
   const available = projects.filter(p => !p.joined);
 
   return (
-    // Колонка отцентрована (v1.6.6): прибитая к левому краю, на широком
-    // мониторе она оставляла всю «лишнюю» ширину одним пустым полем справа.
-    <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
+    // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
+    // Колонка 1060 — как у «Тестов» (ревью): карточки проектов на обоих
+    // экранах одной ширины, сетки у них и так одинаковые (minmax 380 / 14).
+    <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="1060px" surface="canvas">
       {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
       <FadeIn>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
-        Профиль
-      </h1>
 
       {/* Карточка профиля: экран называется «Профиль и проекты» — профиль
           должен быть виден первым. Данные сессии Google (имя, почта, аватар). */}
@@ -1296,8 +1314,7 @@ export const SettingsPage: React.FC = () => {
            «Как работает ReqTrace» — новичку она открывается сама (один раз
            за вход), а кнопка в заголовке раздела всегда рядом. */
         <div style={{
-          background: 'rgba(255,255,255,0.85)',
-          backdropFilter: 'blur(20px)',
+          background: colors.cardBgSolid,
           border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
           boxShadow: shadows.card,
@@ -1331,7 +1348,7 @@ export const SettingsPage: React.FC = () => {
 
       {showOnboarding && <OnboardingModal onClose={() => setShowOnboarding(false)} />}
       </FadeIn>
-    </div>
+    </IslandScreen>
   );
 };
 

@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
+import { LockIcon } from '../icons';
 import { Select } from '../Select';
 import { FadeIn } from '../fadePresence';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
@@ -135,6 +136,15 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [adding, setAdding] = useState(false);
+
+  // Модалку добавления умеет открывать и пустой экран «/» (кнопка «Добавить
+  // страницу») — через событие, как reqtrace:refresh-run-finished: модалка и
+  // её состояние живут здесь, у дерева.
+  useEffect(() => {
+    const onOpenAdd = () => setShowAddModal(true);
+    window.addEventListener('reqtrace:open-add-page', onOpenAdd);
+    return () => window.removeEventListener('reqtrace:open-add-page', onOpenAdd);
+  }, []);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -503,7 +513,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       )}
 
       {/* Tree content */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
+      <div className="island-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
         {loading ? (
           // Пусто до порога 200мс, дальше — мягкая строка с фирменным
           // лоадером (тот же loadstate, что у страницы требований).
@@ -661,7 +671,7 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
             textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: '11px', flexShrink: 0 }}>🔒</span>
+          <LockIcon size={12} style={{ color: colors.textTertiary }} />
           <span style={{
             fontSize: '12.5px',
             fontWeight: 600,

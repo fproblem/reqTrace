@@ -703,9 +703,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             IslandScreen или своя пара островов, прокрутка живёт внутри
             контент-острова. Сага о scrollbar-gutter (v1.6.6–v1.7.2: жёлоб
             только на скроллящих main экранах, отвергнутая проба-компенсация
-            в шапке) закрыта по построению — скроллбара у main больше нет. */}
+            в шапке) закрыта по построению — скроллбара у main больше нет.
+            ⚠ overflow — visible: гэпы вокруг main принадлежат ряду, и
+            overflow hidden обрубал тени герой-острова ровно по прямоугольнику
+            main — резкие срезы на углах (ревью). Размеры детей держит флекс,
+            скроллят они себя сами — клипать main нечего. */}
         <main style={{
-          flex: 1, position: 'relative', zIndex: 1, overflow: 'hidden',
+          flex: 1, position: 'relative', zIndex: 1, overflow: 'visible',
           minWidth: 0,
         }}>
           {children}

@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { colors, island, shadows } from '../../styles/tokens';
+import { colors, island, radii, shadows } from '../../styles/tokens';
 
 // Порог появления кнопки «наверх»: примерно полтора экрана прокрутки —
 // раньше она только мельтешит, позже до неё уже долго листать обратно.
@@ -119,10 +119,11 @@ export const IslandScreen: React.FC<{
         </div>
       )}
 
-      {/* «Наверх» — плавающий остров-кнопка над правым нижним углом. Живёт в
-          DOM постоянно: появление/уход — фирменные 160мс (opacity + лёгкий
-          подъезд), pointerEvents отключены, пока скрыта. right 24 — чтобы не
-          спорить с жёлобом пилюли (10px) у края. */}
+      {/* «Наверх» — слева внизу (ревью: справа спорила бы с пилюлей скролла
+          у края), в общем стиле кнопок баров: 34×34, radii.md, белая с рамкой,
+          тот же ховер/пресс; лёгкая тень отделяет от карточек под ней. Живёт
+          в DOM постоянно: появление/уход — фирменные 160мс (opacity + лёгкий
+          подъезд), pointerEvents отключены, пока скрыта. */}
       <button
         onClick={scrollToTop}
         title="Наверх"
@@ -130,33 +131,40 @@ export const IslandScreen: React.FC<{
         tabIndex={showToTop ? 0 : -1}
         style={{
           position: 'absolute',
-          right: '24px',
+          left: '24px',
           bottom: '20px',
-          width: '40px',
-          height: '40px',
-          borderRadius: '50%',
-          border: island.border,
-          background: island.background,
-          boxShadow: shadows.cardHover,
+          width: '34px',
+          height: '34px',
+          padding: 0,
+          borderRadius: radii.md,
+          border: `1px solid ${colors.border}`,
+          background: colors.white,
+          boxShadow: shadows.card,
           color: colors.textSecondary,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
+          fontFamily: 'inherit',
           zIndex: 5,
           opacity: showToTop ? 1 : 0,
           transform: showToTop ? 'translateY(0)' : 'translateY(6px)',
           pointerEvents: showToTop ? 'auto' : 'none',
-          transition: 'opacity 0.16s ease, transform 0.16s ease, background 0.15s, color 0.15s',
+          transition: 'opacity 0.16s ease, transform 0.16s ease, '
+            + 'background 0.15s, border-color 0.15s, color 0.15s',
         }}
         onMouseEnter={e => {
           e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+          e.currentTarget.style.borderColor = colors.borderHover;
           e.currentTarget.style.color = colors.textPrimary;
         }}
         onMouseLeave={e => {
-          e.currentTarget.style.background = island.background;
+          e.currentTarget.style.background = colors.white;
+          e.currentTarget.style.borderColor = colors.border;
           e.currentTarget.style.color = colors.textSecondary;
         }}
+        onMouseDown={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.08)'; }}
+        onMouseUp={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
       >
         <svg
           width={16} height={16} viewBox="0 0 24 24" fill="none"

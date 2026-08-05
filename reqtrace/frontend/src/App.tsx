@@ -25,7 +25,7 @@ const HomeScreen: React.FC = () => (
     background: island.background,
     border: island.border,
     borderRadius: island.radius,
-    boxShadow: island.boxShadow,
+    boxShadow: island.boxShadowRaised,
   }}>
     <div style={{
       textAlign: 'center',

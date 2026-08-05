@@ -85,7 +85,8 @@ export const IslandScreen: React.FC<{
           background: island.background,
           border: island.border,
           borderRadius: island.radius,
-          boxShadow: island.boxShadow,
+          // Контент-остров — герой-поверхность, приподнят (см. island).
+          boxShadow: island.boxShadowRaised,
           overflow: 'hidden',
         }}>
           <div

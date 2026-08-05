@@ -478,7 +478,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         background: island.background,
         border: island.border,
         borderRadius: island.radius,
-        boxShadow: island.boxShadow,
+        boxShadow: island.boxShadowRaised,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {inner}
@@ -575,7 +575,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           background: island.background,
           border: island.border,
           borderRadius: island.radius,
-          boxShadow: island.boxShadow,
+          boxShadow: island.boxShadowRaised,
         }}>
           {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
               текста и большая иконка документа утяжеляли экран): заголовок →
@@ -1085,7 +1085,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           background: island.background,
           border: island.border,
           borderRadius: island.radius,
-          boxShadow: island.boxShadow,
+          // Герой-поверхность — приподнята над служебными островами.
+          boxShadow: island.boxShadowRaised,
           overflow: 'hidden',
         }}>
           <div

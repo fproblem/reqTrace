@@ -491,33 +491,13 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     </div>
   );
 
-  if (loading) {
-    // Каркас островов — сразу; скелетон шапки (как на «Тестах»/ярусе 2) и
-    // строка лоадера — после порога задержки (скелетон для произвольного
-    // Confluence-контента не построить — количество и форма блоков известны
-    // только после ответа, шапка же всегда «название + мета»).
-    return islandFrame(
-      showLoader && (
-        <FadeIn>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '10px',
-            color: colors.textSecondary, fontSize: '13px',
-          }}>
-            <RefreshIcon size={16} spinning />
-            Загружаем страницу из последнего снимка…
-          </div>
-        </FadeIn>
-      ),
-      showLoader && (
-        <FadeIn>
-          <SkeletonBar width="240px" height={16} />
-          <SkeletonBar width="320px" height={10} style={{ marginTop: '6px' }} />
-        </FadeIn>
-      )
-    );
-  }
+  // Отдельной loading-ветки НЕТ (ревью): она была другим JSX-деревом, и на
+  // каждом переходе между страницами React размонтировал пару островов
+  // целиком — оболочки моргали. Теперь оболочки стабильны, а загрузка меняет
+  // только их СОДЕРЖИМОЕ (см. readyPage ниже).
 
-  if (!page) {
+  // Страница не найдена — терминально, только после завершившейся загрузки.
+  if (!loading && !page) {
     return islandFrame(
       <div style={{ padding: '60px', textAlign: 'center', color: colors.statusLost }}>
         Страница не найдена
@@ -525,7 +505,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     );
   }
 
-  if (page.is_virtual) {
+  if (!loading && page && page.is_virtual) {
     const handlePromote = async () => {
       if (!pageId) return;
       setPromoting(true);
@@ -737,10 +717,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         renderReport.considered.has(selectedHighlight.id) &&
         !renderReport.rendered.has(selectedHighlight.id)));
 
+  // Готовая к отрисовке страница; null — идёт загрузка (навигация или первый
+  // вход). Оболочки островов ниже живут в ОБОИХ состояниях — не моргают.
+  const readyPage = !loading && page ? page : null;
+
   return (
-    // Мягкое появление страницы (v1.7.1): key по id — переход на другую
-    // страницу проявляет новый контент теми же 160мс, что модалки.
-    <FadeIn key={page.id} style={{ height: '100%' }}>
+    // FadeIn key={page.id} на всём дереве убран (ревью): он размонтировал и
+    // переигрывал оболочки островов на каждом переходе. Мягкое появление
+    // (v1.7.1) переехало на СОДЕРЖИМОЕ шапки и контент-острова ниже.
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
 
@@ -765,24 +749,37 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {page.title}
-            </div>
-            <div style={{
-              fontSize: '12px', color: colors.textTertiary, marginTop: '2px',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              v{page.current_snapshot?.confluence_version || '?'}
-              {' · Снимок: '}{formatDate(page.current_snapshot?.fetched_at)}
-              {' · Baseline: '}{formatDate(page.baseline?.confirmed_at)}
-            </div>
-          </div>
+          {readyPage ? (
+            /* FadeIn по id — мягкая смена названия в стабильной оболочке. */
+            <FadeIn key={readyPage.id} style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {readyPage.title}
+              </div>
+              <div style={{
+                fontSize: '12px', color: colors.textTertiary, marginTop: '2px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                v{readyPage.current_snapshot?.confluence_version || '?'}
+                {' · Снимок: '}{formatDate(readyPage.current_snapshot?.fetched_at)}
+                {' · Baseline: '}{formatDate(readyPage.baseline?.confirmed_at)}
+              </div>
+            </FadeIn>
+          ) : (
+            /* Скелетон шапки — как на «Тестах»/ярусе 2, порог 200мс. */
+            showLoader && (
+              <FadeIn>
+                <SkeletonBar width="240px" height={16} />
+                <SkeletonBar width="320px" height={10} style={{ marginTop: '6px' }} />
+              </FadeIn>
+            )
+          )}
         </div>
 
+        {/* Кнопки — только у готовой страницы (честный loadstate v1.7.1). */}
+        {readyPage && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           {/* Coverage indicator. Пока покрытие неполное, чип — кнопка: клик
               циклит по привязкам без тестов (jumpToUncovered). При 100% жать
@@ -1080,6 +1077,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Content area. minHeight:0 вместо overflow:hidden — иначе тени
@@ -1111,12 +1109,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
               position: 'relative',
             }}
           >
+          {readyPage ? (
+            /* Мягкая смена содержимого (v1.7.1) — FadeIn по id ВНУТРИ
+               стабильной оболочки: остров не переигрывается. */
+            <FadeIn key={readyPage.id}>
           {viewMode === 'coverage' ? (
             <>
-              {page.content_html ? (
+              {readyPage.content_html ? (
                 <>
                   <ContentRenderer
-                    html={page.content_html}
+                    html={readyPage.content_html}
                     onContentReady={setContentContainer}
                     suspendTableRefreeze={!!selectedHighlight}
                   />
@@ -1183,6 +1185,23 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
             </>
           ) : (
             <DiffView pageId={pageId!} />
+          )}
+            </FadeIn>
+          ) : (
+            /* Лоадер в центре стабильного острова — после порога 200мс
+               (мелькание на быстрых ответах хуже его отсутствия, v1.7.1). */
+            showLoader && (
+              <FadeIn style={{ height: '100%' }}>
+                <div style={{
+                  height: '100%', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', gap: '10px',
+                  color: colors.textSecondary, fontSize: '13px',
+                }}>
+                  <RefreshIcon size={16} spinning />
+                  Загружаем страницу из последнего снимка…
+                </div>
+              </FadeIn>
+            )
           )}
           </div>
         </div>
@@ -1271,7 +1290,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       )}
 
       {/* Delete confirmation modal */}
-      {showDeleteModal && (
+      {showDeleteModal && page && (
         <Modal
           title="Удаление страницы"
           onClose={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
@@ -1320,7 +1339,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         </Modal>
       )}
     </div>
-    </FadeIn>
   );
 };
 

@@ -77,6 +77,47 @@ def _macro_rich_body(block: str) -> str:
     return body_m.group(1) if body_m else ""
 
 
+# --- Иконки чипов (v1.7.6) ---------------------------------------------------
+# Контуры — из библиотеки фронта (frontend/src/components/icons.tsx, feather
+# 24×24, обводка currentColor): LinkIcon и DocumentIcon. SVG не содержит текста,
+# поэтому невидим для координатного пространства привязок (get_text ↔ textContent).
+_ICON_LINK = (
+    '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>'
+    '<path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>'
+)
+_ICON_DOCUMENT = (
+    '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>'
+    '<path d="M14 2v6h6"/>'
+)
+
+
+def _icon_svg(paths: str, extra_style: str = "") -> str:
+    return (
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true" '
+        f'style="flex-shrink: 0;{extra_style}">{paths}</svg>'
+    )
+
+
+def _hidden_emoji(emoji: str) -> str:
+    """⚠ Скелет координатного пространства привязок — НЕ удалять символ.
+
+    Якоря привязок считаются по тексту ОБРАБОТАННОГО HTML (anchoring._segments
+    на бэке ↔ getContentSegments/textContent на фронте), и до v1.7.6 эмодзи
+    чипов («🔗 », «📎 », «📄 ») были частью этого текста. Просто убрать их из
+    разметки нельзя: смещения всех существующих привязок в блоке с чипом
+    сдвинулись бы, гард слоя перестал бы их рендерить, а следующий refresh
+    испортил бы цитаты. Поэтому символ остаётся в DOM невидимым (font-size: 0,
+    вне потока — position: absolute), а глазам показывается SVG-иконка:
+    текстовое пространство байт-в-байт прежнее, визуально — иконка библиотеки.
+    """
+    return (
+        '<span aria-hidden="true" style="position: absolute; font-size: 0; '
+        f'line-height: 0;">{emoji}</span>'
+    )
+
+
 def process_confluence_html(
     html: str, page_id: str, jira_base_url: str = "", project_id: str = "",
     image_dims: dict[str, tuple[int, int]] | None = None,
@@ -158,7 +199,7 @@ def process_confluence_html(
             f"color: #2a6496; font-weight: 500; text-decoration: none; "
             f"background: rgba(42,100,150,0.06); padding: 1px 6px; "
             f'border-radius: 4px; font-size: 0.92em;">'
-            f"🔗 {key}</a>"
+            f"{_hidden_emoji('🔗 ')}{_icon_svg(_ICON_LINK)}{key}</a>"
         )
 
     result = _sub_macro_blocks(result, {"jira"}, _replace_jira_macro)
@@ -213,7 +254,8 @@ def process_confluence_html(
             f'rel="noopener" style="display: inline-flex; align-items: center; '
             f"gap: 4px; color: #2a6496; font-weight: 500; text-decoration: none; "
             f"background: rgba(42,100,150,0.06); padding: 2px 8px; "
-            f'border-radius: 4px; font-size: 0.92em;">📎 {html_mod.escape(fn)}</a>'
+            f'border-radius: 4px; font-size: 0.92em;">'
+            f"{_hidden_emoji('📎 ')}{_icon_svg(_ICON_DOCUMENT)}{html_mod.escape(fn)}</a>"
         )
 
     result = _sub_macro_blocks(
@@ -229,9 +271,14 @@ def process_confluence_html(
         title_m = re.search(r'ri:content-title="([^"]+)"', block)
         if not title_m:
             return ""
+        icon = _icon_svg(
+            _ICON_DOCUMENT,
+            " display: inline-block; vertical-align: -1.5px; margin-right: 5px;",
+        )
         return (
             f'<p style="color: #5e6c84; font-style: italic;">'
-            f"📄 Вставка страницы: {html_mod.escape(title_m.group(1))}</p>"
+            f"{_hidden_emoji('📄 ')}{icon}"
+            f"Вставка страницы: {html_mod.escape(title_m.group(1))}</p>"
         )
 
     result = _sub_macro_blocks(result, {"include", "excerpt-include"}, _replace_include_macro)

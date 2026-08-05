@@ -13,6 +13,7 @@
 """
 import unittest
 
+from app.services import anchoring
 from app.services.confluence import process_confluence_html
 
 
@@ -181,6 +182,45 @@ class ExistingMacroRendering(unittest.TestCase):
         self.assertIn("шапка", out)
         self.assertIn("тело", out)
         self.assertNotIn("ac:", out)
+
+
+class ChipIconsKeepAnchorTextSpace(unittest.TestCase):
+    """Иконки чипов (v1.7.6) не смеют менять текстовое пространство привязок.
+
+    Эмодзи чипов («🔗 », «📎 », «📄 ») — часть текста ОБРАБОТАННОГО HTML, по
+    которому считаются якоря существующих привязок. Замена на SVG обязана
+    оставить текст блока байт-в-байт прежним (символ прячется невидимым
+    span'ом), иначе смещения привязок в блоках с чипами поедут.
+    """
+
+    def test_jira_chip_shows_svg_but_text_space_unchanged(self):
+        html = "<p>Смотри " + _macro("jira", params=(
+            '<ac:parameter ac:name="key">AB-1</ac:parameter>'
+        )) + " перед релизом</p>"
+        out = process_confluence_html(html, "p1")
+        self.assertIn("<svg", out)
+        doc = anchoring.doc_from_html(out)
+        self.assertEqual(doc.text, "Смотри 🔗 AB-1 перед релизом")
+
+    def test_file_chip_shows_svg_but_text_space_unchanged(self):
+        html = "<p>Методичка: " + _macro("view-file", params=(
+            '<ac:parameter ac:name="name">'
+            '<ri:attachment ri:filename="НТ.pdf" /></ac:parameter>'
+        )) + "</p>"
+        out = process_confluence_html(html, "p1")
+        self.assertIn("<svg", out)
+        doc = anchoring.doc_from_html(out)
+        self.assertEqual(doc.text, "Методичка: 📎 НТ.pdf")
+
+    def test_include_note_shows_svg_but_text_space_unchanged(self):
+        html = _macro("include", params=(
+            '<ac:parameter ac:name="">'
+            '<ri:page ri:content-title="Общие требования" /></ac:parameter>'
+        ))
+        out = process_confluence_html(html, "p1")
+        self.assertIn("<svg", out)
+        doc = anchoring.doc_from_html(out)
+        self.assertEqual(doc.text, "📄 Вставка страницы: Общие требования")
 
 
 if __name__ == "__main__":

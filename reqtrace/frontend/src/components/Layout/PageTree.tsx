@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
+import { LockIcon } from '../icons';
 import { Select } from '../Select';
 import { FadeIn } from '../fadePresence';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
@@ -661,7 +662,7 @@ const ProjectNode: React.FC<ProjectNodeProps> = ({
             textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: '11px', flexShrink: 0 }}>🔒</span>
+          <LockIcon size={12} style={{ color: colors.textTertiary }} />
           <span style={{
             fontSize: '12.5px',
             fontWeight: 600,

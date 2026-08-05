@@ -639,7 +639,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             fontSize: '12px',
             lineHeight: 1.45,
           }}>
-            <span style={{ flexShrink: 0 }}>⚠</span>
+            {/* 14px на строке 12px/1.45 (~17px): 1.5px сверху центрируют по первой строке */}
+            <StatusAlertIcon kind="warning" size={14} style={{ marginTop: '1.5px' }} />
             <span>
               Эта привязка <strong>не отображается на странице</strong>: содержимое
               и координаты привязки рассинхронизированы. Нажмите «Обновить» в

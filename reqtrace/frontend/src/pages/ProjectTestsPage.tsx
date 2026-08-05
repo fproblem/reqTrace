@@ -16,7 +16,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, CrossIcon } from '../components/icons';
+import { ChevronRightIcon, CrossIcon, SearchIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
@@ -501,6 +501,15 @@ export const ProjectTestsPage: React.FC = () => {
   const filtersBar = (
     <>
       <div style={{ position: 'relative', flexShrink: 0 }}>
+        {/* Лупа — зеркало поиска в дереве страниц. */}
+        <SearchIcon
+          size={14}
+          style={{
+            position: 'absolute', left: '10px', top: '50%',
+            transform: 'translateY(-50%)', color: colors.textTertiary,
+            pointerEvents: 'none',
+          }}
+        />
         <input
           type="text"
           value={q}
@@ -508,8 +517,9 @@ export const ProjectTestsPage: React.FC = () => {
           placeholder="Поиск тестов…"
           style={{
             width: '220px', height: '34px',
-            // Правый резерв — только под реально существующий крестик.
-            padding: `0 ${q ? 30 : 12}px 0 12px`,
+            // Слева резерв под лупу; правый — только под реально
+            // существующий крестик.
+            padding: `0 ${q ? 30 : 12}px 0 30px`,
             borderRadius: radii.md, border: `1px solid ${colors.border}`,
             fontSize: '13px', fontFamily: 'inherit', outline: 'none',
             boxSizing: 'border-box', background: colors.white,
@@ -551,58 +561,74 @@ export const ProjectTestsPage: React.FC = () => {
           </button>
         )}
       </div>
-      {FILTERS.map(f => {
-        const active = filter === f.key;
-        const count = filterCounts[f.key];
-        // Нулевой фильтр глушится: приглушённый некликабельный чип говорит
-        // «сюда ходить незачем» честнее, чем «(0)». Активный не глушится
-        // никогда — его нужно мочь снять.
-        const disabled = count === 0 && !active;
-        return (
-          <button
-            key={f.key}
-            title={disabled ? 'Таких тестов сейчас нет' : f.title}
-            // Охрана в onClick, а не disabled-атрибут: с атрибутом не живут
-            // title и cursor (урок v1.6.0).
-            onClick={() => { if (!disabled) setParam('f', f.key === 'all' ? '' : f.key); }}
-            style={{
-              height: '34px', padding: '0 14px', borderRadius: radii.pill,
-              border: `1px solid ${active ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
-              background: active ? colors.greenLight : colors.white,
-              color: active ? colors.greenDark
-                : disabled ? colors.textTertiary : colors.textSecondary,
-              fontSize: '13px', fontWeight: 600,
-              cursor: disabled ? 'default' : 'pointer',
-              fontFamily: 'inherit', transition: 'all 0.15s', flexShrink: 0,
-              display: 'inline-flex', alignItems: 'center', gap: '7px',
-            }}
-            onMouseEnter={e => {
-              if (active || disabled) return;
-              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-              e.currentTarget.style.borderColor = colors.borderHover;
-            }}
-            onMouseLeave={e => {
-              if (active || disabled) return;
-              e.currentTarget.style.background = colors.white;
-              e.currentTarget.style.borderColor = colors.border;
-            }}
-          >
-            {f.label}
-            {/* Счётчик — нейтральной пилюлей, как у «Привязанных тестов»
-                в панели (цветные пробовали — на активном зелёном чипе
-                получалась цветовая каша). У заглушённого нуля бейджа нет. */}
-            {!disabled && (
-              <span style={{
-                padding: '2px 8px', borderRadius: radii.pill,
-                background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
-                fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
-              }}>
-                {count}
-              </span>
-            )}
-          </button>
-        );
-      })}
+      {/* Фильтры — один сегмент-контрол в языке «Покрытие | Изменения» бара
+          страницы (ревью: три отдельных чипа сваливали бар в кашу — одна
+          рамка читается одним элементом). Активный сегмент — заливка
+          greenAccent с белым текстом, как активный режим страницы; нулевой
+          глушится (кроме активного — его нужно мочь снять). */}
+      <div style={{
+        display: 'inline-flex',
+        height: '34px',
+        boxSizing: 'border-box',
+        borderRadius: radii.md,
+        border: `1px solid ${colors.border}`,
+        overflow: 'hidden',
+        background: colors.white,
+        flexShrink: 0,
+      }}>
+        {FILTERS.map(f => {
+          const active = filter === f.key;
+          const count = filterCounts[f.key];
+          const disabled = count === 0 && !active;
+          return (
+            <button
+              key={f.key}
+              title={disabled ? 'Таких тестов сейчас нет' : f.title}
+              // Охрана в onClick, а не disabled-атрибут: с атрибутом не живут
+              // title и cursor (урок v1.6.0).
+              onClick={() => { if (!disabled) setParam('f', f.key === 'all' ? '' : f.key); }}
+              style={{
+                height: '100%', padding: '0 12px',
+                border: 'none',
+                background: active ? colors.greenAccent : 'transparent',
+                color: active ? '#fff'
+                  : disabled ? colors.textTertiary : colors.textSecondary,
+                fontSize: '12px', fontWeight: 600,
+                cursor: disabled ? 'default' : 'pointer',
+                fontFamily: 'inherit', transition: 'all 0.15s',
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+              }}
+              onMouseEnter={e => {
+                if (active) {
+                  e.currentTarget.style.background = colors.greenDark;
+                } else if (!disabled) {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.color = colors.textPrimary;
+                }
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = active ? colors.greenAccent : 'transparent';
+                e.currentTarget.style.color = active ? '#fff'
+                  : disabled ? colors.textTertiary : colors.textSecondary;
+              }}
+            >
+              {f.label}
+              {/* Счётчик — нейтральной пилюлей (v1.7.5); на активной зелёной
+                  заливке — полупрозрачно-белой, чтобы не давать цветовой каши. */}
+              {!disabled && (
+                <span style={{
+                  padding: '1px 7px', borderRadius: radii.pill,
+                  background: active ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.05)',
+                  color: active ? '#fff' : colors.textSecondary,
+                  fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
+                }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 

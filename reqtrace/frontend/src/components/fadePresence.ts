@@ -61,6 +61,29 @@ export function useFadeToggle(open: boolean): {
 }
 
 
+/** Хореография входа островов (v1.8.0): одноразовое проявление при
+ * монтировании с задержкой — бар экрана входит сразу (0мс), контент-остров
+ * на полшага позже (~40мс). ТОЛЬКО opacity: transform на островах создал бы
+ * containing block для fixed-попапов (см. island в tokens.ts). Возвращаемый
+ * style домешивается к корню острова ПОСЛЕДНИМ. Повторных проигрываний нет:
+ * хук взводится один раз на маунт компонента (навигация между страницами
+ * дерева PageDetailPage не размонтирует — и не переигрывает вход). */
+export function useEnterFade(delayMs = 0): React.CSSProperties {
+  const [visible, setVisible] = useState(REDUCED_MOTION);
+  useEffect(() => {
+    if (REDUCED_MOTION) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setVisible(true));
+    });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+  }, []);
+  return REDUCED_MOTION ? {} : {
+    opacity: visible ? 1 : 0,
+    transition: `opacity ${FADE_MS}ms ease ${delayMs}ms`,
+  };
+}
+
 /** Мягкое появление контента при монтировании (переходы между экранами и
  * приход данных после скелетона): opacity 0 → 1 за FADE_MS. Появление —
  * приёмом «двух кадров» TreeReveal; исчезновения у экранов нет (их

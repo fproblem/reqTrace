@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { colors, island, radii, shadows } from '../../styles/tokens';
+import { useEnterFade } from '../fadePresence';
 
 // Порог появления кнопки «наверх»: примерно полтора экрана прокрутки —
 // раньше она только мельтешит, позже до неё уже долго листать обратно.
@@ -47,6 +48,10 @@ export const IslandScreen: React.FC<{
     scrollerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  // Хореография входа (v1.8.0): бар — сразу, контент — на полшага позже.
+  const barEnter = useEnterFade(0);
+  const contentEnter = useEnterFade(40);
+
   const columnStyle: React.CSSProperties = {
     maxWidth: contentMaxWidth,
     margin: '0 auto',
@@ -69,6 +74,7 @@ export const IslandScreen: React.FC<{
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '10px',
+        ...barEnter,
       }}>
         <div style={{ minWidth: 0, flex: 1 }}>{barLeft}</div>
         {barRight && (
@@ -88,6 +94,7 @@ export const IslandScreen: React.FC<{
           // Контент-остров — герой-поверхность, приподнят (см. island).
           boxShadow: island.boxShadowRaised,
           overflow: 'hidden',
+          ...contentEnter,
         }}>
           <div
             ref={scrollerRef}
@@ -112,6 +119,7 @@ export const IslandScreen: React.FC<{
             flex: 1, minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable',
             maskImage: CANVAS_FADE_MASK,
             WebkitMaskImage: CANVAS_FADE_MASK,
+            ...contentEnter,
           }}
         >
           <div style={columnStyle}>

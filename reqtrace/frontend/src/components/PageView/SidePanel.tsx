@@ -333,6 +333,16 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     setQuoteFade(el.scrollHeight - el.scrollTop - el.clientHeight > 2);
   }, []);
   useEffect(() => { updateQuoteFade(); }, [rendered, quoteDiffParts, updateQuoteFade]);
+  // Кап карточки — доля высоты панели (50cqh): при ресайзе окна видимая
+  // высота цитаты меняется без единого скролла — фейд пересчитывает
+  // обзервер. Депенденси rendered — скроллер (пере)монтируется с карточкой.
+  useEffect(() => {
+    const el = quoteScrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(updateQuoteFade);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rendered, updateQuoteFade]);
 
   if (!highlight) return <div style={shellStyle(false, false)} />;
 
@@ -439,6 +449,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         .test-row .test-row-remove { opacity: 0; transition: opacity 0.15s; }
         .test-row:hover .test-row-remove,
         .test-row .test-row-remove:focus-visible { opacity: 1; }
+        /* Тело панели — контейнер размеров: карточка привязки меряет свой
+           кап (50cqh) от него. Скроллу контейнерность не мешает — высота
+           тела задана флексом, не содержимым. */
+        .panel-body { container-type: size; }
       `}</style>
       {/* Header with navigation. Правый паддинг 13px — остров: гэп(10) +
           рамка(1) + 13 = те же 24px от края окна, что и раньше, — крестик
@@ -626,7 +640,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div className="island-scroll" style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div className="island-scroll panel-body" style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -662,12 +676,20 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         )}
 
         {/* Карточка привязки: рамка и линии между зонами — в цвете статуса;
-            лёгкая тень приподнимает героя панели над служебными блоками. */}
+            лёгкая тень приподнимает героя панели над служебными блоками.
+            Кап высоты (ревью-3): цитата показывается ЦЕЛИКОМ, пока карточка
+            не займёт половину тела панели (50cqh от .panel-body) — только
+            тогда зона цитаты уходит в прокрутку (сжимается лишь она:
+            остальные ряды flexShrink 0). В браузерах без container queries
+            капа просто нет — цитата всегда целиком, скроллит само тело. */}
         <div style={{
           borderRadius: radii.md,
           border: `1px solid ${statusInfo.color}33`,
           overflow: 'hidden',
           boxShadow: shadows.card,
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '50cqh',
         }}>
 
         {/* Шапка-статус карточки. Кликабельна, если выделений этого статуса
@@ -690,6 +712,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             fontWeight: 600,
             cursor: statusNavigable ? 'pointer' : 'default',
             transition: 'background 0.15s',
+            flexShrink: 0,
           }}
           onMouseEnter={e => {
             if (statusNavigable) e.currentTarget.style.background = `${statusInfo.color}26`;
@@ -746,6 +769,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             cursor: notOnPage ? 'default' : 'pointer',
             transition: 'background 0.15s',
             position: 'relative',
+            // Единственный сжимаемый ряд карточки: при капе 50cqh ужимается
+            // зона цитаты, и внутренний скроллер получает высоту.
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
           }}
           onMouseEnter={e => {
             if (notOnPage) return;
@@ -767,7 +795,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               fontSize: '13px',
               lineHeight: '1.5',
               color: colors.textPrimary,
-              maxHeight: '150px',
+              // Фиксированного капа (150px) больше нет (ревью-3): цитата
+              // целиком, пока карточку не ограничит 50cqh — тогда скролл.
+              minHeight: 0,
               overflow: 'auto',
             }}
           >
@@ -803,6 +833,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {/* TreeReveal (один ребёнок): после «Актуализировать» строка кнопки
             складывается те же 160мс, что всё в ReqTrace, — карточка привязки
             сжимается плавно, без скачка контента панели (ревью v1.7.0). */}
+        {/* flexShrink 0 — ряд действия не участвует в сжатии карточки под
+            капом 50cqh (сжимается только зона цитаты). */}
+        <div style={{ flexShrink: 0 }}>
         <TreeReveal expanded={(highlight.status === 'outdated' && !!onReanchor) || reanchoring || reanchorDone}>
           <div>
           {/* Пульс — CSS-классом, а не инлайном: анимация перебивает инлайновые
@@ -927,6 +960,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
           </div>
         </TreeReveal>
+        </div>
 
         {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
             действия: статус терминальный, актуализировать нечего. Полная
@@ -940,6 +974,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             color: colors.statusLost,
             fontSize: '12px',
             lineHeight: 1.45,
+            flexShrink: 0,
           }}>
             Выделенный текст удалён со страницы — привязка утрачена
             окончательно. Привязанные тесты сохранены: перепривяжите их

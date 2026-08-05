@@ -13,24 +13,38 @@ import { PANEL_ANIM_MS } from '../PageView/SidePanel';
 // сворачивания/разворачивания дерева — та же, что у панели привязки.
 const SIDEBAR_ANIM = `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
 
-// Кастомный скроллбар рабочих областей (v1.8.0, ревью): тонкая «пилюля» с
-// воздухом, трек прозрачный — скруглённые углы островов остаются свободными,
-// системная полоса их больше не накрывает. Цена решения (принята на ревью):
-// у трекпада скроллбар перестаёт автоскрываться — но он и не бросается в
-// глаза. Ховер чуть плотнее, чтобы за пилюлю было удобно целиться.
+// Кастомный скроллбар рабочих областей (v1.8.0): тонкая «пилюля» с воздухом,
+// трек прозрачный — скруглённые углы островов остаются свободными, системная
+// полоса их больше не накрывает. Автоскрытие (ревью-3): пилюля видна только
+// 2.5с после последнего скролла своего контейнера (класс is-scrolling вешает
+// capture-слушатель ниже) — скроллеров на экране много (дерево, контент,
+// панель, цитата, таблицы), постоянные пилюли шумели. Прозрачный бегунок
+// остаётся кликабельным: ховер по его зоне подсвечивает пилюлю светлой
+// зеленью (пастель, не чёрный — ревью-3), пресс — чуть плотнее.
 const islandScrollStyles = `
-  .island-scroll, .table-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.22) transparent; }
+  .island-scroll, .table-scroll {
+    --rt-thumb: transparent;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .island-scroll.is-scrolling, .table-scroll.is-scrolling {
+    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+    --rt-thumb: rgba(0, 0, 0, 0.15);
+  }
   .island-scroll::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
   .island-scroll::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: transparent; }
   .island-scroll::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: transparent; }
   .island-scroll::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.18);
+    background-color: var(--rt-thumb);
     border: 3px solid transparent;
     background-clip: content-box;
     border-radius: 8px;
   }
   .island-scroll::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(0, 0, 0, 0.32);
+    background-color: rgba(122, 224, 90, 0.45);
+  }
+  .island-scroll::-webkit-scrollbar-thumb:active, .table-scroll::-webkit-scrollbar-thumb:active {
+    background-color: rgba(122, 224, 90, 0.65);
   }
 `;
 
@@ -110,6 +124,26 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, JSON.stringify(sidebar));
   }, [sidebar]);
+
+  // Автоскрытие пилюль скролла (ревью-3): скролл не всплывает, но ловится
+  // capture-фазой на документе — один слушатель на все скроллеры приложения,
+  // включая создаваемые динамически обёртки таблиц (.table-scroll). Каждому
+  // скроллеру — свой таймер: пилюля тает через 2.5с после его последнего
+  // скролла, не мешая соседним.
+  useEffect(() => {
+    const timers = new WeakMap<Element, number>();
+    const onScroll = (e: Event) => {
+      const el = e.target;
+      if (!(el instanceof Element)) return;
+      if (!el.classList.contains('island-scroll') && !el.classList.contains('table-scroll')) return;
+      el.classList.add('is-scrolling');
+      const prev = timers.get(el);
+      if (prev !== undefined) window.clearTimeout(prev);
+      timers.set(el, window.setTimeout(() => el.classList.remove('is-scrolling'), 2500));
+    };
+    document.addEventListener('scroll', onScroll, true);
+    return () => document.removeEventListener('scroll', onScroll, true);
+  }, []);
 
   // During drag we mutate the aside width directly (bypassing React) so a large
   // PageTree doesn't re-render on every mouse move; we commit to state on release.
@@ -220,7 +254,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         // зазор — [0..-10], центр — -5.
         position: 'absolute', top: 0, right: '-7px', bottom: 0, width: '4px',
         borderRadius: '2px',
-        background: 'rgba(77, 184, 48, 0.55)',
+        // Пастель (ревью-3): плотный greenDark кричал, светлая фирменная
+        // зелень читается подсказкой, а не сигналом тревоги.
+        background: 'rgba(122, 224, 90, 0.45)',
         opacity: dragging ? 1 : 0,
         transition: 'opacity 0.15s ease',
         pointerEvents: 'none',

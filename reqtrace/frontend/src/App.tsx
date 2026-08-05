@@ -11,16 +11,12 @@ import { ToastProvider } from './components/Toast';
 import { TreeRefreshProvider } from './hooks/useTreeRefresh';
 import { colors, fonts, island } from './styles/tokens';
 import { ModalButton } from './components/Modal';
-import { useEnterFade } from './components/fadePresence';
 
 // Пустое состояние «/» — в языке экрана виртуальной страницы (заголовок +
 // строка сути + явное действие; ревью: тусклая строка «выберите страницу»
 // на фоне громкой виртуальной выглядела бедной родственницей). Кнопка
 // открывает модалку добавления через событие — она живёт внутри PageTree.
-const HomeScreen: React.FC = () => {
-  // Хореография входа: одиночный остров — без стаггера, просто мягко.
-  const enter = useEnterFade(0);
-  return (
+const HomeScreen: React.FC = () => (
   <div style={{
     height: '100%',
     display: 'flex',
@@ -30,7 +26,6 @@ const HomeScreen: React.FC = () => {
     border: island.border,
     borderRadius: island.radius,
     boxShadow: island.boxShadowRaised,
-    ...enter,
   }}>
     <div style={{
       textAlign: 'center',
@@ -57,8 +52,7 @@ const HomeScreen: React.FC = () => {
       </ModalButton>
     </div>
   </div>
-  );
-};
+);
 
 function AppContent() {
   const { user, loading } = useAuth();

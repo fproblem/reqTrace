@@ -8,7 +8,7 @@ import type { HighlightRenderReport } from '../components/PageView/HighlightLaye
 import { SidePanel, PANEL_ANIM_MS } from '../components/PageView/SidePanel';
 import { DiffView } from '../components/PageView/DiffView';
 import { sortedTests } from '../components/PageView/testOrder';
-import { FadeIn, useEnterFade, useFadeToggle } from '../components/fadePresence';
+import { FadeIn, useFadeToggle } from '../components/fadePresence';
 import { useDelayedFlag } from '../components/Skeleton';
 import { Modal, ModalButton, modalTextStyle } from '../components/Modal';
 import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components/RefreshIcon';
@@ -52,11 +52,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // Индикатор загрузки — только если ответ не мгновенный (v1.7.1):
   // мелькание «Загрузки…» на быстрых ответах хуже её отсутствия.
   const showLoader = useDelayedFlag(loading);
-  // Хореография входа (v1.8.0): бар — сразу, контент — на полшага позже.
-  // Взводится один раз на маунт: навигация по дереву (:pageId) компонент не
-  // размонтирует, и вход не переигрывается на каждой странице.
-  const barEnter = useEnterFade(0);
-  const contentEnter = useEnterFade(40);
   const [viewMode, setViewMode] = useState<ViewMode>('coverage');
   const [selectedHighlight, setSelectedHighlight] = useState<Highlight | null>(null);
   const [renderReport, setRenderReport] = useState<HighlightRenderReport | null>(null);
@@ -477,7 +472,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         borderRadius: island.radius,
         boxShadow: island.boxShadow,
         marginBottom: island.gap,
-        ...barEnter,
       }} />
       <div style={{
         flex: 1, minHeight: 0,
@@ -486,7 +480,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         borderRadius: island.radius,
         boxShadow: island.boxShadowRaised,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        ...contentEnter,
       }}>
         {inner}
       </div>
@@ -552,7 +545,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           alignItems: 'center',
           gap: '12px',
           flexShrink: 0,
-          ...barEnter,
         }}>
           <div style={{
             fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
@@ -584,7 +576,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           border: island.border,
           borderRadius: island.radius,
           boxShadow: island.boxShadowRaised,
-          ...contentEnter,
         }}>
           {/* Лаконичный столбик с единым ритмом (ревью v1.7.5: груда серого
               текста и большая иконка документа утяжеляли экран): заголовок →
@@ -760,7 +751,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         justifyContent: 'space-between',
         position: 'relative',
         zIndex: 10,
-        ...barEnter,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
           <div style={{ minWidth: 0 }}>
@@ -1098,7 +1088,6 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
           // Герой-поверхность — приподнята над служебными островами.
           boxShadow: island.boxShadowRaised,
           overflow: 'hidden',
-          ...contentEnter,
         }}>
           <div
             ref={contentAreaRef}

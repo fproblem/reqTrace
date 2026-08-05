@@ -44,6 +44,14 @@ const islandScrollStyles = `
     /* …а появляется на первом же движении почти сразу. */
     transition: --rt-thumb 0.12s ease;
   }
+  /* Наведение на жёлоб (класс вешает mousemove-слушатель ниже): пилюля
+     мягко проявляется зелёной тем же анимируемым каналом --rt-thumb.
+     Правило ПОСЛЕ .is-scrolling — при одновременном скролле и наведении
+     зелень главнее серого. */
+  .island-scroll.is-scroll-hover, .table-scroll.is-scroll-hover {
+    --rt-thumb: rgba(122, 224, 90, 0.45);
+    transition: --rt-thumb 0.12s ease;
+  }
   /* ⚠ Стандартные scrollbar-width/scrollbar-color — ТОЛЬКО для браузеров без
      ::-webkit-скина (Firefox). В Chrome 121+/Safari задание этих свойств
      ОТКЛЮЧАЕТ ::-webkit-scrollbar-* целиком: вместо пилюли рисовался тонкий
@@ -55,6 +63,7 @@ const islandScrollStyles = `
   @supports not selector(::-webkit-scrollbar) {
     .island-scroll, .table-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
     .island-scroll.is-scrolling, .table-scroll.is-scrolling { scrollbar-color: rgba(0, 0, 0, 0.15) transparent; }
+    .island-scroll.is-scroll-hover, .table-scroll.is-scroll-hover { scrollbar-color: rgba(122, 224, 90, 0.45) transparent; }
   }
   .island-scroll::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
   .island-scroll::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -65,12 +74,10 @@ const islandScrollStyles = `
     background-clip: content-box;
     border-radius: 8px;
   }
-  /* Ховер/пресс — светлая фирменная зелень; работают и по невидимой пилюле
-     (бегунок существует всегда), поэтому пилюля под курсором не исчезает,
-     даже когда is-scrolling истёк, — схватить её можно всегда. */
-  .island-scroll::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(122, 224, 90, 0.45);
-  }
+  /* Ховер живёт классом is-scroll-hover (см. выше) — webkit-:hover на
+     бегунке менял цвет МГНОВЕННО, «из ниоткуда» (ревью-6). Пресс остаётся
+     мгновенной ступенью: пилюля к этому моменту уже видна, а мгновенный
+     отклик на захват ощущается правильнее плавного. */
   .island-scroll::-webkit-scrollbar-thumb:active, .table-scroll::-webkit-scrollbar-thumb:active {
     background-color: rgba(122, 224, 90, 0.65);
   }
@@ -158,6 +165,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // включая создаваемые динамически обёртки таблиц (.table-scroll). Каждому
   // скроллеру — свой таймер: пилюля тает через 2.5с после его последнего
   // скролла, не мешая соседним.
+  // Наведение (ревью-6): mousemove следит за жёлобом скролла (14px от
+  // правого/нижнего края скроллера) и вешает is-scroll-hover — пилюля мягко
+  // проявляется зелёной через тот же анимируемый --rt-thumb; webkit-:hover
+  // на бегунке так не умеет (цвет менялся мгновенно, «из ниоткуда»).
+  // Пока курсор в жёлобе, класс держит пилюлю видимой — таймер её не заберёт.
   useEffect(() => {
     const timers = new WeakMap<Element, number>();
     const onScroll = (e: Event) => {
@@ -169,8 +181,63 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       if (prev !== undefined) window.clearTimeout(prev);
       timers.set(el, window.setTimeout(() => el.classList.remove('is-scrolling'), 2500));
     };
+
+    const HOVER_ZONE = 14;
+    const hovered = new Set<Element>();
+    let pendingMove: MouseEvent | null = null;
+    const processMove = () => {
+      const e = pendingMove;
+      pendingMove = null;
+      if (!e) return;
+      const next = new Set<Element>();
+      // От самого глубокого скроллера вверх по цепочке предков: у вложенных
+      // (цитата в теле панели, таблица в контенте) жёлобы у разных краёв.
+      let node: Element | null = e.target instanceof Element
+        ? e.target.closest('.island-scroll, .table-scroll')
+        : null;
+      while (node) {
+        const r = node.getBoundingClientRect();
+        const nearRight = node.scrollHeight > node.clientHeight
+          && e.clientX <= r.right && r.right - e.clientX <= HOVER_ZONE;
+        const nearBottom = node.scrollWidth > node.clientWidth
+          && e.clientY <= r.bottom && r.bottom - e.clientY <= HOVER_ZONE;
+        if (nearRight || nearBottom) next.add(node);
+        node = node.parentElement?.closest('.island-scroll, .table-scroll') ?? null;
+      }
+      hovered.forEach(el => {
+        if (!next.has(el)) {
+          el.classList.remove('is-scroll-hover');
+          hovered.delete(el);
+        }
+      });
+      next.forEach(el => {
+        if (!hovered.has(el)) {
+          el.classList.add('is-scroll-hover');
+          hovered.add(el);
+        }
+      });
+    };
+    // rAF-троттлинг: обрабатывается последний mousemove кадра, геометрия
+    // меряется не чаще перерисовки.
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!pendingMove) requestAnimationFrame(processMove);
+      pendingMove = ev;
+    };
+    const clearHover = () => {
+      pendingMove = null;
+      hovered.forEach(el => el.classList.remove('is-scroll-hover'));
+      hovered.clear();
+    };
+
     document.addEventListener('scroll', onScroll, true);
-    return () => document.removeEventListener('scroll', onScroll, true);
+    document.addEventListener('mousemove', onMouseMove, true);
+    document.documentElement.addEventListener('mouseleave', clearHover);
+    return () => {
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('mousemove', onMouseMove, true);
+      document.documentElement.removeEventListener('mouseleave', clearHover);
+      clearHover();
+    };
   }, []);
 
   // During drag we mutate the aside width directly (bypassing React) so a large

@@ -23,10 +23,15 @@ const SIDEBAR_ANIM = `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
 // зеленью (пастель, не чёрный — ревью-3), пресс — чуть плотнее.
 const islandScrollStyles = `
   /* Цвет пилюли зарегистрирован как <color> — только так транзишен
-     CSS-переменной анимируется и пилюля ТАЕТ, а не выключается (ревью-4). */
+     CSS-переменной анимируется и пилюля ТАЕТ, а не выключается (ревью-4).
+     ⚠ inherits: true обязателен: ::-webkit-scrollbar-thumb получает значение
+     переменной НАСЛЕДОВАНИЕМ от скроллера; с false псевдоэлемент видел лишь
+     initial-value — пилюля в Chrome не появлялась при скролле вовсе
+     (ревью-5). Вложенным скроллерам наследование не мешает: собственное
+     объявление --rt-thumb на элементе всегда сильнее унаследованного. */
   @property --rt-thumb {
     syntax: '<color>';
-    inherits: false;
+    inherits: true;
     initial-value: transparent;
   }
   .island-scroll, .table-scroll {
@@ -43,7 +48,10 @@ const islandScrollStyles = `
      ::-webkit-скина (Firefox). В Chrome 121+/Safari задание этих свойств
      ОТКЛЮЧАЕТ ::-webkit-scrollbar-* целиком: вместо пилюли рисовался тонкий
      системный бар с системным почти чёрным ховером (ревью-4 — «зелёный ховер
-     не работает»). Не выносить из-под @supports. */
+     не работает»). Не выносить из-под @supports.
+     Firefox остаётся с родным тонким баром (появление/скрытие то же, через
+     is-scrolling): пилюлю-в-воздухе, зелёный ховер и плавное таяние его
+     движок не умеет — предел платформы, принято на ревью-5. */
   @supports not selector(::-webkit-scrollbar) {
     .island-scroll, .table-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
     .island-scroll.is-scrolling, .table-scroll.is-scrolling { scrollbar-color: rgba(0, 0, 0, 0.15) transparent; }

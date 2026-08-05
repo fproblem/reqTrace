@@ -16,7 +16,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon } from '../components/icons';
+import { ChevronRightIcon, CrossIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
@@ -494,6 +494,118 @@ export const ProjectTestsPage: React.FC = () => {
     );
   }
 
+  // Поиск и фильтры живут в баре-острове (ревью: бар всегда на экране —
+  // фильтры и поиск доступны на любой глубине списка; «прилипание» к кромке
+  // при скролле отклонено как морф с ремаунтом). Высоты 34 — ритм кнопок
+  // баров; крестик очистки — зеркало поиска в дереве страниц.
+  const filtersBar = (
+    <>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <input
+          type="text"
+          value={q}
+          onChange={e => setParam('q', e.target.value)}
+          placeholder="Поиск тестов…"
+          style={{
+            width: '220px', height: '34px',
+            // Правый резерв — только под реально существующий крестик.
+            padding: `0 ${q ? 30 : 12}px 0 12px`,
+            borderRadius: radii.md, border: `1px solid ${colors.border}`,
+            fontSize: '13px', fontFamily: 'inherit', outline: 'none',
+            boxSizing: 'border-box', background: colors.white,
+            textOverflow: 'ellipsis',
+            transition: 'border-color 0.15s, box-shadow 0.15s',
+          }}
+          onFocus={e => {
+            e.currentTarget.style.borderColor = colors.focusBorder;
+            e.currentTarget.style.boxShadow = shadows.focusRing;
+          }}
+          onBlur={e => {
+            e.currentTarget.style.borderColor = colors.border;
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        />
+        {q && (
+          <button
+            onClick={() => setParam('q', '')}
+            title="Очистить поиск"
+            style={{
+              position: 'absolute',
+              right: '9px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '18px',
+              height: '18px',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: 'none',
+              borderRadius: radii.sm,
+              cursor: 'pointer',
+              color: colors.textTertiary,
+            }}
+          >
+            <CrossIcon size={12} />
+          </button>
+        )}
+      </div>
+      {FILTERS.map(f => {
+        const active = filter === f.key;
+        const count = filterCounts[f.key];
+        // Нулевой фильтр глушится: приглушённый некликабельный чип говорит
+        // «сюда ходить незачем» честнее, чем «(0)». Активный не глушится
+        // никогда — его нужно мочь снять.
+        const disabled = count === 0 && !active;
+        return (
+          <button
+            key={f.key}
+            title={disabled ? 'Таких тестов сейчас нет' : f.title}
+            // Охрана в onClick, а не disabled-атрибут: с атрибутом не живут
+            // title и cursor (урок v1.6.0).
+            onClick={() => { if (!disabled) setParam('f', f.key === 'all' ? '' : f.key); }}
+            style={{
+              height: '34px', padding: '0 14px', borderRadius: radii.pill,
+              border: `1px solid ${active ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
+              background: active ? colors.greenLight : colors.white,
+              color: active ? colors.greenDark
+                : disabled ? colors.textTertiary : colors.textSecondary,
+              fontSize: '13px', fontWeight: 600,
+              cursor: disabled ? 'default' : 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: '7px',
+            }}
+            onMouseEnter={e => {
+              if (active || disabled) return;
+              e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+              e.currentTarget.style.borderColor = colors.borderHover;
+            }}
+            onMouseLeave={e => {
+              if (active || disabled) return;
+              e.currentTarget.style.background = colors.white;
+              e.currentTarget.style.borderColor = colors.border;
+            }}
+          >
+            {f.label}
+            {/* Счётчик — нейтральной пилюлей, как у «Привязанных тестов»
+                в панели (цветные пробовали — на активном зелёном чипе
+                получалась цветовая каша). У заглушённого нуля бейджа нет. */}
+            {!disabled && (
+              <span style={{
+                padding: '2px 8px', borderRadius: radii.pill,
+                background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+                fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
+              }}>
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
+
   // Сводка проекта — мета-строкой бара (ревью: у обоих ярусов бар «заголовок
   // + мета», слово «Тесты» не прыгает по вертикали при переходах между ними).
   const summaryMeta =
@@ -525,87 +637,11 @@ export const ProjectTestsPage: React.FC = () => {
           {data.project_name}
         </IslandBarTitle>
       )}
+      barRight={filtersBar}
       contentMaxWidth="1060px"
     >
       {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
       <FadeIn>
-
-      {/* Поиск и фильтры. Фокус поля — общий стандарт (focusBorder + кольцо). */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-        <input
-          type="text"
-          value={q}
-          onChange={e => setParam('q', e.target.value)}
-          placeholder="Поиск тестов…"
-          style={{
-            width: '220px', height: '36px', padding: '0 12px',
-            borderRadius: radii.md, border: `1px solid ${colors.border}`,
-            fontSize: '13px', fontFamily: 'inherit', outline: 'none',
-            boxSizing: 'border-box', background: colors.white,
-            transition: 'border-color 0.15s, box-shadow 0.15s',
-          }}
-          onFocus={e => {
-            e.currentTarget.style.borderColor = colors.focusBorder;
-            e.currentTarget.style.boxShadow = shadows.focusRing;
-          }}
-          onBlur={e => {
-            e.currentTarget.style.borderColor = colors.border;
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        />
-        {FILTERS.map(f => {
-          const active = filter === f.key;
-          const count = filterCounts[f.key];
-          // Нулевой фильтр глушится: приглушённый некликабельный чип говорит
-          // «сюда ходить незачем» честнее, чем «(0)». Активный не глушится
-          // никогда — его нужно мочь снять.
-          const disabled = count === 0 && !active;
-          return (
-            <button
-              key={f.key}
-              title={disabled ? 'Таких тестов сейчас нет' : f.title}
-              // Охрана в onClick, а не disabled-атрибут: с атрибутом не живут
-              // title и cursor (урок v1.6.0).
-              onClick={() => { if (!disabled) setParam('f', f.key === 'all' ? '' : f.key); }}
-              style={{
-                height: '36px', padding: '0 14px', borderRadius: radii.pill,
-                border: `1px solid ${active ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
-                background: active ? colors.greenLight : colors.white,
-                color: active ? colors.greenDark
-                  : disabled ? colors.textTertiary : colors.textSecondary,
-                fontSize: '13px', fontWeight: 600,
-                cursor: disabled ? 'default' : 'pointer',
-                fontFamily: 'inherit', transition: 'all 0.15s', flexShrink: 0,
-                display: 'inline-flex', alignItems: 'center', gap: '7px',
-              }}
-              onMouseEnter={e => {
-                if (active || disabled) return;
-                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                e.currentTarget.style.borderColor = colors.borderHover;
-              }}
-              onMouseLeave={e => {
-                if (active || disabled) return;
-                e.currentTarget.style.background = colors.white;
-                e.currentTarget.style.borderColor = colors.border;
-              }}
-            >
-              {f.label}
-              {/* Счётчик — нейтральной пилюлей, как у «Привязанных тестов»
-                  в панели (цветные пробовали — на активном зелёном чипе
-                  получалась цветовая каша). У заглушённого нуля бейджа нет. */}
-              {!disabled && (
-                <span style={{
-                  padding: '2px 8px', borderRadius: radii.pill,
-                  background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
-                  fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
-                }}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
 
       {/* Пульс строки-«точки интереса» — та же механика, что у кнопки
           «Актуализировать» в панели (0.8s × 2, класс не инлайн — анимация

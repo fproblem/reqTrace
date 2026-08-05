@@ -236,15 +236,33 @@ export const TestsPage: React.FC = () => {
                   <ChevronRightIcon size={14} style={{ color: colors.textTertiary }} />
                 </div>
 
-                {/* Главная цифра карточки — тесты: экран-то про них. */}
+                {/* Главная цифра карточки — тесты: экран-то про них. Процент —
+                    нейтральной пилюлей (как счётчик «Привязанных тестов» в
+                    панели и счётчики фильтров яруса 2): приписка в скобках
+                    удешевляла строку (ревью). */}
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                   <ClipboardCheckIcon size={16} style={{ color: colors.greenDark, alignSelf: 'center' }} />
                   <span style={{ fontSize: '20px', fontWeight: 700, color: colors.textPrimary }}>
                     {s.tests}
                   </span>
-                  <span style={{ fontSize: '13px', color: colors.textSecondary }}>
+                  <span style={{ fontSize: '13px', color: colors.textSecondary, minWidth: 0 }}>
                     {plural(s.tests, ['тест', 'теста', 'тестов'])} · покрыто {s.covered} из {s.highlights}{' '}
-                    {plural(s.highlights, ['привязки', 'привязок', 'привязок'])} ({coverage}%)
+                    {plural(s.highlights, ['привязки', 'привязок', 'привязок'])}
+                  </span>
+                  <span
+                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: radii.pill,
+                      background: 'rgba(0,0,0,0.05)',
+                      color: colors.textSecondary,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      lineHeight: 1.4,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {coverage}%
                   </span>
                 </div>
 

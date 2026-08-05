@@ -22,14 +22,31 @@ const SIDEBAR_ANIM = `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
 // остаётся кликабельным: ховер по его зоне подсвечивает пилюлю светлой
 // зеленью (пастель, не чёрный — ревью-3), пресс — чуть плотнее.
 const islandScrollStyles = `
+  /* Цвет пилюли зарегистрирован как <color> — только так транзишен
+     CSS-переменной анимируется и пилюля ТАЕТ, а не выключается (ревью-4). */
+  @property --rt-thumb {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: transparent;
+  }
   .island-scroll, .table-scroll {
     --rt-thumb: transparent;
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
+    /* Гаснет неторопливо… */
+    transition: --rt-thumb 0.45s ease;
   }
   .island-scroll.is-scrolling, .table-scroll.is-scrolling {
-    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
     --rt-thumb: rgba(0, 0, 0, 0.15);
+    /* …а появляется на первом же движении почти сразу. */
+    transition: --rt-thumb 0.12s ease;
+  }
+  /* ⚠ Стандартные scrollbar-width/scrollbar-color — ТОЛЬКО для браузеров без
+     ::-webkit-скина (Firefox). В Chrome 121+/Safari задание этих свойств
+     ОТКЛЮЧАЕТ ::-webkit-scrollbar-* целиком: вместо пилюли рисовался тонкий
+     системный бар с системным почти чёрным ховером (ревью-4 — «зелёный ховер
+     не работает»). Не выносить из-под @supports. */
+  @supports not selector(::-webkit-scrollbar) {
+    .island-scroll, .table-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    .island-scroll.is-scrolling, .table-scroll.is-scrolling { scrollbar-color: rgba(0, 0, 0, 0.15) transparent; }
   }
   .island-scroll::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
   .island-scroll::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -40,6 +57,9 @@ const islandScrollStyles = `
     background-clip: content-box;
     border-radius: 8px;
   }
+  /* Ховер/пресс — светлая фирменная зелень; работают и по невидимой пилюле
+     (бегунок существует всегда), поэтому пилюля под курсором не исчезает,
+     даже когда is-scrolling истёк, — схватить её можно всегда. */
   .island-scroll::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover {
     background-color: rgba(122, 224, 90, 0.45);
   }

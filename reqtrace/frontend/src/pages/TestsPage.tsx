@@ -221,6 +221,24 @@ export const TestsPage: React.FC = () => {
                   }}>
                     {s.project_name}
                   </span>
+                  {/* Покрытие — KPI-чипом в шапке карточки (ревью: в строке
+                      цифры процент терялся в предложении). Язык — чип
+                      «Покрытие: N%» из бара страницы, здесь компактно. */}
+                  <span
+                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
+                    style={{
+                      padding: '3px 10px',
+                      borderRadius: radii.pill,
+                      background: 'rgba(0,0,0,0.05)',
+                      color: colors.textSecondary,
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      lineHeight: 1.4,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {coverage}%
+                  </span>
                   {s.is_demo && (
                     <span
                       title="Личный демо-проект для знакомства с ReqTrace — с Confluence не связан"
@@ -236,10 +254,9 @@ export const TestsPage: React.FC = () => {
                   <ChevronRightIcon size={14} style={{ color: colors.textTertiary }} />
                 </div>
 
-                {/* Главная цифра карточки — тесты: экран-то про них. Процент —
-                    нейтральной пилюлей (как счётчик «Привязанных тестов» в
-                    панели и счётчики фильтров яруса 2): приписка в скобках
-                    удешевляла строку (ревью). */}
+                {/* Главная цифра карточки — тесты: экран-то про них. Процент
+                    покрытия живёт чипом в шапке карточки, строка остаётся
+                    словесной дробью. */}
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                   <ClipboardCheckIcon size={16} style={{ color: colors.greenDark, alignSelf: 'center' }} />
                   <span style={{ fontSize: '20px', fontWeight: 700, color: colors.textPrimary }}>
@@ -248,21 +265,6 @@ export const TestsPage: React.FC = () => {
                   <span style={{ fontSize: '13px', color: colors.textSecondary, minWidth: 0 }}>
                     {plural(s.tests, ['тест', 'теста', 'тестов'])} · покрыто {s.covered} из {s.highlights}{' '}
                     {plural(s.highlights, ['привязки', 'привязок', 'привязок'])}
-                  </span>
-                  <span
-                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: radii.pill,
-                      background: 'rgba(0,0,0,0.05)',
-                      color: colors.textSecondary,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      lineHeight: 1.4,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {coverage}%
                   </span>
                 </div>
 

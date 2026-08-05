@@ -57,6 +57,32 @@ export const NotificationBell: React.FC = () => {
   const { mounted: panelMounted, fadeStyle: panelFade } = useFadeToggle(open);
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  // Геометрия панели (ревью v1.8.0): левая граница — по левой грани кнопки
+  // «Тесты», правая — по правой грани кнопки выхода (якоря — data-атрибуты в
+  // шапке Layout). Ширина зависит от имени пользователя в чипе — меряется при
+  // открытии и на ресайзе; координаты — в системе wrapRef (панель absolute
+  // внутри него). Фолбэк без якорей — прежние right: 0 / width: 400.
+  const [panelBox, setPanelBox] = useState<{ left: number; width: number } | null>(null);
+  useEffect(() => {
+    if (!panelMounted) return;
+    const update = () => {
+      const wrap = wrapRef.current;
+      const tests = document.querySelector('[data-rt-header-tests]');
+      const logout = document.querySelector('[data-rt-header-logout]');
+      if (!wrap || !tests || !logout) {
+        setPanelBox(null);
+        return;
+      }
+      const w = wrap.getBoundingClientRect();
+      const t = tests.getBoundingClientRect();
+      const l = logout.getBoundingClientRect();
+      setPanelBox({ left: t.left - w.left, width: l.right - t.left });
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [panelMounted]);
+
   const load = useCallback(async () => {
     try {
       setData(await api.getNotifications());
@@ -316,8 +342,11 @@ export const NotificationBell: React.FC = () => {
         <div
           role="menu"
           style={{
-            position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-            width: '400px', maxHeight: '520px',
+            position: 'absolute', top: 'calc(100% + 8px)',
+            ...(panelBox
+              ? { left: `${panelBox.left}px`, width: `${panelBox.width}px` }
+              : { right: 0, width: '400px' }),
+            maxHeight: '520px',
             display: 'flex', flexDirection: 'column',
             // Скроллится только список ниже шапки — как в модалках (Modal,
             // «История изменений»): скроллбар на самой панели вылезал сбоку
@@ -373,7 +402,7 @@ export const NotificationBell: React.FC = () => {
           {/* Скролл-зона списка: minHeight 0 разрешает флекс-ребёнку ужаться
               под maxHeight панели, прежние отступы панели (10px) переехали
               сюда. */}
-          <div style={{ overflowY: 'auto', minHeight: 0, padding: '6px 10px 10px' }}>
+          <div className="island-scroll" style={{ overflowY: 'auto', minHeight: 0, padding: '6px 10px 10px' }}>
           {data === null ? (
             <div style={{ padding: '16px 10px', fontSize: '13px', color: colors.textSecondary }}>
               Загрузка…

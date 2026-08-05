@@ -450,6 +450,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <button
               onClick={() => navigate('/tests')}
               title="Тесты проектов: какие требования держит каждый тест"
+              // Якорь панели дайджеста: её левая граница равняется по левой
+              // грани этой кнопки (NotificationBell меряет по атрибуту).
+              data-rt-header-tests=""
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 height: '34px', padding: '0 14px',
@@ -557,6 +560,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <button
               onClick={() => setLogoutConfirmOpen(true)}
               title="Выйти из ReqTrace"
+              // Якорь панели дайджеста: её правая граница равняется по правой
+              // грани этой кнопки.
+              data-rt-header-logout=""
               style={{
                 width: '34px', height: '34px', padding: 0,
                 borderRadius: radii.md,

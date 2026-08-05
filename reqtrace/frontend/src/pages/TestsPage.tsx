@@ -221,24 +221,6 @@ export const TestsPage: React.FC = () => {
                   }}>
                     {s.project_name}
                   </span>
-                  {/* Покрытие — KPI-чипом в шапке карточки (ревью: в строке
-                      цифры процент терялся в предложении). Язык — чип
-                      «Покрытие: N%» из бара страницы, здесь компактно. */}
-                  <span
-                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: radii.pill,
-                      background: 'rgba(0,0,0,0.05)',
-                      color: colors.textSecondary,
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      lineHeight: 1.4,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {coverage}%
-                  </span>
                   {s.is_demo && (
                     <span
                       title="Личный демо-проект для знакомства с ReqTrace — с Confluence не связан"
@@ -268,7 +250,27 @@ export const TestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {/* Ряд открывает мини-версия чипа «Покрытие: N%» из бара
+                    страницы (ревью: чип в шапке карточки и приписка в строке
+                    цифры отклонены) — тот же текст и вид, ужатый до высоты
+                    статусных пилюль. flexWrap — на минимальной ширине карточки
+                    ряд переносится, а не выталкивает счётчик страниц. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', rowGap: '6px' }}>
+                  <span
+                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
+                    style={{
+                      padding: '2px 10px',
+                      borderRadius: radii.pill,
+                      background: 'rgba(0,0,0,0.05)',
+                      color: colors.textSecondary,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      lineHeight: 1.5,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Покрытие: {coverage}%
+                  </span>
                   {s.active > 0 && (
                     <StatusCountPill color={colors.statusActive} count={s.active} title="Привязок в статусе «Актуально»" />
                   )}

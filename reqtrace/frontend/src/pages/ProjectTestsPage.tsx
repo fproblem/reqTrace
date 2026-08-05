@@ -615,7 +615,7 @@ export const ProjectTestsPage: React.FC = () => {
       {data.tests.length === 0 && uncoveredTotal === 0 ? (
         <div style={{
           padding: '28px', borderRadius: radii.lg,
-          border: `1px solid ${colors.border}`, background: 'rgba(255,255,255,0.85)',
+          border: `1px solid ${colors.border}`, background: colors.cardBgSolid,
           color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
         }}>
           В проекте пока нет привязанных тестов. Откройте страницу, выделите

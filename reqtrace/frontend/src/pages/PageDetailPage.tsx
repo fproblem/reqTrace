@@ -460,32 +460,53 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   // не меняет статусы по построению — целый класс багов «самоустаревания»
   // (v1.5.7) и «прыгающих» подсветок невозможен.
 
-  if (loading) {
-    // Пустой экран до порога задержки; дальше — мягко проявляющаяся строка
-    // с фирменным лоадером (скелетон для произвольного Confluence-контента
-    // не построить — количество и форма блоков известны только после ответа).
-    return (
+  // Каркас пары островов «бар + контент» (v1.8.0): виден с первого кадра
+  // загрузки и в терминальных состояниях — навигация не мигает голым
+  // полотном, пока едет содержимое. Внутри контент-острова — что передали.
+  const islandFrame = (inner: React.ReactNode) => (
+    <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <div style={{
-        height: '100%', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
+        height: '64px', flexShrink: 0,
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadow,
+        marginBottom: island.gap,
+      }} />
+      <div style={{
+        flex: 1, minHeight: 0,
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadow,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {showLoader && (
-          <FadeIn>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              color: colors.textSecondary, fontSize: '13px',
-            }}>
-              <RefreshIcon size={16} spinning />
-              Загружаем страницу из последнего снимка…
-            </div>
-          </FadeIn>
-        )}
+        {inner}
       </div>
+    </div>
+  );
+
+  if (loading) {
+    // Каркас островов — сразу; строка лоадера — после порога задержки
+    // (скелетон для произвольного Confluence-контента не построить —
+    // количество и форма блоков известны только после ответа).
+    return islandFrame(
+      showLoader && (
+        <FadeIn>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px',
+            color: colors.textSecondary, fontSize: '13px',
+          }}>
+            <RefreshIcon size={16} spinning />
+            Загружаем страницу из последнего снимка…
+          </div>
+        </FadeIn>
+      )
     );
   }
 
   if (!page) {
-    return (
+    return islandFrame(
       <div style={{ padding: '60px', textAlign: 'center', color: colors.statusLost }}>
         Страница не найдена
       </div>

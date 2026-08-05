@@ -323,7 +323,7 @@ export const NotificationBell: React.FC = () => {
             // «История изменений»): скроллбар на самой панели вылезал сбоку
             // от скруглённого угла и увозил заголовок вместе со списком.
             overflow: 'hidden',
-            background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(20px)',
+            background: colors.cardBgSolid,
             border: `1px solid ${colors.border}`, borderRadius: radii.lg,
             boxShadow: shadows.cardHover,
             boxSizing: 'border-box',

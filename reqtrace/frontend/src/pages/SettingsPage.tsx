@@ -789,8 +789,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.85)',
-        backdropFilter: 'blur(20px)',
+        background: colors.cardBgSolid,
         border: `1px solid ${colors.border}`,
         borderRadius: radii.lg,
         padding: '18px 22px',
@@ -1137,7 +1136,7 @@ export const SettingsPage: React.FC = () => {
             }}>
               {[0, 1].map(i => (
                 <div key={i} style={{
-                  background: 'rgba(255,255,255,0.85)',
+                  background: colors.cardBgSolid,
                   border: `1px solid ${colors.border}`,
                   borderRadius: radii.lg, padding: '18px 22px',
                   display: 'flex', flexDirection: 'column', gap: '14px',
@@ -1296,8 +1295,7 @@ export const SettingsPage: React.FC = () => {
            «Как работает ReqTrace» — новичку она открывается сама (один раз
            за вход), а кнопка в заголовке раздела всегда рядом. */
         <div style={{
-          background: 'rgba(255,255,255,0.85)',
-          backdropFilter: 'blur(20px)',
+          background: colors.cardBgSolid,
           border: `1px solid ${colors.border}`,
           borderRadius: radii.lg,
           boxShadow: shadows.card,

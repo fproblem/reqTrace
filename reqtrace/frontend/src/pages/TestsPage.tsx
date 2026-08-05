@@ -59,7 +59,7 @@ export const StatusCountPill: React.FC<{ color: string; count: number; title: st
 // только с данными, несовпадение прощает FadeIn контента.
 const ProjectCardSkeleton: React.FC = () => (
   <div style={{
-    background: 'rgba(255,255,255,0.85)',
+    background: colors.cardBgSolid,
     border: `1px solid ${colors.border}`,
     borderRadius: radii.lg,
     padding: '18px 22px',
@@ -155,7 +155,7 @@ export const TestsPage: React.FC = () => {
       {stats.length === 0 ? (
         <div style={{
           padding: '28px', borderRadius: radii.lg,
-          border: `1px solid ${colors.border}`, background: 'rgba(255,255,255,0.85)',
+          border: `1px solid ${colors.border}`, background: colors.cardBgSolid,
           color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
         }}>
           Пока нет ни одного проекта. Подключитесь к проекту в{' '}
@@ -181,8 +181,7 @@ export const TestsPage: React.FC = () => {
                 onClick={() => navigate(`/tests/${s.project_id}`)}
                 title={`Открыть тесты проекта «${s.project_name}»`}
                 style={{
-                  background: 'rgba(255,255,255,0.85)',
-                  backdropFilter: 'blur(20px)',
+                  background: colors.cardBgSolid,
                   border: `1px solid ${colors.border}`,
                   borderRadius: radii.lg,
                   padding: '18px 22px',

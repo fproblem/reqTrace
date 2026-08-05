@@ -504,7 +504,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       )}
 
       {/* Tree content */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
+      <div className="island-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
         {loading ? (
           // Пусто до порога 200мс, дальше — мягкая строка с фирменным
           // лоадером (тот же loadstate, что у страницы требований).

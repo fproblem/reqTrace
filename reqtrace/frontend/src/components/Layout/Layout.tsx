@@ -7,6 +7,32 @@ import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { PageTree } from './PageTree';
 import { ClipboardCheckIcon, LogoutIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
+import { PANEL_ANIM_MS } from '../PageView/SidePanel';
+
+// Оба боковых острова дышат в одном ритме (ревью островов): длительность
+// сворачивания/разворачивания дерева — та же, что у панели привязки.
+const SIDEBAR_ANIM = `width ${PANEL_ANIM_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+
+// Кастомный скроллбар рабочих областей (v1.8.0, ревью): тонкая «пилюля» с
+// воздухом, трек прозрачный — скруглённые углы островов остаются свободными,
+// системная полоса их больше не накрывает. Цена решения (принята на ревью):
+// у трекпада скроллбар перестаёт автоскрываться — но он и не бросается в
+// глаза. Ховер чуть плотнее, чтобы за пилюлю было удобно целиться.
+const islandScrollStyles = `
+  .island-scroll, .table-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.22) transparent; }
+  .island-scroll::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+  .island-scroll::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: transparent; }
+  .island-scroll::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: transparent; }
+  .island-scroll::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.18);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 8px;
+  }
+  .island-scroll::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.32);
+  }
+`;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -77,7 +103,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const zoneRef = useRef(false); // true while drag width is past MIN_WIDTH (tree shown)
   const [dragging, setDragging] = useState(false);
   const [dragTree, setDragTree] = useState(false);
-  const resizeGlowRef = useRef<HTMLDivElement>(null);
+  const resizeIndicatorRef = useRef<HTMLDivElement>(null);
+  const indicatorHoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Persist sidebar state
   useEffect(() => {
@@ -120,7 +147,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     // the DOM write when the committed value matches its last render (e.g. collapsing
     // back to the rail: 48 → 48). Snap the DOM ourselves and restore the transition.
     if (asideRef.current) {
-      asideRef.current.style.transition = 'width 0.18s ease';
+      asideRef.current.style.transition = SIDEBAR_ANIM;
       asideRef.current.style.width = `${finalWidth}px`;
     }
     if (collapsed) {
@@ -162,6 +189,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     }));
   }, []);
 
+  // Тап по рельсе (ревью-2): разворачивает остров до минимально допустимой
+  // ширины — предсказуемый результат вместо «какой-то прошлой ширины»;
+  // перетаскивание у рельсы отключено, жест один.
+  const expandToMin = useCallback(() => {
+    setSidebar({ width: MIN_WIDTH, collapsed: false });
+  }, []);
+
   const isSettings = location.pathname === '/settings';
   const isTests = location.pathname === '/tests' || location.pathname.startsWith('/tests/');
   // During a drag the contents follow the cursor zone (tree once width >= MIN_WIDTH),
@@ -172,47 +206,51 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     ? Math.min(Math.max(rawXRef.current, RAIL_WIDTH), MAX_WIDTH)
     : (sidebar.collapsed ? RAIL_WIDTH : sidebar.width);
 
-  // Same drag handle works both ways: drag left to collapse, drag right to expand.
-  // Визуальный отклик (v1.8.0, ревью фазы 1): не линия, а мягкое зелёное
-  // свечение-градиент, огибающее правую грань острова ИЗНУТРИ — скругление
-  // повторяет угол карточки, у самой грани зелень плотнее и сходит в
-  // прозрачность к центру. Намекает, что грань тянется, не крича: сплошная
-  // линия (и тем более неоновая) выбивалась из приглушённой стилистики.
-  const resizeGlow = (
+  // Drag handle: только у РАЗВЁРНУТОГО дерева (drag left to collapse, drag
+  // right to expand). Свёрнутая рельса не тянется — раскрывается тапом
+  // (ревью-2: два жеста на 48px конфликтовали, градиент-подсказка выглядела
+  // резко). Визуальный отклик — как сэш в VS Code: тонкая зелёная черта в
+  // ЗАЗОРЕ между островами, во всю высоту, появляется с задержкой 200мс
+  // (мимолётный проход мыши её не зажигает) и мгновенно гаснет.
+  const resizeIndicator = (
     <div
-      ref={resizeGlowRef}
+      ref={resizeIndicatorRef}
       style={{
-        position: 'absolute', top: 0, right: 0, bottom: 0, width: '14px',
-        borderRadius: `0 ${island.radius} ${island.radius} 0`,
-        background: 'linear-gradient(to left, rgba(122, 224, 90, 0.38), rgba(122, 224, 90, 0))',
+        // Черта 4px по центру гэпа(10): остров кончается на right:0,
+        // зазор — [0..-10], центр — -5.
+        position: 'absolute', top: 0, right: '-7px', bottom: 0, width: '4px',
+        borderRadius: '2px',
+        background: 'rgba(77, 184, 48, 0.55)',
         opacity: dragging ? 1 : 0,
-        transition: 'opacity 0.16s ease',
+        transition: 'opacity 0.15s ease',
         pointerEvents: 'none',
         zIndex: 2,
       }}
     />
   );
   const resizeHandle = (
-    <>
-      {resizeGlow}
-      <div
-        onMouseDown={startDrag}
-        title={sidebar.collapsed ? 'Потяните вправо, чтобы раскрыть' : 'Потяните, чтобы изменить ширину (до упора — свернуть)'}
-        style={{
-          position: 'absolute', top: 0, right: '-4px', width: '8px', height: '100%',
-          cursor: 'col-resize', zIndex: 3,
-        }}
-        onMouseEnter={() => {
-          if (resizeGlowRef.current) resizeGlowRef.current.style.opacity = '1';
-        }}
-        onMouseLeave={() => {
-          // Во время перетаскивания курсор уходит с зоны захвата — свечение
-          // остаётся, погасит его ре-рендер по окончании драга.
-          if (draggingRef.current) return;
-          if (resizeGlowRef.current) resizeGlowRef.current.style.opacity = '0';
-        }}
-      />
-    </>
+    <div
+      onMouseDown={startDrag}
+      title="Потяните, чтобы изменить ширину (до упора — свернуть)"
+      style={{
+        // Зона захвата накрывает весь зазор и 2px кромки острова.
+        position: 'absolute', top: 0, right: '-10px', width: '12px', height: '100%',
+        cursor: 'col-resize', zIndex: 3,
+      }}
+      onMouseEnter={() => {
+        clearTimeout(indicatorHoverTimer.current);
+        indicatorHoverTimer.current = setTimeout(() => {
+          if (resizeIndicatorRef.current) resizeIndicatorRef.current.style.opacity = '1';
+        }, 200);
+      }}
+      onMouseLeave={() => {
+        clearTimeout(indicatorHoverTimer.current);
+        // Во время перетаскивания курсор уходит с зоны захвата — черта
+        // остаётся, погасит её ре-рендер по окончании драга.
+        if (draggingRef.current) return;
+        if (resizeIndicatorRef.current) resizeIndicatorRef.current.style.opacity = '0';
+      }}
+    />
   );
 
   return (
@@ -225,6 +263,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       position: 'relative',
       overflow: 'hidden',
     }}>
+      <style>{islandScrollStyles}</style>
       {/* Background blobs — живут на полотне, острова непрозрачны и накрывают
           их. Сиреневого сознательно НЕТ (исторически он красил линии шапки в
           разные оттенки; с островами возвращать тоже незачем — полотно тихое). */}
@@ -438,14 +477,16 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             // No overflow:hidden — the tree clips itself via its own container, and
             // this lets the resize grip sit outside, on the divider (Confluence-style).
             zIndex: 2, // above main so the protruding grip stays visible
-            transition: dragging ? 'none' : 'width 0.18s ease',
+            transition: dragging ? 'none' : SIDEBAR_ANIM,
           }}
         >
           {showRail ? (
             <>
-              {/* Whole rail is the expand target — big click area; thin right edge stays draggable */}
+              {/* Вся рельса — цель тапа; перетаскивания у рельсы нет (ревью-2).
+                  Индикатор рядом — на случай, если драг из развёрнутого
+                  состояния нырнул ниже порога и рельса показалась мид-драгом. */}
               <button
-                onClick={toggleCollapsed}
+                onClick={expandToMin}
                 title="Раскрыть панель страниц"
                 style={{
                   flex: 1, width: '100%', border: 'none', background: 'transparent',
@@ -460,7 +501,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               >
                 <Chevron dir="right" size={18} />
               </button>
-              {resizeHandle}
+              {resizeIndicator}
             </>
           ) : (
             <>
@@ -523,7 +564,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </button>
               </div>
 
-              {/* Resize handle on the right divider */}
+              {/* Черта-индикатор в зазоре + зона захвата ресайза */}
+              {resizeIndicator}
               {resizeHandle}
             </>
           )}
@@ -540,7 +582,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             Компенсацию невидимой пробой ширины скроллбара в шапке пробовали
             (v1.7.2) и откатили: кнопки выравнивались, но у шапки появлялась
             та же «рваная» пустота справа. */}
-        <main style={{
+        <main className="island-scroll" style={{
           flex: 1, position: 'relative', zIndex: 1, overflow: 'auto',
           minWidth: 0,
           scrollbarGutter: (isSettings || isTests) ? 'stable' : undefined,

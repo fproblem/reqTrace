@@ -626,7 +626,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
       </div>
 
-      <div style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div className="island-scroll" style={{ padding: '20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {/* Секция привязки — единая карточка (вариант 2 референса):
             тонированная шапка-статус, белое тело цитаты со знаком «❝»,
             «Актуализировать» — встроенная нижняя строка. Заголовка секции нет
@@ -761,6 +761,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           <div
             ref={quoteScrollRef}
             onScroll={updateQuoteFade}
+            className="island-scroll"
             style={{
               padding: '12px 16px',
               fontSize: '13px',

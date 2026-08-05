@@ -1069,6 +1069,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
         }}>
           <div
             ref={contentAreaRef}
+            className="island-scroll"
             style={{
               flex: 1,
               minWidth: 0,

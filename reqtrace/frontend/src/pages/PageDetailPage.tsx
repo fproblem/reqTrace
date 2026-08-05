@@ -732,14 +732,14 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       <style>{contentStyles}</style>
 
-      {/* Top bar — остров (v1.8.0). Правый паддинг 13px: с гэпом(10) и
+      {/* Top bar — остров (v1.8.0). Правый паддинг 15px: с гэпом(8) и
           рамкой(1) правая колонка кнопок остаётся в 24px от края окна — в одну
           вертикаль с выходом в главной шапке и крестиком панели (см. island в
           tokens.ts). ⚠ Без transform/backdrop-filter: ниже живёт fixed-попап
           «Привязать» (ловушка containing block, Modal.tsx). */}
       <div style={{
         height: '64px',
-        padding: '0 13px 0 24px',
+        padding: '0 15px 0 24px',
         flexShrink: 0,
         background: island.background,
         border: island.border,

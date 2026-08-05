@@ -19,7 +19,7 @@ const CANVAS_FADE_MASK =
  *
  * barLeft — обычно IslandBarTitle (заголовок 16px + мета-строка 12px, обе с
  * эллипсисом), barRight — кластер кнопок 34×34 c гэпом 10 (правая колонка
- * встаёт в 24px от края окна: гэп(10) + рамка(1) + паддинг(13), см. island
+ * встаёт в 24px от края окна: гэп(8) + рамка(1) + паддинг(15), см. island
  * в tokens.ts). ⚠ Островам нельзя transform/backdrop-filter (Modal.tsx). */
 export const IslandScreen: React.FC<{
   barLeft: React.ReactNode;
@@ -59,7 +59,7 @@ export const IslandScreen: React.FC<{
       <div style={{
         height: '64px',
         flexShrink: 0,
-        padding: '0 13px 0 24px',
+        padding: '0 15px 0 24px',
         background: island.background,
         border: island.border,
         borderRadius: island.radius,

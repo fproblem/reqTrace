@@ -454,8 +454,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
            тела задана флексом, не содержимым. */
         .panel-body { container-type: size; }
       `}</style>
-      {/* Header with navigation. Правый паддинг 13px — остров: гэп(10) +
-          рамка(1) + 13 = те же 24px от края окна, что и раньше, — крестик
+      {/* Header with navigation. Правый паддинг 15px — остров: гэп(8) +
+          рамка(1) + 15 = те же 24px от края окна, что и раньше, — крестик
           встаёт ровно под «⋮» бара-острова, стрелка «вниз» — под «Обновить»
           (см. island в tokens.ts). Размеры кнопок (34×34) и гэп (10px) — как у
           правого кластера верхнего бара. Высота фиксированная 64px (с
@@ -463,7 +463,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           содержимого. */}
       <div style={{
         height: '64px',
-        padding: '0 13px 0 20px',
+        padding: '0 15px 0 20px',
         borderBottom: `1px solid ${colors.border}`,
         display: 'flex',
         justifyContent: 'space-between',

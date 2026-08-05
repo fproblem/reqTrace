@@ -345,9 +345,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div
       ref={resizeIndicatorRef}
       style={{
-        // Черта 4px по центру гэпа(10): остров кончается на right:0,
-        // зазор — [0..-10], центр — -5.
-        position: 'absolute', top: 0, right: '-7px', bottom: 0, width: '4px',
+        // Черта 4px по центру гэпа(8): остров кончается на right:0,
+        // зазор — [0..-8], центр — -4.
+        position: 'absolute', top: 0, right: '-6px', bottom: 0, width: '4px',
         borderRadius: '2px',
         // Пастель (ревью-3): плотный greenDark кричал, светлая фирменная
         // зелень читается подсказкой, а не сигналом тревоги.
@@ -364,8 +364,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       onMouseDown={startDrag}
       title="Потяните, чтобы изменить ширину (до упора — свернуть)"
       style={{
-        // Зона захвата накрывает весь зазор и 2px кромки острова.
-        position: 'absolute', top: 0, right: '-10px', width: '12px', height: '100%',
+        // Зона захвата накрывает весь зазор (8) и 2px кромки острова.
+        position: 'absolute', top: 0, right: '-8px', width: '10px', height: '100%',
         cursor: 'col-resize', zIndex: 3,
       }}
       onMouseEnter={() => {

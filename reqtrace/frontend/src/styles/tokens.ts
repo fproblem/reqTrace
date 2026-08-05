@@ -62,13 +62,16 @@ export const fonts = {
  * ловушка containing block, см. шапку Modal.tsx.
  *
  * Вертикаль кнопок (выход ↕ «⋮» ↕ крестик панели): правая колонка во всех
- * шапках — 24px от края окна; внутри острова это gap(10) + рамка(1) +
- * внутренний паддинг(13). Меняешь gap — пересчитай паддинги шапок-островов. */
+ * шапках — 24px от края окна; внутри острова это gap(8) + рамка(1) +
+ * внутренний паддинг(15). Меняешь gap — пересчитай паддинги шапок-островов
+ * (PageDetailPage, SidePanel, IslandScreen) и сэш-индикатор в Layout. */
 export const island = {
-  gap: '10px',
+  gap: '8px',
   radius: radii.lg,
   background: colors.cardBgSolid,
-  border: `1px solid ${colors.border}`,
+  // Чуть темнее colors.border (0.07): рамки островов путались с рамками
+  // таблиц на страницах (ревью) — 0.10 отделяет хром от контента.
+  border: '1px solid rgba(0, 0, 0, 0.10)',
   boxShadow: shadows.card,
 } as const;
 

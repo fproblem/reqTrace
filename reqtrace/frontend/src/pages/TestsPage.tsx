@@ -122,8 +122,8 @@ export const TestsPage: React.FC = () => {
           <FadeIn>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-              gap: '16px',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+              gap: '14px',
             }}>
               <ProjectCardSkeleton />
               <ProjectCardSkeleton />
@@ -160,11 +160,21 @@ export const TestsPage: React.FC = () => {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: '16px',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+          gap: '14px',
         }}>
           {stats.map(s => {
             const coverage = s.highlights > 0 ? Math.round((s.covered / s.highlights) * 100) : 0;
+            // Точка у названия — язык карточек профиля (там — статус
+            // подключения); здесь красится по худшему статусу привязок,
+            // как индикатор страницы в дереве (lost > outdated > active).
+            const dotColor = s.lost > 0
+              ? colors.statusLost
+              : s.outdated > 0
+                ? colors.statusOutdated
+                : s.highlights > 0
+                  ? colors.statusActive
+                  : colors.textTertiary;
             return (
               <div
                 key={s.project_id}
@@ -192,6 +202,10 @@ export const TestsPage: React.FC = () => {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    width: '9px', height: '9px', borderRadius: '50%',
+                    background: dotColor, flexShrink: 0,
+                  }} />
                   <span style={{
                     fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
                     flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -244,7 +258,10 @@ export const TestsPage: React.FC = () => {
                     ровно настолько актуальны, насколько свеж последний прогон —
                     дата отвечает на вопрос «можно ли им верить». Янтарь —
                     последняя попытка не удалась (VPN/сеть/креды, v1.6.4) или
-                    прогона не было дольше двух суток (или вовсе). */}
+                    прогона не было дольше двух суток (или вовсе).
+                    marginTop auto — прижата к низу: грид тянет карточки ряда
+                    на одну высоту, и низы соседок закрываются ровно (язык
+                    карточек профиля, где так ведёт себя статус-плашка). */}
                 {!s.is_demo && (() => {
                   const failing = s.last_attempt_reason;
                   const stale = !s.last_auto_refresh_at
@@ -262,6 +279,7 @@ export const TestsPage: React.FC = () => {
                       style={{
                         fontSize: '12px',
                         color: failing || stale ? colors.statusOutdated : colors.textTertiary,
+                        marginTop: 'auto',
                       }}
                     >
                       {failing

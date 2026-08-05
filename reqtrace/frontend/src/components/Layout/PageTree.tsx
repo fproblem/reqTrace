@@ -136,6 +136,15 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [adding, setAdding] = useState(false);
+
+  // Модалку добавления умеет открывать и пустой экран «/» (кнопка «Добавить
+  // страницу») — через событие, как reqtrace:refresh-run-finished: модалка и
+  // её состояние живут здесь, у дерева.
+  useEffect(() => {
+    const onOpenAdd = () => setShowAddModal(true);
+    window.addEventListener('reqtrace:open-add-page', onOpenAdd);
+    return () => window.removeEventListener('reqtrace:open-add-page', onOpenAdd);
+  }, []);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');

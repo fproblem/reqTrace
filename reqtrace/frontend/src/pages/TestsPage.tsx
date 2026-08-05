@@ -9,7 +9,7 @@ import { ProjectTestsStats } from '../types';
 import { FadeIn } from '../components/fadePresence';
 import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, ClipboardCheckIcon } from '../components/icons';
+import { ChevronRightIcon, ClipboardCheckIcon, StatusAlertIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
 import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 
@@ -54,6 +54,26 @@ export const StatusCountPill: React.FC<{ color: string; count: number; title: st
     {count}
   </span>
 );
+
+// Плашка состояния автообновления — зеркало статус-плашки подключения на
+// карточках профиля (statusPlaqueStyle в SettingsPage): заливка 15, рамка 33,
+// жирный 13px, иконка-кружок. flex: 1 — плашка забирает свободное место
+// карточки, и низы соседок в ряду закрываются ровно (грид тянет карточки
+// на одну высоту).
+const freshPlaqueStyle = (color: string): React.CSSProperties => ({
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '10px 12px',
+  borderRadius: radii.md,
+  background: `${color}15`,
+  border: `1px solid ${color}33`,
+  color,
+  fontSize: '13px',
+  fontWeight: 600,
+  lineHeight: 1.35,
+});
 
 // Скелетон карточки проекта — каркас в габаритах настоящей (заголовок,
 // главная цифра, пилюли, свежесть); количество и точные высоты придут
@@ -165,16 +185,6 @@ export const TestsPage: React.FC = () => {
         }}>
           {stats.map(s => {
             const coverage = s.highlights > 0 ? Math.round((s.covered / s.highlights) * 100) : 0;
-            // Точка у названия — язык карточек профиля (там — статус
-            // подключения); здесь красится по худшему статусу привязок,
-            // как индикатор страницы в дереве (lost > outdated > active).
-            const dotColor = s.lost > 0
-              ? colors.statusLost
-              : s.outdated > 0
-                ? colors.statusOutdated
-                : s.highlights > 0
-                  ? colors.statusActive
-                  : colors.textTertiary;
             return (
               <div
                 key={s.project_id}
@@ -201,11 +211,10 @@ export const TestsPage: React.FC = () => {
                   e.currentTarget.style.boxShadow = shadows.card;
                 }}
               >
+                {/* Точку-индикатор у названия пробовали и убрали (ревью):
+                    на профиле точка про подключение, здесь была бы про статусы
+                    привязок — одинаковый вид с разным смыслом путает. */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{
-                    width: '9px', height: '9px', borderRadius: '50%',
-                    background: dotColor, flexShrink: 0,
-                  }} />
                   <span style={{
                     fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
                     flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -254,14 +263,13 @@ export const TestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Свежесть автообновления (v1.6.2). Статусы на этом экране
-                    ровно настолько актуальны, насколько свеж последний прогон —
-                    дата отвечает на вопрос «можно ли им верить». Янтарь —
+                {/* Свежесть автообновления (v1.6.2) — статусной ПЛАШКОЙ в языке
+                    карточек профиля (ревью v1.8.0: яркая вставка про состояние
+                    тестов делает карточку значимее). Статусы экрана ровно
+                    настолько актуальны, насколько свеж последний прогон —
+                    плашка отвечает на вопрос «можно ли им верить». Янтарь —
                     последняя попытка не удалась (VPN/сеть/креды, v1.6.4) или
-                    прогона не было дольше двух суток (или вовсе).
-                    marginTop auto — прижата к низу: грид тянет карточки ряда
-                    на одну высоту, и низы соседок закрываются ровно (язык
-                    карточек профиля, где так ведёт себя статус-плашка). */}
+                    прогона не было дольше двух суток (или вовсе). */}
                 {!s.is_demo && (() => {
                   const failing = s.last_attempt_reason;
                   const stale = !s.last_auto_refresh_at
@@ -269,6 +277,8 @@ export const TestsPage: React.FC = () => {
                   const reasonText = failing === 'no_valid_credentials'
                     ? 'Нет работающих подключений'
                     : 'Confluence недоступен';
+                  const warn = !!failing || stale;
+                  const plaqueColor = warn ? colors.statusOutdated : colors.statusActive;
                   return (
                     <div
                       title={failing
@@ -276,19 +286,18 @@ export const TestsPage: React.FC = () => {
                             ? formatCheckedAt(s.last_attempt_at) : '—'}) не удалась — `
                           + 'показаны данные последнего успешного прогона'
                         : 'Когда автообновление в последний раз проверяло страницы проекта'}
-                      style={{
-                        fontSize: '12px',
-                        color: failing || stale ? colors.statusOutdated : colors.textTertiary,
-                        marginTop: 'auto',
-                      }}
+                      style={freshPlaqueStyle(plaqueColor)}
                     >
-                      {failing
-                        ? (s.last_auto_refresh_at
-                          ? `${reasonText} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
-                          : `${reasonText} — страницы ещё не проверялись`)
-                        : (s.last_auto_refresh_at
-                          ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
-                          : 'Автообновление ещё не проверяло проект')}
+                      <StatusAlertIcon kind={warn ? 'warning' : 'ok'} size={16} />
+                      <span style={{ minWidth: 0 }}>
+                        {failing
+                          ? (s.last_auto_refresh_at
+                            ? `${reasonText} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
+                            : `${reasonText} — страницы ещё не проверялись`)
+                          : (s.last_auto_refresh_at
+                            ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
+                            : 'Автообновление ещё не проверяло проект')}
+                      </span>
                     </div>
                   );
                 })()}

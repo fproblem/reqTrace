@@ -11,6 +11,7 @@ import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
 import { ChevronRightIcon, ClipboardCheckIcon } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
+import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 
 // Свежесть автообновления: человеческий формат «когда проверено».
 export function formatCheckedAt(iso: string, now: Date = new Date()): string {
@@ -105,24 +106,18 @@ export const TestsPage: React.FC = () => {
     return () => window.removeEventListener('reqtrace:refresh-run-finished', onRunFinished);
   }, [loadStats]);
 
-  // Хром экрана (заголовок, подзаголовок) не зависит от данных — он стоит
-  // с первого кадра настоящим, скелетоны занимают только место карточек.
-  const chrome = (
-    <>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '6px' }}>
-        Тесты
-      </h1>
-      <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '0 0 20px', lineHeight: 1.5 }}>
-        Обратный взгляд на покрытие: выберите проект — внутри по каждому тесту
-        видно, какие требования он держит и в каком они статусе.
-      </p>
-    </>
+  // Заголовок и пояснение живут в баре-острове (v1.8.0): каркас всех экранов
+  // единый — «бар + контент», как у страницы; бар стоит с первого кадра
+  // настоящим, скелетоны занимают только место карточек.
+  const bar = (
+    <IslandBarTitle meta="Обратный взгляд на покрытие: выберите проект — внутри по каждому тесту видно, какие требования он держит и в каком они статусе.">
+      Тесты
+    </IslandBarTitle>
   );
 
   if (stats === null) {
     return (
-      <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
-        {chrome}
+      <IslandScreen barLeft={bar} contentMaxWidth="1060px">
         {showSkeleton && (
           <FadeIn>
             <div style={{
@@ -135,20 +130,15 @@ export const TestsPage: React.FC = () => {
             </div>
           </FadeIn>
         )}
-      </div>
+      </IslandScreen>
     );
   }
 
   return (
-    // Скроллит <main> из Layout (как в профиле): свой overflow у контейнера
-    // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
-    // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
-    // оставляла всю «лишнюю» ширину одним пустым полем справа.
-    // Ширина — как у яруса 2 (1060): ярусы одного экрана не должны «дышать»
-    // при переходе между ними.
-    <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
-      {chrome}
-
+    // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
+    // Ширина колонки — как у яруса 2 (1060): ярусы одного экрана не должны
+    // «дышать» при переходе между ними.
+    <IslandScreen barLeft={bar} contentMaxWidth="1060px">
       {/* Мягкое появление данных (v1.7.1): и при переходе на экран, и после
           скелетона контент проявляется теми же 160мс, что модалки. */}
       <FadeIn>
@@ -290,7 +280,7 @@ export const TestsPage: React.FC = () => {
         </div>
       )}
       </FadeIn>
-    </div>
+    </IslandScreen>
   );
 };
 

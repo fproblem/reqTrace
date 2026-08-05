@@ -19,6 +19,7 @@ import {
   TrashIcon,
 } from '../components/icons';
 import { colors, radii, shadows } from '../styles/tokens';
+import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 import { normalizeBaseUrl } from '../utils/baseUrl';
 
 // --- Общие стили форм и модалок ---
@@ -1108,13 +1109,10 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   if (loading) {
-    // Заголовок — настоящий с первого кадра; скелетоны занимают место
-    // карточки профиля и карточек проектов.
+    // Заголовок в баре-острове — настоящий с первого кадра; скелетоны
+    // занимают место карточки профиля и карточек проектов.
     return (
-      <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
-          Профиль
-        </h1>
+      <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="960px">
         {showSkeleton && (
           <FadeIn>
             <div style={{
@@ -1150,7 +1148,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           </FadeIn>
         )}
-      </div>
+      </IslandScreen>
     );
   }
 
@@ -1158,14 +1156,10 @@ export const SettingsPage: React.FC = () => {
   const available = projects.filter(p => !p.joined);
 
   return (
-    // Колонка отцентрована (v1.6.6): прибитая к левому краю, на широком
-    // мониторе она оставляла всю «лишнюю» ширину одним пустым полем справа.
-    <div style={{ padding: '32px 40px', maxWidth: '960px', margin: '0 auto' }}>
+    // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
+    <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="960px">
       {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
       <FadeIn>
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: colors.textPrimary, marginBottom: '16px' }}>
-        Профиль
-      </h1>
 
       {/* Карточка профиля: экран называется «Профиль и проекты» — профиль
           должен быть виден первым. Данные сессии Google (имя, почта, аватар). */}
@@ -1329,7 +1323,7 @@ export const SettingsPage: React.FC = () => {
 
       {showOnboarding && <OnboardingModal onClose={() => setShowOnboarding(false)} />}
       </FadeIn>
-    </div>
+    </IslandScreen>
   );
 };
 

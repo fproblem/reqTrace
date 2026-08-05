@@ -9,7 +9,7 @@ import { ProjectTestsPage } from './pages/ProjectTestsPage';
 import { Layout } from './components/Layout/Layout';
 import { ToastProvider } from './components/Toast';
 import { TreeRefreshProvider } from './hooks/useTreeRefresh';
-import { colors, fonts } from './styles/tokens';
+import { colors, fonts, island } from './styles/tokens';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -41,6 +41,8 @@ function AppContent() {
         <Layout>
           <Routes>
             <Route path="/" element={
+              // Заглушка — тоже остров (v1.8.0): пустой экран не выбивается
+              // из общего языка «карточки на полотне».
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -48,6 +50,10 @@ function AppContent() {
                 height: '100%',
                 color: colors.textTertiary,
                 fontSize: '15px',
+                background: island.background,
+                border: island.border,
+                borderRadius: island.radius,
+                boxShadow: island.boxShadow,
               }}>
                 Выберите страницу в боковой панели
               </div>

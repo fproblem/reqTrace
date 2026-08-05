@@ -27,6 +27,7 @@ import { AnimatedHeight } from '../components/AnimatedHeight';
 import { RefreshIcon } from '../components/RefreshIcon';
 import { compareTestKeys } from '../components/PageView/testOrder';
 import { colors, radii, shadows } from '../styles/tokens';
+import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 import { plural, StatusCountPill } from './TestsPage';
 
 type FilterKey = 'all' | 'lost' | 'outdated' | 'nonstandard';
@@ -450,20 +451,24 @@ export const ProjectTestsPage: React.FC = () => {
 
   if (failed) {
     return (
-      <div style={{ padding: '60px', textAlign: 'center', color: colors.textSecondary, fontSize: '13px' }}>
-        Тесты проекта недоступны.{' '}
-        <Link to="/tests" style={{ color: colors.greenDark, fontWeight: 600 }}>К выбору проекта</Link>
-      </div>
+      <IslandScreen barLeft={<IslandBarTitle>Тесты</IslandBarTitle>} contentMaxWidth="1060px">
+        <div style={{ padding: '32px 0', textAlign: 'center', color: colors.textSecondary, fontSize: '13px' }}>
+          Тесты проекта недоступны.{' '}
+          <Link to="/tests" style={{ color: colors.greenDark, fontWeight: 600 }}>К выбору проекта</Link>
+        </div>
+      </IslandScreen>
     );
   }
   if (!data || !summary) {
-    // Скелетон яруса: полоска-заголовок (имя проекта неизвестно до ответа),
-    // поле-полоса и типовые строки ключей 48px.
+    // Скелетон яруса: имя проекта неизвестно до ответа — в баре полоска;
+    // ниже поле-полоса и типовые строки ключей 48px.
     return (
-      <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
+      <IslandScreen
+        barLeft={showSkeleton && <SkeletonBar width="220px" height={16} />}
+        contentMaxWidth="1060px"
+      >
         {showSkeleton && (
           <FadeIn>
-            <SkeletonBar width="260px" height={22} style={{ marginBottom: '20px' }} />
             <SkeletonBar width="420px" height={38} radius={10} style={{ marginBottom: '16px' }} />
             <SkeletonBar width="330px" height={12} style={{ marginBottom: '20px' }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -484,32 +489,33 @@ export const ProjectTestsPage: React.FC = () => {
             </div>
           </FadeIn>
         )}
-      </div>
+      </IslandScreen>
     );
   }
 
   return (
-    // Скроллит <main> из Layout (как в профиле): свой overflow у контейнера
-    // с maxWidth вешал скроллбар на его правый край — посреди экрана (v1.6.6).
-    // Колонка отцентрована: прибитая к левому краю, на широком мониторе она
-    // оставляла всю «лишнюю» ширину одним пустым полем справа.
-    <div style={{ padding: '32px 40px', maxWidth: '1060px', margin: '0 auto', boxSizing: 'border-box' }}>
+    // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
+    // Крошка-заголовок в баре: «Тесты» возвращает на ярус выбора проекта.
+    <IslandScreen
+      barLeft={(
+        <IslandBarTitle>
+          <Link
+            to="/tests"
+            title="К выбору проекта"
+            style={{ color: colors.textTertiary, textDecoration: 'none', transition: 'color 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = colors.greenDark; }}
+            onMouseLeave={e => { e.currentTarget.style.color = colors.textTertiary; }}
+          >
+            Тесты
+          </Link>
+          <span style={{ color: colors.textTertiary, fontWeight: 400 }}> · </span>
+          {data.project_name}
+        </IslandBarTitle>
+      )}
+      contentMaxWidth="1060px"
+    >
       {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
       <FadeIn>
-      {/* Крошка-заголовок: «Тесты» возвращает на ярус выбора проекта. */}
-      <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 16px', color: colors.textPrimary }}>
-        <Link
-          to="/tests"
-          title="К выбору проекта"
-          style={{ color: colors.textTertiary, textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { e.currentTarget.style.color = colors.greenDark; }}
-          onMouseLeave={e => { e.currentTarget.style.color = colors.textTertiary; }}
-        >
-          Тесты
-        </Link>
-        <span style={{ color: colors.textTertiary, fontWeight: 400 }}> · </span>
-        {data.project_name}
-      </h1>
 
       {/* Поиск и фильтры. Фокус поля — общий стандарт (focusBorder + кольцо). */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -871,7 +877,7 @@ export const ProjectTestsPage: React.FC = () => {
         </div>
       )}
       </FadeIn>
-    </div>
+    </IslandScreen>
   );
 };
 

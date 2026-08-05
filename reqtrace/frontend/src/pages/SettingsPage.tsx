@@ -934,17 +934,40 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         </div>
       </div>
 
-      {/* Детали */}
-      <div style={{ marginTop: '10px', fontSize: '13px', color: colors.textSecondary, lineHeight: 1.7 }}>
-        <div>Confluence: {project.confluence_base_url}</div>
-        {project.jira_base_url && <div>Jira: {project.jira_base_url}</div>}
-        <div>
-          Мой логин: {project.my_username}
-          <span style={{ color: colors.textTertiary }}> · пароль (установлен)</span>
+      {/* Детали. Метки — тихой колонкой фиксированной ширины, значения —
+          основным цветом (ревью v1.8.0: одноцветные «метка: значение»
+          сливались в единое целое); значения стоят на одной вертикали. */}
+      <div style={{
+        marginTop: '10px', fontSize: '13px', lineHeight: 1.7,
+        display: 'flex', flexDirection: 'column', gap: '2px',
+      }}>
+        <div style={{ display: 'flex', gap: '10px', minWidth: 0 }}>
+          <span style={{ color: colors.textTertiary, width: '86px', flexShrink: 0 }}>Confluence</span>
+          <span style={{ color: colors.textPrimary, minWidth: 0, overflowWrap: 'anywhere' }}>
+            {project.confluence_base_url}
+          </span>
+        </div>
+        {project.jira_base_url && (
+          <div style={{ display: 'flex', gap: '10px', minWidth: 0 }}>
+            <span style={{ color: colors.textTertiary, width: '86px', flexShrink: 0 }}>Jira</span>
+            <span style={{ color: colors.textPrimary, minWidth: 0, overflowWrap: 'anywhere' }}>
+              {project.jira_base_url}
+            </span>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: '10px', minWidth: 0 }}>
+          <span style={{ color: colors.textTertiary, width: '86px', flexShrink: 0 }}>Мой логин</span>
+          <span style={{ color: colors.textPrimary, minWidth: 0 }}>
+            {project.my_username}
+            <span style={{ color: colors.textTertiary }}> · пароль (установлен)</span>
+          </span>
         </div>
         {/* Прозрачность автообновления (v1.6.2): плановый прогон ходит в
             Confluence личными кредами участников — человек должен знать,
-            что его учётка может засветиться в аудите и без его действий. */}
+            что его учётка может засветиться в аудите и без его действий.
+            Формулировка укорочена (ревью v1.8.0): «Подключение участвует…»
+            на ширине карточки оставляло «проекта» словом-сиротой на второй
+            строке; подлежащее ясно из блока кред выше. */}
         {status === 'ok' && (
           <div
             style={{ color: colors.textTertiary }}
@@ -952,7 +975,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
               + 'кредами одного из участников с работающим подключением, а заодно перепроверяет '
               + 'сами подключения. Чтения могут отображаться в журналах Confluence под вашей учёткой'}
           >
-            Подключение участвует в плановом автообновлении проекта
+            Участвует в плановом автообновлении проекта
           </div>
         )}
       </div>

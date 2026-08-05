@@ -451,7 +451,7 @@ export const ProjectTestsPage: React.FC = () => {
 
   if (failed) {
     return (
-      <IslandScreen barLeft={<IslandBarTitle>Тесты</IslandBarTitle>} contentMaxWidth="1060px">
+      <IslandScreen barLeft={<IslandBarTitle>Тесты</IslandBarTitle>} contentMaxWidth="1060px" surface="canvas">
         <div style={{ padding: '32px 0', textAlign: 'center', color: colors.textSecondary, fontSize: '13px' }}>
           Тесты проекта недоступны.{' '}
           <Link to="/tests" style={{ color: colors.greenDark, fontWeight: 600 }}>К выбору проекта</Link>
@@ -466,6 +466,7 @@ export const ProjectTestsPage: React.FC = () => {
       <IslandScreen
         barLeft={showSkeleton && <SkeletonBar width="220px" height={16} />}
         contentMaxWidth="1060px"
+        surface="canvas"
       >
         {showSkeleton && (
           <FadeIn>
@@ -493,12 +494,24 @@ export const ProjectTestsPage: React.FC = () => {
     );
   }
 
+  // Сводка проекта — мета-строкой бара (ревью: у обоих ярусов бар «заголовок
+  // + мета», слово «Тесты» не прыгает по вертикали при переходах между ними).
+  const summaryMeta =
+    `Всего: ${summary.tests} ${plural(summary.tests, ['тест', 'теста', 'тестов'])}`
+    + ` · покрывают ${summary.links} ${plural(summary.links, ['привязку', 'привязки', 'привязок'])}`
+    + ` на ${summary.pages} ${plural(summary.pages, ['странице', 'страницах', 'страницах'])}`
+    // Разрыв цифр ярусов объясняется словами (v1.7.5).
+    + (uncoveredTotal > 0
+      ? ` · ещё ${uncoveredTotal} ${plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])} без тестов`
+      : '');
+
   return (
-    // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
+    // Контент — на полотне (surface=canvas), скроллит прозрачный скроллер.
     // Крошка-заголовок в баре: «Тесты» возвращает на ярус выбора проекта.
     <IslandScreen
+      surface="canvas"
       barLeft={(
-        <IslandBarTitle>
+        <IslandBarTitle meta={summaryMeta}>
           <Link
             to="/tests"
             title="К выбору проекта"
@@ -608,15 +621,6 @@ export const ProjectTestsPage: React.FC = () => {
         }
       `}</style>
 
-      <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '16px' }}>
-        Всего: {summary.tests} {plural(summary.tests, ['тест', 'теста', 'тестов'])}
-        {' · '}покрывают {summary.links} {plural(summary.links, ['привязку', 'привязки', 'привязок'])}
-        {' '}на {summary.pages} {plural(summary.pages, ['странице', 'страницах', 'страницах'])}
-        {/* Разрыв цифр ярусов объясняется словами (v1.7.5). */}
-        {uncoveredTotal > 0 && (
-          <>{' · '}ещё {uncoveredTotal} {plural(uncoveredTotal, ['привязка', 'привязки', 'привязок'])} без тестов</>
-        )}
-      </div>
 
       {data.tests.length === 0 && uncoveredTotal === 0 ? (
         <div style={{

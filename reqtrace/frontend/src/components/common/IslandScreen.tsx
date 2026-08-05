@@ -15,8 +15,14 @@ export const IslandScreen: React.FC<{
   barRight?: React.ReactNode;
   /** Ширина центрируемой колонки контента (например '1060px'). */
   contentMaxWidth?: string;
+  /** 'island' (по умолчанию) — контент в белой карточке со скроллом внутри
+   * (сплошной контент: страница). 'canvas' — контент лежит прямо на полотне,
+   * скроллер прозрачный: для экранов-наборов карточек («Тесты», профиль)
+   * белая пустота огромного острова читалась неуютно (ревью), карточки сами
+   * себе острова, а пустота — полотно, как поля документа. */
+  surface?: 'island' | 'canvas';
   children: React.ReactNode;
-}> = ({ barLeft, barRight, contentMaxWidth, children }) => (
+}> = ({ barLeft, barRight, contentMaxWidth, surface = 'island', children }) => (
   <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
     <div style={{
       height: '64px',
@@ -39,17 +45,35 @@ export const IslandScreen: React.FC<{
         </div>
       )}
     </div>
-    <div style={{
-      flex: 1,
-      minHeight: 0,
-      display: 'flex',
-      background: island.background,
-      border: island.border,
-      borderRadius: island.radius,
-      boxShadow: island.boxShadow,
-      overflow: 'hidden',
-    }}>
-      <div className="island-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+    {surface === 'island' ? (
+      <div style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        background: island.background,
+        border: island.border,
+        borderRadius: island.radius,
+        boxShadow: island.boxShadow,
+        overflow: 'hidden',
+      }}>
+        <div className="island-scroll" style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+          <div style={{
+            maxWidth: contentMaxWidth,
+            margin: '0 auto',
+            padding: '28px 40px 32px',
+            boxSizing: 'border-box',
+          }}>
+            {children}
+          </div>
+        </div>
+      </div>
+    ) : (
+      // Полотно: прозрачный скроллер, пилюля плавает у края полотна.
+      // scrollbar-gutter stable — колонка не дёргается на 5px между экранами
+      // со скроллом и без (жёлоб на полотне невидим, трек прозрачный).
+      <div className="island-scroll" style={{
+        flex: 1, minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable',
+      }}>
         <div style={{
           maxWidth: contentMaxWidth,
           margin: '0 auto',
@@ -59,7 +83,7 @@ export const IslandScreen: React.FC<{
           {children}
         </div>
       </div>
-    </div>
+    )}
   </div>
 );
 

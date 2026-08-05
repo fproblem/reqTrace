@@ -1112,7 +1112,7 @@ export const SettingsPage: React.FC = () => {
     // Заголовок в баре-острове — настоящий с первого кадра; скелетоны
     // занимают место карточки профиля и карточек проектов.
     return (
-      <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="960px">
+      <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="960px" surface="canvas">
         {showSkeleton && (
           <FadeIn>
             <div style={{
@@ -1157,7 +1157,7 @@ export const SettingsPage: React.FC = () => {
 
   return (
     // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
-    <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="960px">
+    <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="960px" surface="canvas">
       {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
       <FadeIn>
 

@@ -117,7 +117,7 @@ export const TestsPage: React.FC = () => {
 
   if (stats === null) {
     return (
-      <IslandScreen barLeft={bar} contentMaxWidth="1060px">
+      <IslandScreen barLeft={bar} contentMaxWidth="1060px" surface="canvas">
         {showSkeleton && (
           <FadeIn>
             <div style={{
@@ -138,7 +138,7 @@ export const TestsPage: React.FC = () => {
     // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
     // Ширина колонки — как у яруса 2 (1060): ярусы одного экрана не должны
     // «дышать» при переходе между ними.
-    <IslandScreen barLeft={bar} contentMaxWidth="1060px">
+    <IslandScreen barLeft={bar} contentMaxWidth="1060px" surface="canvas">
       {/* Мягкое появление данных (v1.7.1): и при переходе на экран, и после
           скелетона контент проявляется теми же 160мс, что модалки. */}
       <FadeIn>

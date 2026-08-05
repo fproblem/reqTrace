@@ -62,6 +62,11 @@ export const NotificationBell: React.FC = () => {
   // шапке Layout). Ширина зависит от имени пользователя в чипе — меряется при
   // открытии и на ресайзе; координаты — в системе wrapRef (панель absolute
   // внутри него). Фолбэк без якорей — прежние right: 0 / width: 400.
+  // ⚠ Капсула колокольчика меняет ширину сама (статус прогона раскрывается и
+  // сворачивается) — при этом сдвигаются и якоря, и сам wrapRef: панель со
+  // снятыми один раз координатами «уезжала» вправо по окончании прогона (баг
+  // ревью). ResizeObserver на обёртке пересчитывает геометрию на каждый тик
+  // анимации капсулы — панель остаётся прибитой к кнопкам.
   const [panelBox, setPanelBox] = useState<{ left: number; width: number } | null>(null);
   useEffect(() => {
     if (!panelMounted) return;
@@ -80,7 +85,15 @@ export const NotificationBell: React.FC = () => {
     };
     update();
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined' && wrapRef.current) {
+      ro = new ResizeObserver(update);
+      ro.observe(wrapRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', update);
+      ro?.disconnect();
+    };
   }, [panelMounted]);
 
   const load = useCallback(async () => {

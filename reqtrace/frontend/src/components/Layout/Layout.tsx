@@ -395,19 +395,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       overflow: 'hidden',
     }}>
       <style>{islandScrollStyles}</style>
-      {/* Background blobs — живут на полотне, острова непрозрачны и накрывают
-          их. Сиреневого сознательно НЕТ (исторически он красил линии шапки в
-          разные оттенки; с островами возвращать тоже незачем — полотно тихое). */}
-      <div style={{
-        position: 'fixed', bottom: '-15%', right: '-5%',
-        width: '600px', height: '600px', borderRadius: '50%',
-        background: colors.blobGreen, filter: 'blur(80px)', zIndex: 0,
-      }} />
-      <div style={{
-        position: 'fixed', top: '40%', right: '20%',
-        width: '400px', height: '400px', borderRadius: '50%',
-        background: colors.blobYellow, filter: 'blur(80px)', zIndex: 0,
-      }} />
+      {/* Блобов на рабочем полотне НЕТ (ревью v1.8.0): с непрозрачными
+          островами цветные пятна выглядывали только в гэпах и отвлекали;
+          фирменная гамма живёт в самих элементах. Блобы остались лишь на
+          экране входа — там они герой-фон под стеклянной карточкой. */}
 
       {/* Top bar */}
       <header style={{

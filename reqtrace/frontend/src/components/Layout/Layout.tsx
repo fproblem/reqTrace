@@ -8,6 +8,7 @@ import { PageTree } from './PageTree';
 import { ClipboardCheckIcon, LogoutIcon, SearchIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
 import { CommandPalette } from '../CommandPalette';
+import { HotkeysModal } from '../HotkeysModal';
 import { PANEL_ANIM_MS } from '../PageView/SidePanel';
 
 // Оба боковых острова дышат в одном ритме (ревью островов): длительность
@@ -147,15 +148,28 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const currentVersion = useCurrentVersion();
   // Глобальный поиск (Cmd+K): страницы, тесты, проекты одной палитрой.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Шпаргалка горячих клавиш — карточка по «?».
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
 
-  // Хоткей палитры. e.code, а не e.key: в русской раскладке Cmd+K отдаёт
+  // Хоткей палитры — по e.code, а не e.key: в русской раскладке Cmd+K отдаёт
   // key='л', а физическая клавиша K одна на всех раскладках. Работает и из
   // полей ввода — это стандарт палитр (поиск нужен посреди любого занятия).
+  // «?» — по e.key (символ и есть намерение, на любой раскладке), но НЕ из
+  // полей ввода (знак вопроса в тексте — обычное дело) и не поверх открытых
+  // диалогов.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyK') {
         e.preventDefault();
         setPaletteOpen(prev => !prev);
+        return;
+      }
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const t = e.target as HTMLElement | null;
+        if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t?.isContentEditable) return;
+        if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+        e.preventDefault();
+        setHotkeysOpen(true);
       }
     };
     document.addEventListener('keydown', onKey);
@@ -769,6 +783,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
+      <HotkeysModal open={hotkeysOpen} onClose={() => setHotkeysOpen(false)} />
 
       {logoutConfirmOpen && (
         <Modal title="Выйти из ReqTrace?" width="400px" onClose={() => setLogoutConfirmOpen(false)}>

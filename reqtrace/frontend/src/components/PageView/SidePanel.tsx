@@ -11,6 +11,7 @@ import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
 import { DiffPart, quoteDiff } from './quoteDiff';
+import { lostQuoteContext } from './quoteContext';
 import { sortedTests } from './testOrder';
 import { isLikelyJiraKey } from './testKeyFormat';
 
@@ -377,6 +378,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const hasNext = currentIndex < sorted.length - 1;
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
+  // Соседний текст утраченной цитаты (text_before/text_after снимка):
+  // помогает вспомнить, ГДЕ жило требование, — сама цитата со страницы уже
+  // удалена, и без окрестности место не восстановить по памяти.
+  const lostCtx = lostQuoteContext(highlight);
   const noTests = highlight.tests.length === 0;
   // Список рисуем по ключу (testOrder): сервер порядок связей не гарантирует,
   // и «как пришло» ставило только что добавленный тест в случайное место.
@@ -830,9 +835,30 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
               <QuoteIcon size={14} style={{ marginTop: '3px', color: colors.textTertiary }} />
               <div style={{ minWidth: 0, flex: 1 }}>
-                {quoteDiffParts
-                  ? <QuoteDiffView parts={quoteDiffParts} />
-                  : highlight.text_content}
+                {quoteDiffParts ? (
+                  <QuoteDiffView parts={quoteDiffParts} />
+                ) : lostCtx ? (
+                  // Утраченная цитата — в окрестности соседнего текста снимка:
+                  // соседи приглушены, цитата отвечает полужирным. Строки
+                  // контекста НЕ обрезаются по краям (пробел на стыке с
+                  // цитатой — часть текста), «…» — только когда окно захвата
+                  // упёрлось в кап и дальше текст был.
+                  <>
+                    {lostCtx.before != null && (
+                      <span style={{ color: colors.textTertiary }}>
+                        {lostCtx.beforeTruncated && '…'}
+                        {lostCtx.before}
+                      </span>
+                    )}
+                    <span style={{ fontWeight: 600 }}>{highlight.text_content}</span>
+                    {lostCtx.after != null && (
+                      <span style={{ color: colors.textTertiary }}>
+                        {lostCtx.after}
+                        {lostCtx.afterTruncated && '…'}
+                      </span>
+                    )}
+                  </>
+                ) : highlight.text_content}
               </div>
             </div>
           </div>

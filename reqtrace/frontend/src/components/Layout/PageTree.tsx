@@ -17,6 +17,23 @@ import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
+// Чипы фильтра дерева по статусу привязок. Подписи — те же короткие, что у
+// сегмент-контрола на «Тестах» («Ждут проверки», «Утрачены»); точный смысл
+// («страницы, где есть такие привязки») несёт title. Чип виден, только когда
+// таких привязок больше нуля, — пустой фильтр был бы шумом.
+const STATUS_FILTER_CHIPS: { key: 'outdated' | 'lost'; label: string; title: string }[] = [
+  {
+    key: 'outdated',
+    label: 'Ждут проверки',
+    title: 'Показать только страницы с привязками, требующими проверки',
+  },
+  {
+    key: 'lost',
+    label: 'Утрачены',
+    title: 'Показать только страницы с утраченными привязками',
+  },
+];
+
 // Плейсхолдер поиска на узком дереве обрезался жёстко, посреди буквы
 // («Поиск стран») — многоточие через ::placeholder, инлайн-стилям
 // псевдоэлемент недоступен (паттерн — TreeReveal/RefreshIcon).
@@ -148,6 +165,10 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  // Фильтр по статусу привязок (бэклог «UX-пакет»): чипы над деревом сужают
+  // его до страниц, где есть что проверить/перепривязать. Живёт в памяти
+  // (не в localStorage): фильтр — рабочий инструмент на один заход.
+  const [statusFilter, setStatusFilter] = useState<'outdated' | 'lost' | null>(null);
   // Список проектов с base URL — для выбора проекта при добавлении страницы.
   const [myProjects, setMyProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -279,10 +300,15 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     return match ? match[1] : null;
   }, [location.pathname]);
 
-  const filterSpace = useCallback((space: SpaceTree, q: string): SpaceTree | null => {
+  // Фильтр спейса по произвольному предикату страницы (поиск по названию,
+  // статус привязок или их сочетание) — подходящие страницы плюс их предки,
+  // чтобы дерево оставалось связным.
+  const filterSpace = useCallback((
+    space: SpaceTree, matches: (page: TreeNodeItem) => boolean,
+  ): SpaceTree | null => {
     const matched = new Set<string>();
     for (const page of space.pages) {
-      if (page.title.toLowerCase().includes(q)) {
+      if (matches(page)) {
         matched.add(page.confluence_page_id);
       }
     }
@@ -306,26 +332,59 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     };
   }, []);
 
+  // Сколько привязок каждого «тревожного» статуса видно в дереве — для
+  // счётчиков на чипах фильтра; нули прячут чип (фильтровать нечего).
+  const statusTotals = useMemo(() => {
+    let outdated = 0;
+    let lost = 0;
+    for (const project of projects) {
+      if (project.no_access) continue;
+      for (const space of project.spaces) {
+        for (const page of space.pages) {
+          outdated += page.highlights_outdated;
+          lost += page.highlights_lost;
+        }
+      }
+    }
+    return { outdated, lost };
+  }, [projects]);
+
+  // Счётчик фильтра дошёл до нуля (всё проверили/перепривязали, дерево
+  // перезагрузилось) — чип исчезает, фильтр обязан сброситься вместе с ним,
+  // иначе дерево останется пустым без видимой причины.
+  useEffect(() => {
+    if (statusFilter && statusTotals[statusFilter] === 0) setStatusFilter(null);
+  }, [statusFilter, statusTotals]);
+
   const filteredProjects = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return projects;
+    if (!q && !statusFilter) return projects;
+
+    const matches = (page: TreeNodeItem) =>
+      (!q || page.title.toLowerCase().includes(q)) &&
+      (!statusFilter || (statusFilter === 'outdated'
+        ? page.highlights_outdated > 0
+        : page.highlights_lost > 0));
 
     return projects
       .map(project => {
         if (project.no_access) return null; // содержимое закрыто — не ищется
         const spaces = project.spaces
-          .map(space => filterSpace(space, q))
+          .map(space => filterSpace(space, matches))
           .filter((s): s is SpaceTree => s !== null);
         if (spaces.length === 0) return null;
         return { ...project, spaces } as ProjectTree;
       })
       .filter((p): p is ProjectTree => p !== null);
-  }, [projects, searchQuery, filterSpace]);
+  }, [projects, searchQuery, statusFilter, filterSpace]);
 
   const isSearching = searchQuery.trim().length > 0;
+  // Любой активный отбор (поиск или чип статуса) принудительно раскрывает
+  // дерево — найденное должно быть видно без ручного разворачивания.
+  const isFiltering = isSearching || statusFilter !== null;
 
   const hasAnyPages = projects.some(p => p.spaces.some(s => s.pages.length > 0));
-  const isEmptySearch = isSearching && filteredProjects.length === 0;
+  const isEmptySearch = isFiltering && filteredProjects.length === 0;
   // Поиску нечего искать без страниц (и пока дерево грузится).
   const searchDisabled = loading || !hasAnyPages;
 
@@ -445,6 +504,58 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
           <PlusIcon />
         </HeaderIconButton>
       </div>
+
+      {/* Чипы фильтра по статусу привязок — над деревом (бэклог «UX-пакет»):
+          обзорное дополнение к точкам статусов у страниц. Появляются только
+          когда в дереве есть «тревожные» привязки; TreeReveal — ряд приходит
+          и уходит в общем ритме 160мс, без скачка раскладки. Активный чип —
+          в языке активной строки дерева (greenLight/greenDark), счётчик —
+          нейтральный (цветные счётчики в чипах отклонены в v1.7.5). */}
+      <TreeReveal expanded={!loading && (statusTotals.outdated > 0 || statusTotals.lost > 0)}>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '6px',
+          padding: '10px 10px 2px',
+        }}>
+          {STATUS_FILTER_CHIPS.map(chip => {
+            const count = statusTotals[chip.key];
+            if (count === 0) return null;
+            const active = statusFilter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                onClick={() => setStatusFilter(active ? null : chip.key)}
+                title={active ? 'Снять фильтр' : chip.title}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 9px',
+                  borderRadius: radii.pill,
+                  border: `1px solid ${active ? 'transparent' : colors.border}`,
+                  background: active ? colors.greenLight : 'transparent',
+                  color: active ? colors.greenDark : colors.textSecondary,
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  if (!active) e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                }}
+                onMouseLeave={e => {
+                  if (!active) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                {chip.label}
+                <span style={{ opacity: 0.75 }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </TreeReveal>
 
       {/* Модалка добавления страницы: в узком сайдбаре инлайн-форме тесно —
           URL не влезает, а выбор проекта появлялся неожиданно. */}
@@ -622,7 +733,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               toggleExpand={toggleExpand}
               activePageId={activePageId}
               navigate={navigate}
-              isSearching={isSearching}
+              isSearching={isFiltering}
               searchQuery={searchQuery}
             />
           ))

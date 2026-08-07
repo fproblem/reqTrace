@@ -8,6 +8,7 @@ import { TestsPage } from './pages/TestsPage';
 import { ProjectTestsPage } from './pages/ProjectTestsPage';
 import { Layout } from './components/Layout/Layout';
 import { ToastProvider } from './components/Toast';
+import { ReviewQueueProvider } from './components/reviewQueue';
 import { TreeRefreshProvider } from './hooks/useTreeRefresh';
 import { colors, fonts, island } from './styles/tokens';
 import { ModalButton } from './components/Modal';
@@ -81,16 +82,20 @@ function AppContent() {
   return (
     <BrowserRouter>
       <TreeRefreshProvider>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<HomeScreen />} />
-            <Route path="/pages/:pageId" element={<PageDetailPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/tests" element={<TestsPage />} />
-            <Route path="/tests/:projectId" element={<ProjectTestsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Layout>
+        {/* Очередь проверки живёт над экранами: её плавающий бар переживает
+            переходы между страницами, «Проверить» доступно ярусу «Тестов». */}
+        <ReviewQueueProvider>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<HomeScreen />} />
+              <Route path="/pages/:pageId" element={<PageDetailPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/tests" element={<TestsPage />} />
+              <Route path="/tests/:projectId" element={<ProjectTestsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </ReviewQueueProvider>
       </TreeRefreshProvider>
     </BrowserRouter>
   );

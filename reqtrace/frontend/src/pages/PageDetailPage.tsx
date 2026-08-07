@@ -111,15 +111,29 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   useEffect(() => {
     void loadPage().then(hls => {
       if (!hls) return;
-      const id = new URLSearchParams(window.location.search).get('highlight');
-      if (!id) return;
-      const target = hls.find(h => h.id === id);
-      if (!target) {
-        showToast('warning', 'Привязка по ссылке не найдена', 'Возможно, её удалили после того, как ссылку скопировали');
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('highlight');
+      if (id) {
+        const target = hls.find(h => h.id === id);
+        if (!target) {
+          showToast('warning', 'Привязка по ссылке не найдена', 'Возможно, её удалили после того, как ссылку скопировали');
+          return;
+        }
+        setSelectedHighlight(target);
+        pendingScrollHighlightRef.current = target.id;
         return;
       }
-      setSelectedHighlight(target);
-      pendingScrollHighlightRef.current = target.id;
+      // ?focus=outdated (очередь проверки): открыть панель на первой привязке
+      // «Требует проверки» — дальше пользователь идёт кликом по шапке-статусу.
+      // Все уже проверены (например, вернулись на страницу повторно) — просто
+      // обычная страница, без тостов.
+      if (params.get('focus') === 'outdated') {
+        const target = hls.find(h => h.status === 'outdated');
+        if (target) {
+          setSelectedHighlight(target);
+          pendingScrollHighlightRef.current = target.id;
+        }
+      }
     });
   }, [loadPage, showToast]);
 

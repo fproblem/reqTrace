@@ -250,6 +250,28 @@ export const api = {
   getUncoveredLinks: (projectId: string) =>
     request<UncoveredLinks>(`/projects/${projectId}/uncovered-links`),
 
+  /** CSV-срез покрытия проекта (v1.8.1). Отдаёт Blob — сохранение и имя
+   *  файла (проект + дата) на вызывающем; request() не годится: тело не JSON. */
+  downloadCoverageCsv: async (projectId: string): Promise<Blob> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/projects/${projectId}/coverage.csv`);
+    } catch {
+      throw new ApiError(0, 'Сервер недоступен. Проверьте подключение к сети');
+    }
+    if (res.status === 401) unauthorizedHandler?.();
+    if (!res.ok) {
+      let detail = '';
+      try {
+        detail = (await res.json()).detail || '';
+      } catch {
+        detail = await res.text().catch(() => '');
+      }
+      throw new ApiError(res.status, humanizeError(res.status, detail));
+    }
+    return res.blob();
+  },
+
   // Projects (v1.5.1): личные креды, живая проверка подключения
   listProjects: () =>
     request<Project[]>('/projects'),

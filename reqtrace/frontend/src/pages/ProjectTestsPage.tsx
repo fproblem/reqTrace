@@ -16,7 +16,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, CrossIcon, SearchIcon } from '../components/icons';
+import { ChevronRightIcon, CrossIcon, SearchIcon, TableIcon } from '../components/icons';
 import { highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
@@ -200,6 +200,31 @@ export const ProjectTestsPage: React.FC = () => {
   // запоминаются до конца визита — повторное раскрытие мгновенно и без сети.
   const [linksByKey, setLinksByKey] = useState<Record<string, TestLinkRef[]>>({});
   const pendingKeysRef = useRef<Set<string>>(new Set());
+
+  // Выгрузка CSV-среза покрытия (v1.8.1): Blob с бэка, имя файла — проект +
+  // дата (символы, запрещённые в именах файлов, заменяются дефисом).
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const handleExportCsv = async () => {
+    if (!projectId || exportingCsv) return;
+    setExportingCsv(true);
+    try {
+      const blob = await api.downloadCoverageCsv(projectId);
+      const safeName = (data?.project_name || 'project')
+        .replace(/[\\/:*?"<>|]/g, '-').trim();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reqtrace-покрытие-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      showToast('error', 'Не удалось выгрузить CSV', e.message);
+    } finally {
+      setExportingCsv(false);
+    }
+  };
 
   useEffect(() => {
     if (!projectId) return;
@@ -634,6 +659,35 @@ export const ProjectTestsPage: React.FC = () => {
           );
         })}
       </div>
+      {/* Выгрузка CSV-среза покрытия (v1.8.1) — кнопка-иконка в ритме бара
+          (34×34, как лупа в главной шапке): весь срез «страница × привязка ×
+          тест» одним файлом под русский Excel / Google Sheets. */}
+      <button
+        onClick={() => { void handleExportCsv(); }}
+        title="Выгрузить срез покрытия в CSV: страница, цитата, статус, тест — по строке на каждую пару"
+        style={{
+          width: '34px', height: '34px', padding: 0,
+          borderRadius: radii.md,
+          border: `1px solid ${colors.border}`,
+          background: colors.white,
+          color: colors.textSecondary,
+          cursor: exportingCsv ? 'wait' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0, transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+          e.currentTarget.style.borderColor = colors.borderHover;
+          e.currentTarget.style.color = colors.textPrimary;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = colors.white;
+          e.currentTarget.style.borderColor = colors.border;
+          e.currentTarget.style.color = colors.textSecondary;
+        }}
+      >
+        {exportingCsv ? <RefreshIcon size={15} spinning /> : <TableIcon size={16} />}
+      </button>
     </>
   );
 

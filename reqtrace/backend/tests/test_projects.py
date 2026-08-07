@@ -802,6 +802,84 @@ class TestTestsScreenEndpoints(ProjectTestBase):
         self.assertEqual(resp.status_code, 403)
 
 
+class TestCoverageCsv(ProjectTestBase):
+    """Выгружаемый срез покрытия (v1.8.1): GET /{id}/coverage.csv."""
+
+    def test_csv_row_per_link_and_uncovered_row(self):
+        """Строка = привязка × тест; привязка без тестов — строка с пустым
+        тестом; статусы по-русски, ключ нормализован, BOM + «;» + CRLF."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        created = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
+        self.session.execute_results = [
+            FakeResult(cred),   # членство ok
+            # строки: title, space, url, status, quote, created_at, author, key
+            FakeResult([
+                ("Оплата", "SPC", "https://c/1", "active",
+                 "Цитата; с точкой с запятой", created, "QA Surf", "req-1"),
+                ("Оплата", "SPC", "https://c/1", "outdated",
+                 "Без теста", created, "QA Surf", None),
+            ]),
+            FakeResult([]),     # кэша названий (test_details) нет
+        ]
+
+        resp = self.client.get(f"/api/projects/{project.id}/coverage.csv")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertIn("text/csv", resp.headers["content-type"])
+        self.assertIn("attachment", resp.headers["content-disposition"])
+
+        text = resp.content.decode("utf-8")
+        self.assertTrue(text.startswith("\ufeff"))  # BOM — для русского Excel
+        lines = text.lstrip("\ufeff").strip("\r\n").split("\r\n")
+        self.assertEqual(len(lines), 3)  # шапка + 2 строки
+        self.assertEqual(lines[0].split(";")[0], "Страница")
+        # Сортировка по (страница, цитата): «Без теста» < «Цитата…».
+        self.assertIn("Требует проверки", lines[1])
+        self.assertIn(";;", lines[1])   # колонки теста пусты
+        self.assertIn("REQ-1", lines[2])  # ключ нормализован из req-1
+        self.assertIn("Актуально", lines[2])
+        # «;» внутри цитаты — поле в кавычках, столбцы не разъезжаются.
+        self.assertIn('"Цитата; с точкой с запятой"', lines[2])
+        self.assertIn("01.08.2026", lines[2])
+
+    def test_csv_uses_cached_jira_summaries(self):
+        """Название теста — из кэша test_details (ночная синхронизация Jira)."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+
+        class FakeDetail:
+            summary = "Оплата картой"
+
+        created = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        self.session.execute_results = [
+            FakeResult(cred),
+            FakeResult([
+                ("Оплата", "SPC", "https://c/1", "active", "Цитата",
+                 created, "QA Surf", "REQ-1"),
+            ]),
+        ]
+        with patch("app.routers.projects.test_names.load_details",
+                   new=AsyncMock(return_value={"REQ-1": FakeDetail()})):
+            resp = self.client.get(f"/api/projects/{project.id}/coverage.csv")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertIn("Оплата картой", resp.content.decode("utf-8"))
+
+    def test_csv_requires_membership(self):
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [FakeResult(None)]   # кред нет
+        resp = self.client.get(f"/api/projects/{project.id}/coverage.csv")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_csv_foreign_demo_is_404(self):
+        project = make_project(is_demo=True)   # created_by — чужой
+        self.session.objects[(Project, project.id)] = project
+        resp = self.client.get(f"/api/projects/{project.id}/coverage.csv")
+        self.assertEqual(resp.status_code, 404)
+
+
 class TestManualRefreshRun(ProjectTestBase):
     """Ручной прогон с карточки проекта (v1.6.4): POST /{id}/refresh-run.
 

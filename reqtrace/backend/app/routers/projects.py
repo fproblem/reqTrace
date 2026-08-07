@@ -4,12 +4,15 @@
 Confluence — это и есть контроль доступа: без работающих кред к Confluence
 проекта членства нет. Пароли хранятся зашифрованными (Fernet, CREDENTIALS_KEY).
 """
+import csv
+import io
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -433,6 +436,79 @@ async def project_uncovered_links(
     ]
     links.sort(key=lambda l: (l.page_title, l.excerpt))
     return UncoveredLinks(links=links)
+
+
+# Статусы в выгрузке — теми же словами, что в интерфейсе (statusLabels фронта).
+_STATUS_RU = {"active": "Актуально", "outdated": "Требует проверки", "lost": "Утрачено"}
+
+
+@router.get("/{project_id}/coverage.csv")
+async def project_coverage_csv(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Выгружаемый срез покрытия (бэклог: «отчёт о покрытии + экспорт CSV»).
+
+    Одна строка = привязка × тест; привязка без единого теста — одна строка
+    с пустыми колонками теста (иначе долг покрытия выпадал бы из среза).
+    Формат — под русский Excel: UTF-8 с BOM, разделитель «;», CRLF; Google
+    Sheets и LibreOffice понимают его автоматически. Названия тестов — из
+    кэша test_details (ночная синхронизация с Jira, v1.7.0).
+
+    Доступ — как к контенту проекта (членство ok; чужое демо «не существует»).
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_access(db, project, current_user)
+
+    rows = (await db.execute(
+        select(
+            Page.title, Page.space_key, Page.confluence_url,
+            Highlight.status, Highlight.text_content, Highlight.created_at,
+            User.name, HighlightTest.test_key,
+        )
+        .join(Page, Page.id == Highlight.page_id)
+        .join(User, User.id == Highlight.created_by)
+        .outerjoin(HighlightTest, HighlightTest.highlight_id == Highlight.id)
+        .where(Page.project_id == project.id)
+    )).all()
+
+    details = await test_names.load_details(db, project.id)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    writer.writerow([
+        "Страница", "Спейс", "Статус привязки", "Цитата", "Тест",
+        "Название теста", "Автор привязки", "Привязка создана",
+        "Страница в Confluence",
+    ])
+    ordered = sorted(rows, key=lambda r: (r[0] or "", r[4] or "", _norm_key(r[7] or "")))
+    for title, space, url, status, quote, created_at, author, test_key in ordered:
+        norm = _norm_key(test_key) if test_key else ""
+        detail = details.get(norm) if norm else None
+        writer.writerow([
+            title or "",
+            space or "",
+            _STATUS_RU.get(status, status),
+            quote or "",
+            norm,
+            (detail.summary or "") if detail else "",
+            author or "",
+            created_at.strftime("%d.%m.%Y") if created_at else "",
+            url or "",
+        ])
+
+    filename = f"reqtrace-coverage-{datetime.now(timezone.utc).date().isoformat()}.csv"
+    return Response(
+        # BOM — иначе русский Excel открывает UTF-8 кракозябрами.
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        # Имя в заголовке — ASCII-запасное; человекочитаемое (с именем
+        # проекта) строит фронт при сохранении Blob'а.
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{project_id}/refresh-run", status_code=202)

@@ -5,8 +5,9 @@ import { colors, radii, island, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { PageTree } from './PageTree';
-import { ClipboardCheckIcon, LogoutIcon } from '../icons';
+import { ClipboardCheckIcon, LogoutIcon, SearchIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
+import { CommandPalette } from '../CommandPalette';
 import { PANEL_ANIM_MS } from '../PageView/SidePanel';
 
 // Оба боковых острова дышат в одном ритме (ревью островов): длительность
@@ -144,6 +145,22 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // случайный клик мгновенно выбрасывал на экран входа (ревью v1.6.5).
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const currentVersion = useCurrentVersion();
+  // Глобальный поиск (Cmd+K): страницы, тесты, проекты одной палитрой.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Хоткей палитры. e.code, а не e.key: в русской раскладке Cmd+K отдаёт
+  // key='л', а физическая клавиша K одна на всех раскладках. Работает и из
+  // полей ввода — это стандарт палитр (поиск нужен посреди любого занятия).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyK') {
+        e.preventDefault();
+        setPaletteOpen(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const [sidebar, setSidebar] = useState<SidebarState>(loadSidebarState);
   const asideRef = useRef<HTMLElement>(null);
@@ -434,6 +451,39 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             поэтому вход туда живёт под лицом пользователя, а не отдельной
             кнопкой. «Выйти» — кнопка-иконка в общем стиле кнопок баров. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          {/* Глобальный поиск — кнопка-лупа в общем языке кнопок шапки;
+              главный вход — хоткей, кнопка отвечает за находимость. Стоит
+              ЛЕВЕЕ «Тестов»: якоря панелей (data-rt-header-tests) меряются
+              от «Тестов», и добавка слева их не ломает — панели просто
+              становятся на всё тот же левый край кнопки. */}
+          {user && (
+            <button
+              onClick={() => setPaletteOpen(true)}
+              title={`Поиск по всему: страницы, тесты, проекты (${navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'})`}
+              style={{
+                width: '34px', height: '34px', padding: 0,
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border}`,
+                background: colors.white,
+                color: colors.textSecondary,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                e.currentTarget.style.borderColor = colors.borderHover;
+                e.currentTarget.style.color = colors.textPrimary;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = colors.white;
+                e.currentTarget.style.borderColor = colors.border;
+                e.currentTarget.style.color = colors.textSecondary;
+              }}
+            >
+              <SearchIcon size={16} />
+            </button>
+          )}
           {/* Раздел «Тесты» — реверс-индекс «тест → требования». Полноценная
               кнопка с текстом (не квадратик): раздел новый, его нужно найти.
               Серая в покое, зелёная — когда раздел открыт (как профиль-чип). */}
@@ -717,6 +767,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       {logoutConfirmOpen && (
         <Modal title="Выйти из ReqTrace?" width="400px" onClose={() => setLogoutConfirmOpen(false)}>

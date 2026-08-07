@@ -15,6 +15,7 @@ import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
+import { recordRecentPage } from '../components/recentPages';
 import { colors, radii, shadows, island } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -92,6 +93,8 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       setHighlights(hlData);
       // Jira теперь свойство проекта страницы — приходит вместе с ней.
       setJiraBaseUrl(pageData.jira_base_url || '');
+      // История визитов — пустое состояние глобального поиска (Cmd+K).
+      recordRecentPage(pageData.id, pageData.title);
       return hlData;
     } catch (e: any) {
       showToast('error', 'Не удалось загрузить страницу', e.message);

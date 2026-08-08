@@ -209,18 +209,26 @@ export const CoverageCsvModal: React.FC<{
         в файле есть текущий текст и пословный дифф цитаты.
       </p>
 
-      {/* Шаг 1: статусы привязок. */}
+      {/* Шаг 1: статусы привязок — в таком же сером боксе, что и JQL шага 2
+          (ревью: симметрия блоков). Ховер строк чуть темнее фона бокса. */}
       <StepLabel n={1}>Что войдёт в файл</StepLabel>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', margin: '8px 0 16px' }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: '2px',
+        margin: '8px 0 16px',
+        background: 'rgba(0,0,0,0.03)',
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.sm,
+        padding: '4px 6px',
+      }}>
         {CSV_STATUS_ORDER.map(s => (
           <label
             key={s}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '7px 10px', borderRadius: radii.md,
+              padding: '7px 10px', borderRadius: radii.sm,
               cursor: 'pointer', transition: 'background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
             <SoftCheckbox checked={picked.has(s)} onChange={() => toggle(s)} />
@@ -249,7 +257,9 @@ export const CoverageCsvModal: React.FC<{
             + 'добавить эти колонки в таблицу и выбрать «CSV (текущие поля)».'}
         />
         {filter.keys.length > 0 && (
-          <CountPill style={{ marginLeft: 'auto', marginRight: '10px' }}>
+          // 16px = паддинг серого бокса шага 1 (6) + паддинг его строк (10):
+          // правые края всех пилюль-счётчиков на одной вертикали.
+          <CountPill style={{ marginLeft: 'auto', marginRight: '16px' }}>
             {filter.keys.length}
           </CountPill>
         )}

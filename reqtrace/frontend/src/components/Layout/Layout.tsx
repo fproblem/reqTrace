@@ -4,11 +4,11 @@ import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, island, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
-import { PageTree } from './PageTree';
+import { HeaderIconButton, PageTree } from './PageTree';
 import { ClipboardCheckIcon, LogoutIcon, SearchIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
 import { CommandPalette } from '../CommandPalette';
-import { HotkeysModal } from '../HotkeysModal';
+import { HotkeysModal, PALETTE_SHORTCUT } from '../HotkeysModal';
 import { PANEL_ANIM_MS } from '../PageView/SidePanel';
 
 // Оба боковых острова дышат в одном ритме (ревью островов): длительность
@@ -151,17 +151,28 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Шпаргалка горячих клавиш — карточка по «?».
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
 
-  // Хоткей палитры — по e.code, а не e.key: в русской раскладке Cmd+K отдаёт
-  // key='л', а физическая клавиша K одна на всех раскладках. Работает и из
-  // полей ввода — это стандарт палитр (поиск нужен посреди любого занятия).
+  // Хоткей палитры — e.code ИЛИ e.key: code покрывает русскую раскладку
+  // (Cmd+K отдаёт key='л', физическая клавиша одна), key — Dvorak/Colemak,
+  // где буква k живёт на другой физической клавише. Работает и из полей
+  // ввода — это стандарт палитр; e.repeat отсекает автоповтор зажатой
+  // клавиши (палитра не мигает тумблером). Поверх открытых диалогов/меню
+  // палитра НЕ открывается: Escape-слои у всех — document-слушатели, и
+  // stopPropagation соседей не останавливает (урок SidePanel) — один Esc
+  // закрывал бы и палитру, и модалку с недописанной формой под ней.
   // «?» — по e.key (символ и есть намерение, на любой раскладке), но НЕ из
-  // полей ввода (знак вопроса в тексте — обычное дело) и не поверх открытых
-  // диалогов.
+  // полей ввода (знак вопроса в тексте — обычное дело).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyK') {
+      const isPaletteChord = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey
+        && (e.code === 'KeyK' || e.key.toLowerCase() === 'k');
+      if (isPaletteChord) {
         e.preventDefault();
-        setPaletteOpen(prev => !prev);
+        if (e.repeat) return;
+        setPaletteOpen(prev => {
+          // Палитра сама — dialog: свой Esc/повторный Cmd+K её закрывают.
+          if (!prev && document.querySelector('[role="dialog"], [role="menu"]')) return prev;
+          return !prev;
+        });
         return;
       }
       if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -465,38 +476,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             поэтому вход туда живёт под лицом пользователя, а не отдельной
             кнопкой. «Выйти» — кнопка-иконка в общем стиле кнопок баров. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          {/* Глобальный поиск — кнопка-лупа в общем языке кнопок шапки;
-              главный вход — хоткей, кнопка отвечает за находимость. Стоит
-              ЛЕВЕЕ «Тестов»: якоря панелей (data-rt-header-tests) меряются
-              от «Тестов», и добавка слева их не ломает — панели просто
-              становятся на всё тот же левый край кнопки. */}
+          {/* Глобальный поиск — кнопка-лупа (HeaderIconButton — общий стиль
+              кнопок шапок); главный вход — хоткей, кнопка отвечает за
+              находимость. Стоит ЛЕВЕЕ «Тестов»: якоря панелей
+              (data-rt-header-tests) меряются от «Тестов», и добавка слева их
+              не ломает — панели просто становятся на всё тот же левый край. */}
           {user && (
-            <button
+            <HeaderIconButton
+              title={`Поиск по всему: страницы, тесты, проекты (${PALETTE_SHORTCUT})`}
               onClick={() => setPaletteOpen(true)}
-              title={`Поиск по всему: страницы, тесты, проекты (${navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'})`}
-              style={{
-                width: '34px', height: '34px', padding: 0,
-                borderRadius: radii.md,
-                border: `1px solid ${colors.border}`,
-                background: colors.white,
-                color: colors.textSecondary,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                e.currentTarget.style.borderColor = colors.borderHover;
-                e.currentTarget.style.color = colors.textPrimary;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = colors.white;
-                e.currentTarget.style.borderColor = colors.border;
-                e.currentTarget.style.color = colors.textSecondary;
-              }}
             >
               <SearchIcon size={16} />
-            </button>
+            </HeaderIconButton>
           )}
           {/* Раздел «Тесты» — реверс-индекс «тест → требования». Полноценная
               кнопка с текстом (не квадратик): раздел новый, его нужно найти.

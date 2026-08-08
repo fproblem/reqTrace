@@ -14,6 +14,7 @@ import React, {
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { ProjectTree, TreeNodeItem } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
 import { useToast } from './Toast';
 import { useFadeToggle } from './fadePresence';
@@ -52,12 +53,17 @@ export function useReviewQueue(): ReviewQueueValue {
   return ctx;
 }
 
+// Подмножество дерева, которое реально читает выборка, — производное от
+// НАСТОЯЩИХ типов дерева (Pick), а не анонимная копия: переименование поля
+// в ProjectTree/TreeNodeItem сломает компиляцию здесь, а не молча.
+type QueueTreeProject = Pick<ProjectTree, 'project_id' | 'no_access'> & {
+  spaces: { pages: Pick<TreeNodeItem, 'id' | 'title' | 'highlights_outdated'>[] }[];
+};
+
 /** Страницы проекта с привязками «Требует проверки» — в порядке дерева.
  * Чистая выборка вынесена из start() ради тестируемости. */
 export function collectQueuePages(
-  tree: { project_id: string; no_access: boolean; spaces: { pages: {
-    id: string; title: string; highlights_outdated: number;
-  }[] }[] }[],
+  tree: QueueTreeProject[],
   projectId: string,
 ): QueuePage[] {
   const project = tree.find(p => p.project_id === projectId && !p.no_access);

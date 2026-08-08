@@ -5,7 +5,10 @@ import React from 'react';
 import { Modal } from './Modal';
 import { colors, radii } from '../styles/tokens';
 
-const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.includes('Mac');
+// Экспорт: подпись хоткея палитры едина для шпаргалки и тултипа лупы в
+// шапке — при смене детекции платформы или сочетания они не разъедутся.
+export const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.includes('Mac');
+export const PALETTE_SHORTCUT = IS_MAC ? '⌘K' : 'Ctrl+K';
 
 /** Клавиша-«кейкап»: тихая пилюля с рамкой, как у счётчиков-пилюль. */
 const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -39,7 +42,7 @@ const SECTIONS: HotkeySection[] = [
   {
     title: 'Где угодно',
     rows: [
-      { keys: [IS_MAC ? '⌘K' : 'Ctrl+K'], text: 'Глобальный поиск: страницы, тесты, проекты' },
+      { keys: [PALETTE_SHORTCUT], text: 'Глобальный поиск: страницы, тесты, проекты' },
       { keys: ['?'], text: 'Эта шпаргалка' },
       { keys: ['Esc'], text: 'Закрыть окно, меню или панель' },
     ],

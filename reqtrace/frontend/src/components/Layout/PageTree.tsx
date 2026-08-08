@@ -85,7 +85,9 @@ const TreeChevron: React.FC<{ expanded: boolean; size?: number }> = ({ expanded,
 
 // Кнопка-иконка шапки сайдбара — в точности как кнопки верхних баров страницы
 // («Обновить», «Ещё действия»): 34×34, рамка, белый фон, тот же ховер.
-const HeaderIconButton: React.FC<{
+// Экспорт (ревью v1.8.1): ею же живут лупа глобального поиска в главной
+// шапке и выгрузка CSV на «Тестах» — стиль в одном месте, не в четырёх.
+export const HeaderIconButton: React.FC<{
   title: string;
   onClick: () => void;
   disabled?: boolean;

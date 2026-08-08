@@ -1,9 +1,9 @@
 import { Highlight } from '../../types';
+import { CONTEXT_WINDOW } from './selection/selectionAnchors';
 
-/** Ширина окна контекста при захвате выделения (selectionAnchors.ts):
- * ровно столько символов до/после цитаты сохраняется в text_before/text_after.
- * Окно этой длины почти наверняка обрезано — рендер добавляет многоточие. */
-export const CONTEXT_WINDOW = 100;
+// Реэкспорт для тестов: правило «окно в полный кап = обрезано» судится
+// ровно той же величиной, которой захват режет контекст.
+export { CONTEXT_WINDOW };
 
 export interface QuoteContextParts {
   /** Текст-сосед слева от цитаты; null — соседа нет (или пустой). */

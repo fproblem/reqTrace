@@ -19,12 +19,78 @@ import { api } from '../api/client';
 import { colors, radii, shadows } from '../styles/tokens';
 import { useFadeToggle } from './fadePresence';
 import { ClipboardCheckIcon, DocumentIcon, SearchIcon, TargetIcon } from './icons';
+import { OVERLAY_Z } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
 import { highlightMatch } from './Layout/PageTree';
+import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { PaletteEntry, PaletteKind, searchPalette } from './paletteSearch';
 import { listRecentPages } from './recentPages';
 
-const OVERLAY_Z = 2000;
+// Кэш индекса палитры — модульный, на сессию SPA (ревью v1.8.1): каждое
+// открытие раньше заново гоняло дерево + реверс-индексы ВСЕХ проектов
+// (бэку это полный проход по привязкам), а быстрые тумблеры ⌘K складывали
+// параллельные штормы. Теперь: повторные открытия отвечают из кэша сразу,
+// свежая версия доезжает фоном (stale-while-revalidate); одновременные
+// открытия делят один полёт запросов; смена дерева (useTreeRefresh)
+// сбрасывает кэш.
+let paletteCache: PaletteEntry[] | null = null;
+let paletteInflight: Promise<PaletteEntry[]> | null = null;
+
+export function invalidatePaletteCache(): void {
+  paletteCache = null;
+}
+
+// Порядок массива не важен: группировку и порядок выдачи решает
+// searchPalette (GROUP_ORDER), пустой запрос смотрит только на kind==='page'.
+async function buildPaletteIndex(): Promise<PaletteEntry[]> {
+  const tree = await api.getPageTree();
+  const entries: PaletteEntry[] = [];
+  const accessible = tree.filter(p => !p.no_access);
+  for (const project of accessible) {
+    entries.push({
+      kind: 'project',
+      id: project.project_id,
+      title: project.project_name,
+      projectId: project.project_id,
+    });
+    for (const space of project.spaces) {
+      for (const page of space.pages) {
+        entries.push({
+          kind: 'page',
+          id: page.id,
+          title: page.title,
+          subtitle: `${project.project_name} · ${space.space_key}`,
+          projectId: project.project_id,
+        });
+      }
+    }
+  }
+  const results = await Promise.allSettled(
+    accessible.map(p => api.getProjectTests(p.project_id)),
+  );
+  for (const res of results) {
+    if (res.status !== 'fulfilled') continue; // проект не ответил — ищем без него
+    for (const t of res.value.tests) {
+      entries.push({
+        kind: 'test',
+        id: t.key,
+        title: t.key,
+        subtitle: t.summary ?? res.value.project_name,
+        projectId: res.value.project_id,
+      });
+    }
+  }
+  return entries;
+}
+
+function loadPaletteIndex(): Promise<PaletteEntry[]> {
+  if (!paletteInflight) {
+    paletteInflight = buildPaletteIndex().finally(() => {
+      paletteInflight = null;
+    });
+  }
+  return paletteInflight;
+}
 
 const GROUP_TITLES: Record<PaletteKind, string> = {
   page: 'Страницы',
@@ -52,9 +118,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
   const [recent, setRecent] = useState<{ id: string; title: string }[]>([]);
   const [loadingTests, setLoadingTests] = useState(false);
   const [selected, setSelected] = useState(0);
+  // Индекс хоть раз приезжал (кэш или свежий): только тогда фильтруем
+  // недавние по живым страницам — иначе «нет данных» съедал бы историю.
+  const [indexLoaded, setIndexLoaded] = useState(false);
 
-  // Сбор данных на открытие. Токен открытия отменяет отставшие ответы:
-  // палитру можно закрыть и открыть быстрее, чем приедут тесты.
+  // Изменения дерева (добавили/удалили страницу, синк, прогоны) — кэш
+  // палитры устарел.
+  const { version: treeVersion } = useTreeRefresh();
+  useEffect(() => { invalidatePaletteCache(); }, [treeVersion]);
+
+  // Сбор данных на открытие: кэш показывается сразу, свежий индекс доезжает
+  // фоном. Токен открытия отменяет отставшие ответы; закрытие тоже гасит
+  // токен (cleanup) — ответ не трогает закрытую палитру и не оставляет
+  // лоадер взведённым.
   const openTokenRef = useRef(0);
   useEffect(() => {
     if (!open) return;
@@ -62,61 +138,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     setQuery('');
     setSelected(0);
     setRecent(listRecentPages());
+    if (paletteCache) {
+      setEntries(paletteCache);
+      setIndexLoaded(true);
+    }
+    setLoadingTests(!paletteCache);
 
-    void (async () => {
-      try {
-        const tree = await api.getPageTree();
+    void loadPaletteIndex()
+      .then(index => {
+        paletteCache = index;
         if (openTokenRef.current !== token) return;
-        const pageEntries: PaletteEntry[] = [];
-        const projectEntries: PaletteEntry[] = [];
-        const accessible = tree.filter(p => !p.no_access);
-        for (const project of accessible) {
-          projectEntries.push({
-            kind: 'project',
-            id: project.project_id,
-            title: project.project_name,
-            projectId: project.project_id,
-          });
-          for (const space of project.spaces) {
-            for (const page of space.pages) {
-              pageEntries.push({
-                kind: 'page',
-                id: page.id,
-                title: page.title,
-                subtitle: `${project.project_name} · ${space.space_key}`,
-                projectId: project.project_id,
-              });
-            }
-          }
-        }
-        setEntries([...pageEntries, ...projectEntries]);
-
-        // Тесты — вторым эшелоном: поиск по страницам уже работает.
-        setLoadingTests(true);
-        const results = await Promise.allSettled(
-          accessible.map(p => api.getProjectTests(p.project_id)),
-        );
-        if (openTokenRef.current !== token) return;
-        const testEntries: PaletteEntry[] = [];
-        for (const res of results) {
-          if (res.status !== 'fulfilled') continue; // проект не ответил — ищем без него
-          for (const t of res.value.tests) {
-            testEntries.push({
-              kind: 'test',
-              id: t.key,
-              title: t.key,
-              subtitle: t.summary ?? res.value.project_name,
-              projectId: res.value.project_id,
-            });
-          }
-        }
-        setEntries(prev => [...prev.filter(e => e.kind !== 'test'), ...testEntries]);
-      } catch {
-        // Дерево не приехало — палитра остаётся с недавними страницами.
-      } finally {
+        setEntries(index);
+        setIndexLoaded(true);
+      })
+      .catch(() => {
+        // Сеть не ответила — палитра остаётся с кэшем/недавними страницами.
+      })
+      .finally(() => {
         if (openTokenRef.current === token) setLoadingTests(false);
-      }
-    })();
+      });
+    return () => { openTokenRef.current++; };
   }, [open]);
 
   // Автофокус после появления в DOM (mounted приходит из useFadeToggle).
@@ -125,18 +166,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
   }, [open, mounted]);
 
   // Выдача: по запросу — поиск, без запроса — недавние страницы (пересечённые
-  // с живыми: удалённая страница не должна вести в «не найдено»; пока дерево
-  // не приехало, показываем историю как есть).
+  // с живыми: удалённая страница не должна вести в «не найдено»). Фильтр —
+  // только когда индекс реально приезжал (indexLoaded): «дерево ещё едет» и
+  // «у пользователя ноль страниц» — разные состояния, и пустое множество
+  // known само по себе не повод показывать историю как есть.
   const results = useMemo<PaletteEntry[]>(() => {
     if (query.trim()) return searchPalette(entries, query);
     const known = new Set(entries.filter(e => e.kind === 'page').map(e => e.id));
     return recent
-      .filter(r => known.size === 0 || known.has(r.id))
+      .filter(r => !indexLoaded || known.has(r.id))
       .map(r => ({ kind: 'page' as const, id: r.id, title: r.title, projectId: '' }));
-  }, [entries, recent, query]);
+  }, [entries, recent, query, indexLoaded]);
   const isRecent = !query.trim();
 
-  useEffect(() => { setSelected(0); }, [query]);
+  // Сброс выбора при ЛЮБОЙ смене выдачи, не только запроса: дозагрузка
+  // индекса тестов пересобирает результаты, и Enter по старому индексу
+  // открывал бы не ту строку, на которой стояла подсветка.
+  useEffect(() => { setSelected(0); }, [results]);
 
   const go = useCallback((entry: PaletteEntry) => {
     onClose();

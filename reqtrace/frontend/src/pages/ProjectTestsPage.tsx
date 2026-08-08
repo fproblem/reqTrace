@@ -17,7 +17,7 @@ import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
 import { ChevronRightIcon, CrossIcon, SearchIcon, TableIcon } from '../components/icons';
-import { highlightMatch } from '../components/Layout/PageTree';
+import { HeaderIconButton, highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
 import { KeyIssueInformer } from '../components/KeyIssueInformer';
@@ -659,35 +659,16 @@ export const ProjectTestsPage: React.FC = () => {
           );
         })}
       </div>
-      {/* Выгрузка CSV-среза покрытия (v1.8.1) — кнопка-иконка в ритме бара
-          (34×34, как лупа в главной шапке): весь срез «страница × привязка ×
-          тест» одним файлом под русский Excel / Google Sheets. */}
-      <button
-        onClick={() => { void handleExportCsv(); }}
+      {/* Выгрузка CSV-среза покрытия (v1.8.1) — HeaderIconButton (общий
+          стиль кнопок шапок, как лупа поиска): весь срез «страница ×
+          привязка × тест» одним файлом под русский Excel / Google Sheets. */}
+      <HeaderIconButton
         title="Выгрузить срез покрытия в CSV: страница, цитата, статус, тест — по строке на каждую пару"
-        style={{
-          width: '34px', height: '34px', padding: 0,
-          borderRadius: radii.md,
-          border: `1px solid ${colors.border}`,
-          background: colors.white,
-          color: colors.textSecondary,
-          cursor: exportingCsv ? 'wait' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, transition: 'all 0.15s',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-          e.currentTarget.style.borderColor = colors.borderHover;
-          e.currentTarget.style.color = colors.textPrimary;
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = colors.white;
-          e.currentTarget.style.borderColor = colors.border;
-          e.currentTarget.style.color = colors.textSecondary;
-        }}
+        onClick={() => { void handleExportCsv(); }}
+        disabled={exportingCsv}
       >
         {exportingCsv ? <RefreshIcon size={15} spinning /> : <TableIcon size={16} />}
-      </button>
+      </HeaderIconButton>
     </>
   );
 

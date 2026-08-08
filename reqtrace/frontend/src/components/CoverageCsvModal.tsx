@@ -27,6 +27,7 @@ import {
   buildCoverageCsvFilename, buildJiraFilter, CSV_STATUS_ORDER, CsvStatus,
   JqlSourceTest, statusesForRequest,
 } from './csvExport';
+import { plural } from '../pages/TestsPage';
 
 const MONO = 'SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 
@@ -109,9 +110,31 @@ const StepLabel: React.FC<{ n: number; children: React.ReactNode }> = ({ n, chil
   </div>
 );
 
-// Компактная вторичная кнопка блока JQL (штатная ModalButton великовата
-// для внутренностей секции).
-const smallButtonStyle: React.CSSProperties = { padding: '7px 14px', fontSize: '13px' };
+// Кнопка-сегмент действий с фильтром (ревью: отдельные пилюли-кнопки были
+// крупноваты) — в языке сегмент-контролов приложения (фильтры яруса 2,
+// «Назад»/«Далее» бара очереди).
+const segmentButtonStyle: React.CSSProperties = {
+  height: '100%',
+  padding: '0 14px',
+  border: 'none',
+  background: 'transparent',
+  color: colors.textSecondary,
+  fontSize: '12px',
+  fontWeight: 600,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  transition: 'all 0.15s',
+};
+
+const segmentHoverOn = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+  e.currentTarget.style.color = colors.textPrimary;
+};
+
+const segmentHoverOff = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'transparent';
+  e.currentTarget.style.color = colors.textSecondary;
+};
 
 // Пилюля-счётчик — единый вид и габарит для строк статусов и шапки шага 2:
 // minWidth выравнивает 1- и 2-значные счётчики в ровную колонку (ревью:
@@ -235,8 +258,11 @@ export const CoverageCsvModal: React.FC<{
             <span style={{ fontSize: '13px', color: colors.textPrimary, flex: 1 }}>
               {STATUS_LABEL[s]}
             </span>
-            {/* Счётчик строк — нейтральная пилюля, как у фильтров «Тестов». */}
-            <CountPill>{counts[s]}</CountPill>
+            {/* Счётчик — со словом-единицей (ревью: голые цифры читались
+                неоднозначно: тут строки будущего файла, у шага 2 — тесты). */}
+            <CountPill>
+              {counts[s]} {plural(counts[s], ['строка', 'строки', 'строк'])}
+            </CountPill>
           </label>
         ))}
       </div>
@@ -260,7 +286,7 @@ export const CoverageCsvModal: React.FC<{
           // 16px = паддинг серого бокса шага 1 (6) + паддинг его строк (10):
           // правые края всех пилюль-счётчиков на одной вертикали.
           <CountPill style={{ marginLeft: 'auto', marginRight: '16px' }}>
-            {filter.keys.length}
+            {filter.keys.length} {plural(filter.keys.length, ['тест', 'теста', 'тестов'])}
           </CountPill>
         )}
       </div>
@@ -298,18 +324,32 @@ export const CoverageCsvModal: React.FC<{
               </React.Fragment>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-            <ModalButton variant="secondary" style={smallButtonStyle} onClick={() => { void handleCopyJql(); }}>
+          <div style={{
+            display: 'inline-flex',
+            height: '30px',
+            boxSizing: 'border-box',
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.pill,
+            overflow: 'hidden',
+            marginTop: '10px',
+          }}>
+            <button
+              onClick={() => { void handleCopyJql(); }}
+              style={segmentButtonStyle}
+              onMouseEnter={segmentHoverOn}
+              onMouseLeave={segmentHoverOff}
+            >
               Скопировать JQL
-            </ModalButton>
+            </button>
             {jiraSearchUrl && (
-              <ModalButton
-                variant="secondary"
-                style={smallButtonStyle}
+              <button
                 onClick={() => { window.open(jiraSearchUrl, '_blank', 'noopener,noreferrer'); }}
+                style={{ ...segmentButtonStyle, borderLeft: `1px solid ${colors.border}` }}
+                onMouseEnter={segmentHoverOn}
+                onMouseLeave={segmentHoverOff}
               >
                 Открыть в Jira
-              </ModalButton>
+              </button>
             )}
           </div>
           {filter.skipped > 0 && (

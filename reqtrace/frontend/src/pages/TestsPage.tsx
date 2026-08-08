@@ -10,8 +10,8 @@ import { FadeIn } from '../components/fadePresence';
 import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
 import {
-  ChevronRightIcon, ClipboardCheckIcon, DocumentIcon, IconBadge, PlusIcon,
-  StatusAlertIcon, SyncIcon,
+  ChevronRightIcon, ClipboardCheckIcon, DocumentIcon, PlusIcon,
+  StatusAlertIcon,
 } from '../components/icons';
 import { useReviewQueue } from '../components/reviewQueue';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -238,7 +238,10 @@ export const TestsPage: React.FC = () => {
                       при outdated>0 кнопка в янтаре статуса (сигнал v1.8.1
                       сохранён), при нуле — нейтральная с охраной в onClick
                       (урок v1.6.0: с disabled-атрибутом не живут title и
-                      курсор). stopPropagation — карточка кликабельна целиком. */}
+                      курсор). Подпись — именем фичи, с шевроном перехода
+                      (ревью: «Проверить» со стрелками читалось как проверка
+                      доступов с профиля). stopPropagation — карточка
+                      кликабельна целиком. */}
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -249,7 +252,7 @@ export const TestsPage: React.FC = () => {
                       ? 'Пройти все привязки «Требует проверки» потоком: страница за страницей, с прогрессом'
                       : 'Привязок «Требует проверки» нет — очередь проверки пуста'}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '7px',
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
                       height: '34px', padding: '0 14px', borderRadius: radii.pill,
                       background: s.outdated > 0 ? `${colors.statusOutdated}15` : colors.white,
                       border: `1px solid ${s.outdated > 0 ? `${colors.statusOutdated}33` : colors.border}`,
@@ -265,24 +268,24 @@ export const TestsPage: React.FC = () => {
                       if (s.outdated > 0) e.currentTarget.style.background = `${colors.statusOutdated}15`;
                     }}
                   >
-                    <SyncIcon size={14} />
-                    Проверить
+                    Очередь проверки
+                    <ChevronRightIcon size={12} />
                   </button>
                   <ChevronRightIcon size={16} style={{ color: colors.textTertiary }} />
                 </div>
 
-                {/* Три колонки сводки: тесты / покрытие / объём. */}
+                {/* Три колонки сводки: тесты / покрытие / объём — с
+                    вертикальными дивайдерами между ними (ревью v1.8.2). */}
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: '1.1fr 1.5fr 0.8fr',
-                  gap: '32px',
+                  columnGap: '28px',
                   alignItems: 'center',
                 }}>
-                  {/* Тесты — главная цифра экрана. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-                    <IconBadge tint="green" size={44}>
-                      <ClipboardCheckIcon size={20} />
-                    </IconBadge>
+                  {/* Тесты — главная цифра экрана; иконка без подложки
+                      (ревью v1.8.2: плитку-бейдж убрали). */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                    <ClipboardCheckIcon size={26} style={{ color: colors.greenDark }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                         <span style={{ fontSize: '32px', fontWeight: 700, color: colors.textPrimary, lineHeight: 1.1 }}>
@@ -302,7 +305,11 @@ export const TestsPage: React.FC = () => {
                   {/* Покрытие: шкала с процентом + пилюли всех трёх статусов
                       со словесными подписями (место есть — нулевые тоже
                       видны, ноль тут хорошая новость). */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0 }}>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0,
+                    borderLeft: `1px solid ${colors.border}`, paddingLeft: '28px',
+                    alignSelf: 'stretch', justifyContent: 'center',
+                  }}>
                     <span style={labelStyle}>Покрытие</span>
                     <div
                       title={`Доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
@@ -338,8 +345,16 @@ export const TestsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Объём проекта в страницах. */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0 }}>
+                  {/* Объём проекта в страницах (подстрока «всего в проекте»
+                      убрана по ревью — смысл несёт title). */}
+                  <div
+                    title="Страниц в проекте всего"
+                    style={{
+                      display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0,
+                      borderLeft: `1px solid ${colors.border}`, paddingLeft: '28px',
+                      alignSelf: 'stretch', justifyContent: 'center',
+                    }}
+                  >
                     <span style={labelStyle}>Объём</span>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                       <DocumentIcon size={16} style={{ color: colors.textSecondary, alignSelf: 'center' }} />
@@ -350,9 +365,6 @@ export const TestsPage: React.FC = () => {
                         {plural(s.pages, ['страница', 'страницы', 'страниц'])}
                       </span>
                     </div>
-                    <span style={{ fontSize: '12px', color: colors.textTertiary }}>
-                      всего в проекте
-                    </span>
                   </div>
                 </div>
 

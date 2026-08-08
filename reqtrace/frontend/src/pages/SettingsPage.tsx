@@ -850,7 +850,10 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           onMouseLeave={iconButtonHoverOff}
         >
           <ExpandingSpinner active={spinnerShown} size={16} />
-          Проверить
+          {/* Полное имя действия (ревью v1.8.2): на широкой карточке место
+              есть, а короткое «Проверить» путалось с очередью проверки
+              на «Тестах». */}
+          Проверить подключение
         </button>
         <div style={{ position: 'relative' }} ref={menuRef}>
           <button

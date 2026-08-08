@@ -1,29 +1,26 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
-import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
+import { ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { LockIcon } from '../icons';
-import { Select } from '../Select';
-import { FadeIn } from '../fadePresence';
-import { Modal, ModalButton, modalTextStyle } from '../Modal';
+import { FadeIn, useFadeToggle } from '../fadePresence';
 import { useDelayedFlag } from '../Skeleton';
 import { TreeReveal } from '../TreeReveal';
-import { ChevronRightIcon, CrossIcon, DocumentIcon, PlusIcon, SearchIcon } from '../icons';
+import { ChevronRightIcon, CrossIcon, DocumentIcon, FilterIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
 import { colors, radii, shadows } from '../../styles/tokens';
-import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
-// Сегменты фильтра дерева по статусу привязок. Подписи — те же короткие,
-// что у сегмент-контрола на «Тестах» («Ждут проверки», «Утрачены»); точный
-// смысл («страницы, где есть такие привязки») несёт title. Отдельные
-// чипы-россыпь пробовали и переделали (отзыв пользователя v1.8.1) — тот же
-// урок, что на ярусе 2: одна рамка читается одним элементом, россыпь
-// «сваливается в дерево».
-const STATUS_FILTER_SEGMENTS: { key: 'outdated' | 'lost'; label: string; title: string }[] = [
+// Опции фильтра дерева по статусу привязок — чипы в поповере под
+// кнопкой-воронкой в шапке (итог трёх итераций с пользователем v1.8.1:
+// чипы-россыпь над деревом «сваливались» в него, сегмент-контрол спорил за
+// ширину узкого сайдбара — поповер даёт чипам воздух, а шапке тишину).
+// Подписи — те же короткие, что на «Тестах» («Ждут проверки», «Утрачены»);
+// точный смысл («страницы, где есть такие привязки») несёт title.
+const STATUS_FILTERS: { key: 'outdated' | 'lost'; label: string; title: string }[] = [
   {
     key: 'outdated',
     label: 'Ждут проверки',
@@ -143,43 +140,49 @@ function saveExpandState(state: Record<string, boolean>) {
   localStorage.setItem(TREE_STATE_KEY, JSON.stringify(state));
 }
 
-interface PageTreeProps {
-  onPageAdded?: () => void;
-}
-
-export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
+// Модалка добавления страницы больше не живёт здесь (v1.8.1): добавление —
+// редкое действие настройки, его входы — меню карточки проекта в профиле,
+// пустой экран «/» и пустое дерево; все шлют reqtrace:open-add-page, слушает
+// Layout (он смонтирован и при дереве, свёрнутом в рельсу).
+export const PageTree: React.FC = () => {
   const [projects, setProjects] = useState<ProjectTree[]>([]);
   const [loading, setLoading] = useState(true);
   // Лоадер — только если ответ не мгновенный (v1.7.1, как у страниц):
   // мелькание «Загрузки…» на быстрых ответах хуже её отсутствия.
   const showLoader = useDelayedFlag(loading);
   const [expandState, setExpandState] = useState<Record<string, boolean>>(loadExpandState);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newUrl, setNewUrl] = useState('');
-  const [adding, setAdding] = useState(false);
-
-  // Модалку добавления умеет открывать и пустой экран «/» (кнопка «Добавить
-  // страницу») — через событие, как reqtrace:refresh-run-finished: модалка и
-  // её состояние живут здесь, у дерева.
-  useEffect(() => {
-    const onOpenAdd = () => setShowAddModal(true);
-    window.addEventListener('reqtrace:open-add-page', onOpenAdd);
-    return () => window.removeEventListener('reqtrace:open-add-page', onOpenAdd);
-  }, []);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  // Фильтр по статусу привязок (бэклог «UX-пакет»): чипы над деревом сужают
-  // его до страниц, где есть что проверить/перепривязать. Живёт в памяти
+  // Фильтр по статусу привязок (бэклог «UX-пакет»): сужает дерево до
+  // страниц, где есть что проверить/перепривязать. Живёт в памяти
   // (не в localStorage): фильтр — рабочий инструмент на один заход.
   const [statusFilter, setStatusFilter] = useState<'outdated' | 'lost' | null>(null);
-  // Список проектов с base URL — для выбора проекта при добавлении страницы.
-  const [myProjects, setMyProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  // Поповер опций фильтра — под кнопкой-воронкой в шапке (на месте бывшего
+  // «плюса»); мягкое появление/гашение — как у меню действий.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const { mounted: filterMounted, fadeStyle: filterFade } = useFadeToggle(filterOpen);
+  const filterRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
   const { version: treeVersion } = useTreeRefresh();
+
+  // Поповер фильтра закрывается кликом вне и Escape — как меню «⋮» страницы.
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!filterRef.current?.contains(e.target as Node)) setFilterOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFilterOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [filterOpen]);
 
   const loadTree = useCallback(async () => {
     try {
@@ -196,29 +199,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   // and on explicit refresh signal (изменения проектов на экране настроек).
   useEffect(() => { loadTree(); }, [location.pathname, treeVersion, loadTree]);
 
-  // Проекты с кредами подтягиваются при открытии формы добавления.
-  useEffect(() => {
-    if (!showAddModal) return;
-    api.listProjects()
-      .then(setMyProjects)
-      .catch(() => setMyProjects([]));
-  }, [showAddModal]);
-
-  // Проекты текущего пользователя, которым подходит введённая ссылка.
-  const candidateProjects = useMemo(() => {
-    const url = newUrl.trim();
-    if (!url) return [];
-    return myProjects.filter(
-      p => p.joined && p.my_status === 'ok' && urlBelongsToBase(url, p.confluence_base_url)
-    );
-  }, [newUrl, myProjects]);
-
-  useEffect(() => {
-    if (candidateProjects.length > 0 && !candidateProjects.some(p => p.id === selectedProjectId)) {
-      setSelectedProjectId(candidateProjects[0].id);
-    }
-  }, [candidateProjects, selectedProjectId]);
-
   const toggleExpand = useCallback((key: string) => {
     setExpandState(prev => {
       // Default is collapsed, so undefined → expand (true)
@@ -228,34 +208,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       return next;
     });
   }, []);
-
-  const closeAddModal = useCallback(() => {
-    setShowAddModal(false);
-    setNewUrl('');
-    setError('');
-  }, []);
-
-  const handleAddPage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUrl.trim()) return;
-    setAdding(true);
-    setError('');
-    try {
-      const projectId = candidateProjects.length > 1 ? selectedProjectId : undefined;
-      const page = await api.addPage(newUrl.trim(), projectId);
-      setNewUrl('');
-      setShowAddModal(false);
-      await loadTree();
-      navigate(`/pages/${page.id}`);
-      onPageAdded?.();
-    } catch (e: any) {
-      const msg = e.message || 'Ошибка при добавлении';
-      setError(msg);
-      showToast('error', 'Не удалось добавить страницу', msg);
-    } finally {
-      setAdding(false);
-    }
-  };
 
   const handleAddDemo = async () => {
     try {
@@ -504,181 +456,123 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
         >
           <RefreshIcon size={16} spinning={syncing} />
         </HeaderIconButton>
-        <HeaderIconButton title="Добавить страницу" onClick={() => setShowAddModal(true)}>
-          <PlusIcon />
-        </HeaderIconButton>
-      </div>
-
-      {/* Фильтр по статусу привязок — сегмент-контрол над деревом (бэклог
-          «UX-пакет»; переделан из чипов-россыпи по отзыву пользователя — тот
-          же язык и урок, что фильтры яруса 2 «Тестов»: одна рамка читается
-          одним элементом). Во всю ширину сайдбара; ширина делится ПО
-          СОДЕРЖИМОМУ (решение пользователя v1.8.1): «Ждут проверки» держит
-          естественную ширину и НЕ уходит в эллипсис, «Утрачены» забирает
-          остаток и уступает на самом узком дереве. Активный сегмент —
-          зелёная заливка с белым текстом; клик по активному снимает фильтр;
-          нулевой сегмент глушится (охрана в onClick — title и курсор должны
-          жить, урок v1.6.0). Счётчики — нейтральные пилюли, на активном —
-          полупрозрачно-белые (в точности ярус 2). Ряд виден, только когда
-          есть «тревожные» привязки; TreeReveal — приходит и уходит в общем
-          ритме 160мс. */}
-      <TreeReveal expanded={!loading && (statusTotals.outdated > 0 || statusTotals.lost > 0)}>
-        <div style={{ padding: '10px 10px 2px' }}>
-          <div style={{
-            display: 'flex',
-            height: '30px',
-            boxSizing: 'border-box',
-            borderRadius: radii.md,
-            border: `1px solid ${colors.border}`,
-            overflow: 'hidden',
-            background: colors.white,
-          }}>
-            {STATUS_FILTER_SEGMENTS.map(segment => {
-              const count = statusTotals[segment.key];
-              const active = statusFilter === segment.key;
-              const disabled = count === 0 && !active;
-              // «Ждут проверки» — самый длинный ярлык: его сегмент держит
-              // естественную ширину (flexShrink 0), эллипсис ему запрещён;
-              // ширину отдаёт сосед «Утрачены» (flex 1 + minWidth 0).
-              const keepsWidth = segment.key === 'outdated';
-              return (
-                <button
-                  key={segment.key}
-                  onClick={() => {
-                    if (disabled) return;
-                    setStatusFilter(active ? null : segment.key);
-                  }}
-                  title={disabled
-                    ? 'Таких привязок сейчас нет'
-                    : active ? 'Снять фильтр' : segment.title}
-                  style={{
-                    ...(keepsWidth
-                      ? { flexShrink: 0 }
-                      : { flex: 1, minWidth: 0 }),
-                    height: '100%',
-                    padding: '0 10px',
-                    border: 'none',
-                    background: active ? colors.greenAccent : 'transparent',
-                    color: active ? '#fff'
-                      : disabled ? colors.textTertiary : colors.textSecondary,
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: disabled ? 'default' : 'pointer',
-                    fontFamily: 'inherit',
-                    transition: 'all 0.15s',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '5px',
-                  }}
-                  onMouseEnter={e => {
-                    if (active) {
-                      e.currentTarget.style.background = colors.greenDark;
-                    } else if (!disabled) {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                      e.currentTarget.style.color = colors.textPrimary;
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = active ? colors.greenAccent : 'transparent';
-                    e.currentTarget.style.color = active ? '#fff'
-                      : disabled ? colors.textTertiary : colors.textSecondary;
-                  }}
-                >
-                  <span style={keepsWidth ? { whiteSpace: 'nowrap' } : {
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    minWidth: 0,
-                  }}>
-                    {segment.label}
-                  </span>
-                  {count > 0 && (
-                    <span style={{
-                      padding: '1px 6px',
-                      borderRadius: radii.pill,
-                      background: active ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.05)',
-                      color: active ? '#fff' : colors.textSecondary,
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      lineHeight: 1.4,
-                      flexShrink: 0,
-                    }}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </TreeReveal>
-
-      {/* Модалка добавления страницы: в узком сайдбаре инлайн-форме тесно —
-          URL не влезает, а выбор проекта появлялся неожиданно. */}
-      {showAddModal && (
-        <Modal title="Добавить страницу" onClose={closeAddModal} width="460px">
-          <form onSubmit={handleAddPage}>
-            <p style={modalTextStyle}>
-              Вставьте ссылку на страницу Confluence — она добавится в дерево
-              вместе со структурой своего раздела.
-            </p>
-            <input
-              type="text"
-              value={newUrl}
-              onChange={e => setNewUrl(e.target.value)}
-              placeholder="https://confluence…/pages/viewpage.action?pageId=…"
-              autoFocus
+        {/* Фильтр по статусу привязок — воронка на месте бывшего «плюса»
+            (решение пользователя v1.8.1: добавление страницы — редкое
+            действие настройки, уехало к карточке проекта в профиле).
+            По тапу — поповер с чипами опций; кнопка зелёная, пока фильтр
+            активен. Обе опции по нулям — кнопка глушится с подсказкой
+            (охрана в onClick, урок v1.6.0). */}
+        <div style={{ position: 'relative', flexShrink: 0 }} ref={filterRef}>
+          {(() => {
+            const filterActive = statusFilter !== null;
+            const filterEmpty = statusTotals.outdated === 0 && statusTotals.lost === 0;
+            return (
+              <button
+                onClick={() => { if (!filterEmpty) setFilterOpen(prev => !prev); }}
+                aria-haspopup="menu"
+                aria-expanded={filterOpen}
+                title={filterEmpty
+                  ? 'Фильтровать нечего: привязок «Требует проверки» или «Утрачено» нет'
+                  : 'Фильтр дерева по статусу привязок'}
+                style={{
+                  width: '34px', height: '34px', padding: 0,
+                  borderRadius: radii.md,
+                  border: `1px solid ${filterActive ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
+                  background: filterActive ? colors.greenLight : colors.white,
+                  color: filterActive ? colors.greenDark
+                    : filterEmpty ? colors.textTertiary : colors.textSecondary,
+                  cursor: filterEmpty ? 'default' : 'pointer',
+                  opacity: filterEmpty ? 0.55 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  if (filterActive || filterEmpty) return;
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.borderColor = colors.borderHover;
+                  e.currentTarget.style.color = colors.textPrimary;
+                }}
+                onMouseLeave={e => {
+                  if (filterActive || filterEmpty) return;
+                  e.currentTarget.style.background = colors.white;
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = colors.textSecondary;
+                }}
+              >
+                <FilterIcon size={15} />
+              </button>
+            );
+          })()}
+          {filterMounted && (
+            <div
+              role="menu"
               style={{
-                width: '100%',
-                padding: '9px 12px',
-                borderRadius: radii.md,
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                right: 0,
+                zIndex: 30,
+                padding: '8px',
+                background: colors.white,
                 border: `1px solid ${colors.border}`,
-                fontSize: '13px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
+                borderRadius: radii.md,
+                boxShadow: shadows.panel,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                ...filterFade,
               }}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = colors.focusBorder;
-                e.currentTarget.style.boxShadow = shadows.focusRing;
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = colors.border;
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
-            {candidateProjects.length > 1 && (
-              <Select
-                value={selectedProjectId}
-                onChange={setSelectedProjectId}
-                size="sm"
-                title="Проект, в который добавить страницу"
-                style={{ marginTop: '10px', width: '100%' }}
-                options={candidateProjects.map(p => ({
-                  value: p.id,
-                  label: `В проект: ${p.name}`,
-                }))}
-              />
-            )}
-            {error && (
-              <div style={{ color: colors.statusLost, fontSize: '12px', marginTop: '10px' }}>
-                {error}
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
-              <ModalButton type="button" onClick={closeAddModal}>
-                Отмена
-              </ModalButton>
-              <ModalButton type="submit" variant="primary" disabled={!newUrl.trim() || adding}>
-                {adding ? 'Добавляем…' : 'Добавить'}
-              </ModalButton>
+            >
+              {STATUS_FILTERS.map(option => {
+                const count = statusTotals[option.key];
+                const active = statusFilter === option.key;
+                const disabled = count === 0 && !active;
+                return (
+                  <button
+                    key={option.key}
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => {
+                      if (disabled) return;
+                      setStatusFilter(active ? null : option.key);
+                      setFilterOpen(false);
+                    }}
+                    title={disabled
+                      ? 'Таких привязок сейчас нет'
+                      : active ? 'Снять фильтр' : option.title}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 10px',
+                      borderRadius: radii.pill,
+                      border: `1px solid ${active ? 'transparent' : colors.border}`,
+                      background: active ? colors.greenLight : 'transparent',
+                      color: active ? colors.greenDark
+                        : disabled ? colors.textTertiary : colors.textSecondary,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: disabled ? 'default' : 'pointer',
+                      fontFamily: 'inherit',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.15s',
+                      opacity: disabled ? 0.55 : 1,
+                    }}
+                    onMouseEnter={e => {
+                      if (!active && !disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!active) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {option.label}
+                    <span style={{ opacity: 0.75, marginLeft: 'auto' }}>{count}</span>
+                  </button>
+                );
+              })}
             </div>
-          </form>
-        </Modal>
-      )}
+          )}
+        </div>
+      </div>
 
       {/* Tree content */}
       <div className="island-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
@@ -759,21 +653,44 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
               Нет страниц
             </div>
-            <button
-              onClick={handleAddDemo}
-              style={{
-                padding: '6px 12px',
-                borderRadius: radii.sm,
-                border: `1px solid ${colors.border}`,
-                background: 'transparent',
-                color: colors.textSecondary,
-                fontSize: '11px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              Демо-страница
-            </button>
+            {/* Колонкой, как в состоянии «нет проектов»: главное действие —
+                добавить первую страницу (кнопка из шапки дерева уехала к
+                карточке проекта, v1.8.1 — пустому дереву нужен свой вход). */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+            }}>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('reqtrace:open-add-page'))}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: 'none',
+                  background: colors.greenAccent,
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Добавить страницу
+              </button>
+              <button
+                onClick={handleAddDemo}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Демо-страница
+              </button>
+            </div>
           </div>
         ) : isEmptySearch ? (
           <div style={{ padding: '12px 4px', textAlign: 'center' }}>

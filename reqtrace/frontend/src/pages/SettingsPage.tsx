@@ -881,9 +881,32 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                 ...menuFade,
               }}
             >
+              {/* «Добавить страницу» переехала сюда из шапки дерева (v1.8.1,
+                  решение пользователя): добавление — редкое действие
+                  настройки проекта, а не ежедневной навигации. Модалка живёт
+                  в Layout — открывается событием. Только при рабочем
+                  подключении: без кред страницу не забрать. */}
+              {status === 'ok' && (
+                <button
+                  role="menuitem"
+                  title="Добавить страницу Confluence в дерево — вместе со структурой её раздела"
+                  style={menuItemStyle}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    window.dispatchEvent(new CustomEvent('reqtrace:open-add-page'));
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <PlusIcon size={15} />
+                  Добавить страницу
+                </button>
+              )}
               {/* Ручной прогон (v1.6.4): тот же полный прогон, что ночью, —
                   спасение, когда в 03:00 не было VPN, а обновления нужны
-                  сейчас. Только при рабочем подключении. */}
+                  сейчас. Только при рабочем подключении. Подпись без
+                  «сейчас» (ревью пользователя v1.8.1: слово лишнее — тултип
+                  и так объясняет немедленность). */}
               {status === 'ok' && (
                 <button
                   role="menuitem"
@@ -894,7 +917,7 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   <SyncNowIcon />
-                  Обновить страницы сейчас
+                  Обновить страницы
                 </button>
               )}
               <button

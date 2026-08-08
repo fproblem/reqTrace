@@ -7,6 +7,7 @@ import { Modal, ModalButton, modalTextStyle } from '../Modal';
 import { HeaderIconButton, PageTree } from './PageTree';
 import { ClipboardCheckIcon, LogoutIcon, SearchIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
+import { AddPageModal } from '../AddPageModal';
 import { CommandPalette } from '../CommandPalette';
 import { HotkeysModal, PALETTE_SHORTCUT } from '../HotkeysModal';
 import { PANEL_ANIM_MS } from '../PageView/SidePanel';
@@ -150,6 +151,16 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Шпаргалка горячих клавиш — карточка по «?».
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  // Модалка «Добавить страницу» (v1.8.1) — живёт здесь, а не в PageTree:
+  // Layout смонтирован всегда, и событие открытия слышно даже при дереве,
+  // свёрнутом в рельсу. Шлют его пустой экран «/», пустое дерево и меню
+  // карточки проекта в профиле.
+  const [addPageOpen, setAddPageOpen] = useState(false);
+  useEffect(() => {
+    const onOpenAdd = () => setAddPageOpen(true);
+    window.addEventListener('reqtrace:open-add-page', onOpenAdd);
+    return () => window.removeEventListener('reqtrace:open-add-page', onOpenAdd);
+  }, []);
 
   // Хоткей палитры — e.code ИЛИ e.key: code покрывает русскую раскладку
   // (Cmd+K отдаёт key='л', физическая клавиша одна), key — Dvorak/Colemak,
@@ -776,6 +787,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       <HotkeysModal open={hotkeysOpen} onClose={() => setHotkeysOpen(false)} />
+
+      <AddPageModal open={addPageOpen} onClose={() => setAddPageOpen(false)} />
 
       {logoutConfirmOpen && (
         <Modal title="Выйти из ReqTrace?" width="400px" onClose={() => setLogoutConfirmOpen(false)}>

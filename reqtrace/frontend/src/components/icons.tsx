@@ -114,6 +114,10 @@ export const TrashIcon = makeIcon(<>
   <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
 </>);
 
+export const FilterIcon = makeIcon(
+  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+);
+
 export const SearchIcon = makeIcon(<>
   <circle cx="11" cy="11" r="7" />
   <line x1="21" y1="21" x2="16.5" y2="16.5" />

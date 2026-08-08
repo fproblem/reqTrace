@@ -12,7 +12,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from cryptography.fernet import InvalidToken
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -53,7 +53,9 @@ from app.schemas.project import (
     UncoveredStats,
 )
 from app.services import confluence, jira, test_names
+from app.services.anchoring import norm_key as _norm_text
 from app.services.confluence import ConfluenceAuthError, ConfluenceConnection
+from app.services.quote_diff import quote_word_diff
 
 logger = logging.getLogger(__name__)
 
@@ -465,6 +467,7 @@ def _report_tz():
 @router.get("/{project_id}/coverage.csv")
 async def project_coverage_csv(
     project_id: UUID,
+    status: list[str] | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -476,33 +479,54 @@ async def project_coverage_csv(
     Sheets и LibreOffice понимают его автоматически. Названия тестов — из
     кэша test_details (ночная синхронизация с Jira, v1.7.0).
 
+    v1.8.2 — срез стал сырьём для внешней ИИ-системы актуализации тестов:
+    - ?status=outdated&status=lost (повторяемый) — только привязки этих
+      статусов; без параметра — все. Фильтр в SQL, а не по готовым строкам:
+      выгрузка не должна поднимать из БД цитаты, которые сама же выкинет.
+    - У изменившихся привязок «Требует проверки» — колонки «Текущий текст»
+      (anchored_text) и «Дифф цитаты» (пословный, [-удалено-] {+добавлено+});
+      колонки есть ВСЕГДА (у остальных строк пустые) — состав колонок
+      стабилен, парсеру внешней системы не нужно два формата файла.
+
     Доступ — как к контенту проекта (членство ok; чужое демо «не существует»).
     """
+    statuses = list(dict.fromkeys(status)) if status else None
+    if statuses:
+        unknown = sorted(set(statuses) - set(_STATUS_RU))
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown status filter: {', '.join(unknown)}",
+            )
+
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     await require_project_access(db, project, current_user)
 
-    rows = (await db.execute(
+    stmt = (
         select(
             Page.title, Page.space_key, Page.confluence_url,
-            Highlight.status, Highlight.text_content, Highlight.created_at,
-            User.name, HighlightTest.test_key,
+            Highlight.status, Highlight.text_content, Highlight.anchored_text,
+            Highlight.created_at, User.name, HighlightTest.test_key,
         )
         .join(Page, Page.id == Highlight.page_id)
         .join(User, User.id == Highlight.created_by)
         .outerjoin(HighlightTest, HighlightTest.highlight_id == Highlight.id)
         .where(Page.project_id == project.id)
-    )).all()
+    )
+    if statuses:
+        stmt = stmt.where(Highlight.status.in_(statuses))
+    rows = (await db.execute(stmt)).all()
 
     details = await test_names.load_details(db, project.id)
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     writer.writerow([
-        "Страница", "Спейс", "Статус привязки", "Цитата", "Тест",
-        "Название теста", "Автор привязки", "Привязка создана",
-        "Страница в Confluence",
+        "Страница", "Спейс", "Статус привязки", "Цитата", "Текущий текст",
+        "Дифф цитаты", "Тест", "Название теста", "Автор привязки",
+        "Привязка создана", "Страница в Confluence",
     ])
     report_tz = _report_tz()
     records = [
@@ -511,23 +535,46 @@ async def project_coverage_csv(
             "space": space or "",
             "url": url or "",
             "status": _STATUS_RU.get(status, status),
+            # «Было/стало» заполняются, только когда текст под маркером
+            # реально изменился, — по тому же правилу, что дифф в панели
+            # (SidePanel): outdated + anchored_text отличен от цитаты по
+            # norm_key (пробелы и невидимые символы — не изменение).
+            "changed": (
+                status == "outdated" and anchored is not None
+                and _norm_text(anchored) != _norm_text(quote or "")
+            ),
             "quote": quote or "",
+            "anchored": anchored or "",
             "created": created_at.astimezone(report_tz).strftime("%d.%m.%Y") if created_at else "",
             "author": author or "",
             "key": _norm_key(test_key) if test_key else "",
         }
-        for title, space, url, status, quote, created_at, author, test_key in rows
+        for title, space, url, status, quote, anchored, created_at, author, test_key in rows
     ]
     # Сортировка по именованным полям, не по индексам кортежа select:
     # перестановка колонок запроса не должна молча менять порядок среза.
     records.sort(key=lambda r: (r["title"], r["quote"], r["key"]))
+    # Дифф — по паре текстов, один раз на уникальную пару: привязка с
+    # несколькими тестами даёт несколько строк, пересчитывать дифф для
+    # каждой — квадратичная работа впустую.
+    diff_cache: dict[tuple[str, str], str] = {}
     for r in records:
         detail = details.get(r["key"]) if r["key"] else None
+        diff_text = ""
+        if r["changed"]:
+            pair = (r["quote"], r["anchored"])
+            if pair not in diff_cache:
+                # None (цитата больше потолка quote_word_diff) → пустая
+                # ячейка: тексты «было/стало» в строке всё равно есть.
+                diff_cache[pair] = quote_word_diff(*pair) or ""
+            diff_text = diff_cache[pair]
         writer.writerow([
             _csv_cell(r["title"]),
             _csv_cell(r["space"]),
             r["status"],
             _csv_cell(r["quote"]),
+            _csv_cell(r["anchored"] if r["changed"] else ""),
+            _csv_cell(diff_text),
             _csv_cell(r["key"]),
             _csv_cell((detail.summary or "") if detail else ""),
             _csv_cell(r["author"]),

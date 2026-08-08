@@ -4,9 +4,9 @@ import { colors, radii } from '../styles/tokens';
 import {
   IconProps, IconTint, IconBadge,
   BellIcon, BranchIcon, ChevronsVerticalIcon, ClockIcon, DocumentIcon,
-  DropletIcon, FlagIcon, GearIcon, ImageIcon, KeyboardIcon, LayoutIcon, LinkIcon,
-  LockIcon, PanelIcon, PencilIcon, PlusIcon, SearchIcon, ShieldIcon, SparkleIcon,
-  SyncIcon, TableIcon, TargetIcon, TrashIcon, UserIcon,
+  DownloadIcon, DropletIcon, FlagIcon, GearIcon, ImageIcon, KeyboardIcon,
+  LayoutIcon, LinkIcon, LockIcon, PanelIcon, PencilIcon, PlusIcon, SearchIcon,
+  ShieldIcon, SparkleIcon, SyncIcon, TableIcon, TargetIcon, TrashIcon, UserIcon,
 } from './icons';
 
 // Запись изменения: новые версии ведут объекты с заголовком и иконкой
@@ -58,6 +58,7 @@ const CHANGE_ICONS: Record<string, { tint: IconTint; Icon: React.FC<IconProps> }
   sparkle: { tint: 'green', Icon: SparkleIcon },
   panel: { tint: 'gray', Icon: PanelIcon },
   table: { tint: 'amber', Icon: TableIcon },
+  download: { tint: 'amber', Icon: DownloadIcon },
   keyboard: { tint: 'gray', Icon: KeyboardIcon },
   bell: { tint: 'amber', Icon: BellIcon },
   trash: { tint: 'red', Icon: TrashIcon },

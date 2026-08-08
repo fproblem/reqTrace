@@ -258,11 +258,19 @@ export const api = {
     request<UncoveredLinks>(`/projects/${projectId}/uncovered-links`),
 
   /** CSV-срез покрытия проекта (v1.8.1). Отдаёт Blob — сохранение и имя
-   *  файла (проект + дата) на вызывающем; request() не годится: тело не JSON. */
-  downloadCoverageCsv: async (projectId: string): Promise<Blob> => {
+   *  файла (проект + дата) на вызывающем; request() не годится: тело не JSON.
+   *  statuses (v1.8.2) — сузить срез до выбранных статусов привязок;
+   *  не передан или пуст — весь срез (эквивалент «все»). */
+  downloadCoverageCsv: async (
+    projectId: string,
+    statuses?: Array<'active' | 'outdated' | 'lost'>,
+  ): Promise<Blob> => {
+    const qs = statuses && statuses.length
+      ? '?' + statuses.map(s => `status=${s}`).join('&')
+      : '';
     let res: Response;
     try {
-      res = await fetch(`${API_BASE}/projects/${projectId}/coverage.csv`);
+      res = await fetch(`${API_BASE}/projects/${projectId}/coverage.csv${qs}`);
     } catch {
       throw new ApiError(0, 'Сервер недоступен. Проверьте подключение к сети');
     }

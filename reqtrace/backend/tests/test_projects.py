@@ -18,6 +18,7 @@ cookie — в test_auth.py, он накрывает и роутер projects.
 
 Запуск: python -m unittest discover tests  (внутри backend-контейнера)
 """
+import csv
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -82,8 +83,12 @@ class FakeSession:
         self.added = []
         self.deleted = []
         self.committed = False
+        # Выполненные statement'ы по порядку — для проверок «фильтр ушёл в
+        # SQL, а не отсеялся по готовым строкам» (CSV-срез, v1.8.2).
+        self.statements = []
 
     async def execute(self, stmt):
+        self.statements.append(stmt)
         value = self.execute_results.pop(0) if self.execute_results else None
         return value if isinstance(value, FakeResult) else FakeResult(value)
 
@@ -814,12 +819,13 @@ class TestCoverageCsv(ProjectTestBase):
         created = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
         self.session.execute_results = [
             FakeResult(cred),   # членство ok
-            # строки: title, space, url, status, quote, created_at, author, key
+            # строки: title, space, url, status, quote, anchored_text,
+            #         created_at, author, key
             FakeResult([
                 ("Оплата", "SPC", "https://c/1", "active",
-                 "Цитата; с точкой с запятой", created, "QA Surf", "req-1"),
+                 "Цитата; с точкой с запятой", None, created, "QA Surf", "req-1"),
                 ("Оплата", "SPC", "https://c/1", "outdated",
-                 "Без теста", created, "QA Surf", None),
+                 "Без теста", None, created, "QA Surf", None),
             ]),
             FakeResult([]),     # кэша названий (test_details) нет
         ]
@@ -856,7 +862,7 @@ class TestCoverageCsv(ProjectTestBase):
         self.session.execute_results = [
             FakeResult(cred),
             FakeResult([
-                ("Оплата", "SPC", "https://c/1", "active", "Цитата",
+                ("Оплата", "SPC", "https://c/1", "active", "Цитата", None,
                  created, "QA Surf", "REQ-1"),
             ]),
         ]
@@ -878,6 +884,74 @@ class TestCoverageCsv(ProjectTestBase):
         self.session.objects[(Project, project.id)] = project
         resp = self.client.get(f"/api/projects/{project.id}/coverage.csv")
         self.assertEqual(resp.status_code, 404)
+
+    def test_csv_status_filter_goes_to_sql(self):
+        """?status=… сужает срез в самом SQL (v1.8.2): выгрузка не должна
+        поднимать из БД цитаты, которые сама же выкинет."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        self.session.execute_results = [
+            FakeResult(cred), FakeResult([]), FakeResult([]),
+        ]
+
+        resp = self.client.get(
+            f"/api/projects/{project.id}/coverage.csv?status=outdated&status=lost"
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        select_sql = str(self.session.statements[1])
+        self.assertIn("highlights.status IN", select_sql)
+
+    def test_csv_unknown_status_is_400(self):
+        """Незнакомый статус — 400 с именем виновника: параметр набирают
+        руками и внешние системы, молча отдать «всё» нельзя."""
+        project = make_project()
+        self.session.objects[(Project, project.id)] = project
+        resp = self.client.get(
+            f"/api/projects/{project.id}/coverage.csv?status=stale"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("stale", resp.json()["detail"])
+
+    def test_csv_diff_columns_for_changed_outdated(self):
+        """У изменившейся привязки «Требует проверки» — текущий текст и
+        пословный дифф [-…-] {+…+} (v1.8.2); у отличий только в пробелах
+        (norm_key равен) и у «Актуально» ячейки пустые."""
+        project = make_project()
+        cred = make_cred(project, self.user)
+        self.session.objects[(Project, project.id)] = project
+        created = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        self.session.execute_results = [
+            FakeResult(cred),
+            FakeResult([
+                ("Оплата", "SPC", "https://c/1", "outdated",
+                 "кнопка активна всегда", "кнопка активна после выбора",
+                 created, "QA Surf", "REQ-1"),
+                # Разница только в пробелах: по norm_key это тот же текст.
+                ("Оплата", "SPC", "https://c/1", "outdated",
+                 "текст  один", "текст один", created, "QA Surf", "REQ-2"),
+                ("Оплата", "SPC", "https://c/1", "active",
+                 "стабильная цитата", "стабильная цитата",
+                 created, "QA Surf", "REQ-3"),
+            ]),
+            FakeResult([]),
+        ]
+
+        resp = self.client.get(f"/api/projects/{project.id}/coverage.csv")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        lines = resp.content.decode("utf-8").lstrip("\ufeff").strip("\r\n").split("\r\n")
+        header = lines[0].split(";")
+        self.assertIn("Текущий текст", header)
+        self.assertIn("Дифф цитаты", header)
+        changed = next(l for l in lines[1:] if "REQ-1" in l)
+        self.assertIn("кнопка активна после выбора", changed)
+        self.assertIn("кнопка активна [-всегда-] {+после выбора+}", changed)
+        for line in lines[1:]:
+            if "REQ-1" in line:
+                continue
+            cells = next(csv.reader([line], delimiter=";"))
+            self.assertEqual(cells[4], "")   # «Текущий текст» пуст
+            self.assertEqual(cells[5], "")   # «Дифф цитаты» пуст
 
 
 class TestManualRefreshRun(ProjectTestBase):

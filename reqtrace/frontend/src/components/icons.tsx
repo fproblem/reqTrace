@@ -175,6 +175,12 @@ export const TableIcon = makeIcon(<>
   <line x1="12" y1="10" x2="12" y2="20" />
 </>);
 
+export const DownloadIcon = makeIcon(<>
+  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+  <polyline points="7 10 12 15 17 10" />
+  <line x1="12" y1="3" x2="12" y2="15" />
+</>);
+
 export const KeyboardIcon = makeIcon(<>
   <rect x="2.5" y="6" width="19" height="12" rx="2" />
   <line x1="7" y1="14.5" x2="17" y2="14.5" />

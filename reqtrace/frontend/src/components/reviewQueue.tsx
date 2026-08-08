@@ -9,10 +9,10 @@
 // клик по шапке-статусу listает «Требует проверки» по кругу, стрелки — все
 // подряд. Очередь живёт в памяти (F5 её закрывает — сценарий одного захода).
 import React, {
-  createContext, useCallback, useContext, useMemo, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { ProjectTree, TreeNodeItem } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -153,6 +153,46 @@ const QueueBar: React.FC<{
   const lastRef = useRef(queue);
   if (queue) lastRef.current = queue;
   const q = queue ?? lastRef.current;
+
+  // Центровка по герой-острову контента страницы (полировка v1.8.2): бар
+  // «принадлежит» странице, а не окну — по центру вьюпорта он висел
+  // смещённым относительно контента (слева дерево, справа панель привязки).
+  // Якорь — data-rt-page-island (PageDetailPage); ResizeObserver ведёт бар
+  // за анимацией панели (320мс) и ресайзом дерева покадрово — движение
+  // синхронно самому острову, отдельный transition не нужен. Вне страницы
+  // (ушли гулять по приложению посреди очереди) якоря нет — центр окна.
+  const location = useLocation();
+  const [centerX, setCenterX] = useState<number | null>(null);
+  useEffect(() => {
+    if (!mounted) return;
+    const update = () => {
+      const island = document.querySelector('[data-rt-page-island]');
+      if (!island) {
+        setCenterX(null);
+        return;
+      }
+      const rect = island.getBoundingClientRect();
+      // Кламп: у зажатого панелью острова бар не должен вылезать за окно.
+      const half = Math.min(620, window.innerWidth - 48) / 2;
+      setCenterX(Math.round(Math.min(
+        window.innerWidth - 24 - half,
+        Math.max(24 + half, rect.left + rect.width / 2),
+      )));
+    };
+    update();
+    window.addEventListener('resize', update);
+    const island = document.querySelector('[data-rt-page-island]');
+    let ro: ResizeObserver | null = null;
+    if (island && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(update);
+      ro.observe(island);
+    }
+    return () => {
+      window.removeEventListener('resize', update);
+      ro?.disconnect();
+    };
+  }, [mounted, location]);
+
   if (!mounted || !q) return null;
 
   const current = q.pages[q.index];
@@ -163,7 +203,7 @@ const QueueBar: React.FC<{
     <div
       style={{
         position: 'fixed',
-        left: '50%',
+        left: centerX !== null ? `${centerX}px` : '50%',
         bottom: '22px',
         transform: 'translateX(-50%)',
         display: 'flex',
@@ -220,70 +260,78 @@ const QueueBar: React.FC<{
       >
         {current.title}
       </button>
-      {/* «Назад» — страховка от случайного «Далее»: очередь листается в обе
+      {/* «Назад»/«Далее» — единый сегмент-контрол (полировка v1.8.2, в языке
+          фильтров яруса 2 «Тестов»): общая пилюля-рамка, «Далее» — зелёный
+          сегмент-действие. Ширины сегментов фиксированы — кнопки не двигаются
+          ни от смены «Далее» → «Готово», ни от длины названия страницы.
+          «Назад» — страховка от случайного «Далее»: очередь листается в обе
           стороны. Охрана в onClick, а не disabled-атрибут: у недоступной
           кнопки должны жить title и курсор (урок v1.6.0). */}
-      <button
-        onClick={() => { if (!isFirst) onPrev(); }}
-        aria-disabled={isFirst}
-        title={isFirst
-          ? 'Это первая страница очереди — назад некуда'
-          : 'К предыдущей странице очереди'}
-        style={{
-          width: '76px',
-          height: '30px',
-          padding: 0,
-          borderRadius: radii.pill,
-          border: `1px solid ${colors.border}`,
-          background: 'transparent',
-          color: isFirst ? colors.textTertiary : colors.textSecondary,
-          fontSize: '12px',
-          fontWeight: 600,
-          cursor: isFirst ? 'not-allowed' : 'pointer',
-          fontFamily: 'inherit',
-          flexShrink: 0,
-          opacity: isFirst ? 0.5 : 1,
-          transition: 'all 0.15s',
-        }}
-        onMouseEnter={e => {
-          if (isFirst) return;
-          e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-          e.currentTarget.style.borderColor = colors.borderHover;
-          e.currentTarget.style.color = colors.textPrimary;
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.borderColor = colors.border;
-          e.currentTarget.style.color = isFirst ? colors.textTertiary : colors.textSecondary;
-        }}
-      >
-        Назад
-      </button>
-      <button
-        onClick={onNext}
-        title={isLast
-          ? 'Завершить очередь проверки'
-          : 'К следующей странице с привязками «Требует проверки»'}
-        style={{
-          width: '84px',
-          height: '30px',
-          padding: 0,
-          borderRadius: radii.pill,
-          border: 'none',
-          background: colors.greenAccent,
-          color: '#fff',
-          fontSize: '12px',
-          fontWeight: 600,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          flexShrink: 0,
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
-        onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
-      >
-        {isLast ? 'Готово' : 'Далее'}
-      </button>
+      <div style={{
+        display: 'flex',
+        height: '30px',
+        boxSizing: 'border-box',
+        borderRadius: radii.pill,
+        border: `1px solid ${colors.border}`,
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={() => { if (!isFirst) onPrev(); }}
+          aria-disabled={isFirst}
+          title={isFirst
+            ? 'Это первая страница очереди — назад некуда'
+            : 'К предыдущей странице очереди'}
+          style={{
+            width: '76px',
+            height: '100%',
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            color: isFirst ? colors.textTertiary : colors.textSecondary,
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: isFirst ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit',
+            opacity: isFirst ? 0.5 : 1,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            if (isFirst) return;
+            e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+            e.currentTarget.style.color = colors.textPrimary;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = isFirst ? colors.textTertiary : colors.textSecondary;
+          }}
+        >
+          Назад
+        </button>
+        <button
+          onClick={onNext}
+          title={isLast
+            ? 'Завершить очередь проверки'
+            : 'К следующей странице с привязками «Требует проверки»'}
+          style={{
+            width: '84px',
+            height: '100%',
+            padding: 0,
+            border: 'none',
+            background: colors.greenAccent,
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = colors.greenDark; }}
+          onMouseLeave={e => { e.currentTarget.style.background = colors.greenAccent; }}
+        >
+          {isLast ? 'Готово' : 'Далее'}
+        </button>
+      </div>
       <button
         onClick={onStop}
         title="Свернуть очередь (прогресс не сохраняется)"

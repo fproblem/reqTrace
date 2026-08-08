@@ -523,9 +523,12 @@ async def project_coverage_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    # Порядок колонок — решение пользователя (v1.8.2): ключ теста, его
+    # название и статус — сразу после страницы, файл читается «тест ←
+    # требование»; цитата с диффом и служебные поля — следом.
     writer.writerow([
-        "Страница", "Спейс", "Статус привязки", "Цитата", "Текущий текст",
-        "Дифф цитаты", "Тест", "Название теста", "Автор привязки",
+        "Страница", "Спейс", "Тест", "Название теста", "Статус привязки",
+        "Цитата", "Текущий текст", "Дифф цитаты", "Автор привязки",
         "Привязка создана", "Страница в Confluence",
     ])
     report_tz = _report_tz()
@@ -571,12 +574,12 @@ async def project_coverage_csv(
         writer.writerow([
             _csv_cell(r["title"]),
             _csv_cell(r["space"]),
+            _csv_cell(r["key"]),
+            _csv_cell((detail.summary or "") if detail else ""),
             r["status"],
             _csv_cell(r["quote"]),
             _csv_cell(r["anchored"] if r["changed"] else ""),
             _csv_cell(diff_text),
-            _csv_cell(r["key"]),
-            _csv_cell((detail.summary or "") if detail else ""),
             _csv_cell(r["author"]),
             r["created"],
             r["url"],  # всегда https?://… из Confluence — формулой не бывает

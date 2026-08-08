@@ -839,7 +839,13 @@ class TestCoverageCsv(ProjectTestBase):
         self.assertTrue(text.startswith("\ufeff"))  # BOM — для русского Excel
         lines = text.lstrip("\ufeff").strip("\r\n").split("\r\n")
         self.assertEqual(len(lines), 3)  # шапка + 2 строки
-        self.assertEqual(lines[0].split(";")[0], "Страница")
+        # Порядок колонок — решение пользователя (v1.8.2): тест, название,
+        # статус — сразу после страницы и спейса.
+        self.assertEqual(
+            lines[0].split(";")[:6],
+            ["Страница", "Спейс", "Тест", "Название теста",
+             "Статус привязки", "Цитата"],
+        )
         # Сортировка по (страница, цитата): «Без теста» < «Цитата…».
         self.assertIn("Требует проверки", lines[1])
         self.assertIn(";;", lines[1])   # колонки теста пусты
@@ -950,8 +956,8 @@ class TestCoverageCsv(ProjectTestBase):
             if "REQ-1" in line:
                 continue
             cells = next(csv.reader([line], delimiter=";"))
-            self.assertEqual(cells[4], "")   # «Текущий текст» пуст
-            self.assertEqual(cells[5], "")   # «Дифф цитаты» пуст
+            self.assertEqual(cells[6], "")   # «Текущий текст» пуст
+            self.assertEqual(cells[7], "")   # «Дифф цитаты» пуст
 
 
 class TestManualRefreshRun(ProjectTestBase):

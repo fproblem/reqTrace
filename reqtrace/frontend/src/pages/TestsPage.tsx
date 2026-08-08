@@ -339,12 +339,15 @@ export const TestsPage: React.FC = () => {
                         flex: 1, height: '6px', borderRadius: radii.pill,
                         background: 'rgba(0,0,0,0.07)', overflow: 'hidden',
                       }}>
-                        {/* Заливка нейтральная (ревью v1.8.2): яркая зелень
-                            читалась лишним акцентом — цвет на карточке несут
-                            только чипы статусов. */}
+                        {/* Заливка — приглушённая фирменная зелень (две
+                            итерации ревью v1.8.2): сплошной greenAccent
+                            «слишком яркий», нейтральный серый — слишком
+                            глухой; полупрозрачная зелень (тот же приём, что
+                            focusBorder в tokens: «сплошной звенел неоном»). */}
                         <div style={{
                           width: `${coverage}%`, height: '100%',
-                          borderRadius: radii.pill, background: colors.textTertiary,
+                          borderRadius: radii.pill,
+                          background: 'rgba(122, 224, 90, 0.55)',
                         }} />
                       </div>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: colors.textPrimary, flexShrink: 0 }}>

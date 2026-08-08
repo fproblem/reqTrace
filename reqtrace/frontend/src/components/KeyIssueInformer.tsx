@@ -13,6 +13,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFadeToggle } from './fadePresence';
 import { StatusAlertIcon } from './icons';
+import { OVERLAY_Z } from './Modal';
 import { colors, radii, shadows } from '../styles/tokens';
 
 const POPOVER_WIDTH = 280;
@@ -135,7 +136,10 @@ export const KeyIssueInformer: React.FC<{
             top: `${pos.top}px`,
             left: `${pos.left}px`,
             width: `${pos.width}px`,
-            zIndex: 1000,
+            // Выше оверлея модалок: информер живёт и ВНУТРИ модалки
+            // (CSV-выгрузка, v1.8.3) — на прежних 1000 поповер открывался
+            // ЗА её оверлеем (2000) и был невидим.
+            zIndex: OVERLAY_Z + 10,
             background: colors.cardBgSolid,
             border: `1px solid ${colors.border}`,
             borderRadius: radii.md,

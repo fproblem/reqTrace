@@ -1,28 +1,35 @@
 /**
- * Модалка CSV-выгрузки среза покрытия (v1.8.2).
+ * Модалка CSV-выгрузки среза покрытия (v1.8.2; двухшаговая — v1.8.3).
  *
- * Мгновенное скачивание v1.8.1 выросло в выбор: какие статусы привязок
- * выгружать. Срез — сырьё для внешней ИИ-системы актуализации тестов, и
- * частичные файлы («только требующие проверки») — её основной рацион.
+ * Срез — сырьё для внешней ИИ-системы актуализации тестов, и модалка ведёт
+ * по процессу пользователя двумя видимыми сразу шагами (без листания):
+ *
+ *   1. «Что войдёт в файл» — чекбоксы статусов привязок со счётчиками
+ *      будущих СТРОК файла (привязка × тест + привязки без тестов).
+ *   2. «Эти тесты — в Jira» — живой JQL-фильтр по УНИКАЛЬНЫМ тестам
+ *      выгрузки: скопировать или открыть в поиске Jira, найти все тесты
+ *      одним запросом и выгрузить их оттуда с шагами. В CSV один тест
+ *      встречается у многих привязок — это норма; здесь он один раз.
+ *
  * Дифф изменившихся цитат в файле ВСЕГДА (стабильный состав колонок —
- * парсеру не нужно два формата), поэтому опций про дифф здесь нет —
- * только строка-справка.
- *
- * Счётчики у чекбоксов — будущие строки файла (привязка × тест + строки
- * привязок без тестов), а не количество привязок: человек видит, какого
- * размера файл получит. Чекбоксы со счётчиком 0 не блокируются: пустой
- * статус в фильтре безвреден, а логика «что заблокировано и почему»
- * здесь не окупается.
+ * парсеру не нужно два формата), поэтому опций про дифф здесь нет.
+ * Счётчики у чекбоксов — строки файла, а не привязки: человек видит,
+ * какого размера файл получит. Чекбоксы со счётчиком 0 не блокируются.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { colors, radii, shadows } from '../styles/tokens';
 import { Modal, ModalButton, modalTextStyle } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
+import { KeyIssueInformer } from './KeyIssueInformer';
 import { useToast } from './Toast';
 import {
-  buildCoverageCsvFilename, CSV_STATUS_ORDER, CsvStatus, statusesForRequest,
+  buildCoverageCsvFilename, buildJiraFilter, CSV_STATUS_ORDER, CsvStatus,
+  JqlSourceTest, statusesForRequest,
 } from './csvExport';
+import { plural } from '../pages/TestsPage';
+
+const MONO = 'SFMono-Regular, Menlo, Monaco, Consolas, monospace';
 
 // Ярлыки — те же слова, что у статусов везде в интерфейсе (statusLabels).
 const STATUS_LABEL: Record<CsvStatus, string> = {
@@ -85,13 +92,80 @@ const SoftCheckbox: React.FC<{ checked: boolean; onChange: () => void }> = ({
   );
 };
 
+// Номер шага — кружок в языке степпера онбординга.
+const StepLabel: React.FC<{ n: number; children: React.ReactNode }> = ({ n, children }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <span style={{
+      width: '20px', height: '20px', borderRadius: '50%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0,
+      background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+      fontSize: '11px', fontWeight: 700,
+    }}>
+      {n}
+    </span>
+    <span style={{ fontSize: '12px', fontWeight: 600, color: colors.textSecondary }}>
+      {children}
+    </span>
+  </div>
+);
+
+// Кнопка-сегмент действий с фильтром (ревью: отдельные пилюли-кнопки были
+// крупноваты) — в языке сегмент-контролов приложения (фильтры яруса 2,
+// «Назад»/«Далее» бара очереди).
+const segmentButtonStyle: React.CSSProperties = {
+  height: '100%',
+  padding: '0 14px',
+  border: 'none',
+  background: 'transparent',
+  color: colors.textSecondary,
+  fontSize: '12px',
+  fontWeight: 600,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  transition: 'all 0.15s',
+};
+
+const segmentHoverOn = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+  e.currentTarget.style.color = colors.textPrimary;
+};
+
+const segmentHoverOff = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.currentTarget.style.background = 'transparent';
+  e.currentTarget.style.color = colors.textSecondary;
+};
+
+// Пилюля-счётчик — единый вид и габарит для строк статусов и шапки шага 2:
+// minWidth выравнивает 1- и 2-значные счётчики в ровную колонку (ревью:
+// «чипы кривые»); marginRight 10px у шапки задаётся снаружи — правые края
+// всех пилюль стоят на одной вертикали (строки имеют паддинг 10px).
+const CountPill: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({
+  children, style,
+}) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: '28px', boxSizing: 'border-box',
+    padding: '1px 7px', borderRadius: radii.pill,
+    background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+    fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
+    flexShrink: 0,
+    ...style,
+  }}>
+    {children}
+  </span>
+);
+
 export const CoverageCsvModal: React.FC<{
   projectId: string;
   projectName: string;
   /** Строк файла на статус: привязка × тест + привязки без тестов. */
   counts: Record<CsvStatus, number>;
+  /** Лёгкий индекс тестов проекта (TestIndexEntry) — источник JQL-фильтра. */
+  tests: JqlSourceTest[];
+  jiraBaseUrl: string | null;
   onClose: () => void;
-}> = ({ projectId, projectName, counts, onClose }) => {
+}> = ({ projectId, projectName, counts, tests, jiraBaseUrl, onClose }) => {
   const { showToast } = useToast();
   // По умолчанию — всё: полная выгрузка остаётся сценарием «в один клик»,
   // как была кнопка v1.8.1.
@@ -109,6 +183,21 @@ export const CoverageCsvModal: React.FC<{
 
   const selected = CSV_STATUS_ORDER.filter(s => picked.has(s));
   const rowsTotal = selected.reduce((n, s) => n + counts[s], 0);
+  // JQL живёт вместе с чекбоксами: снял статус — фильтр пересобрался.
+  const filter = useMemo(() => buildJiraFilter(tests, selected), [tests, selected]);
+
+  const jiraSearchUrl = jiraBaseUrl && filter.jql
+    ? `${jiraBaseUrl.replace(/\/+$/, '')}/issues/?jql=${encodeURIComponent(filter.jql)}`
+    : null;
+
+  const handleCopyJql = async () => {
+    try {
+      await navigator.clipboard.writeText(filter.jql);
+      showToast('success', 'JQL скопирован', 'Вставьте его в поиск задач Jira');
+    } catch {
+      showToast('error', 'Не удалось скопировать', 'Выделите текст фильтра и скопируйте вручную');
+    }
+  };
 
   const handleExport = async () => {
     if (!selected.length || exporting) return;
@@ -136,46 +225,155 @@ export const CoverageCsvModal: React.FC<{
   };
 
   return (
-    <Modal title="Выгрузка среза покрытия" onClose={onClose}>
-      <p style={{ ...modalTextStyle, margin: '0 0 14px' }}>
+    <Modal title="Выгрузка среза покрытия" width="500px" onClose={onClose}>
+      <p style={{ ...modalTextStyle, margin: '0 0 16px' }}>
         Строка файла — пара «привязка × тест»; привязки без тестов входят
         отдельными строками. У изменившихся привязок «Требует проверки»
         в файле есть текущий текст и пословный дифф цитаты.
       </p>
 
+      {/* Шаг 1: статусы привязок — в таком же сером боксе, что и JQL шага 2
+          (ревью: симметрия блоков). Ховер строк чуть темнее фона бокса. */}
+      <StepLabel n={1}>Что войдёт в файл</StepLabel>
       <div style={{
-        fontSize: '12px', fontWeight: 600, color: colors.textSecondary,
-        margin: '0 0 8px',
+        display: 'flex', flexDirection: 'column', gap: '2px',
+        margin: '8px 0 16px',
+        background: 'rgba(0,0,0,0.03)',
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.sm,
+        padding: '4px 6px',
       }}>
-        Статусы привязок
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '18px' }}>
         {CSV_STATUS_ORDER.map(s => (
           <label
             key={s}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '7px 10px', borderRadius: radii.md,
+              padding: '7px 10px', borderRadius: radii.sm,
               cursor: 'pointer', transition: 'background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
             <SoftCheckbox checked={picked.has(s)} onChange={() => toggle(s)} />
             <span style={{ fontSize: '13px', color: colors.textPrimary, flex: 1 }}>
               {STATUS_LABEL[s]}
             </span>
-            {/* Счётчик строк — нейтральная пилюля, как у фильтров «Тестов». */}
-            <span style={{
-              padding: '1px 7px', borderRadius: radii.pill,
-              background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
-              fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
-            }}>
-              {counts[s]}
-            </span>
+            {/* Счётчик — со словом-единицей (ревью: голые цифры читались
+                неоднозначно; «привязок» — выбор пользователя: язык процесса.
+                Численно это строки будущего файла — привязка с двумя
+                тестами даст две). */}
+            <CountPill>
+              {counts[s]} {plural(counts[s], ['привязка', 'привязки', 'привязок'])}
+            </CountPill>
           </label>
         ))}
       </div>
+
+      {/* Шаг 2 (v1.8.3): мост в Jira — JQL по уникальным тестам выгрузки.
+          Процесс пользователя: найти ВСЕ тесты будущего файла одним поиском
+          Jira и выгрузить их оттуда с шагами для ИИ-актуализации. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+        <StepLabel n={2}>Эти тесты — в Jira</StepLabel>
+        <KeyIssueInformer
+          variant="help"
+          size={13}
+          ariaLabel="Зачем нужен JQL-фильтр и как выгрузить тесты из Jira"
+          text={'JQL — фильтр поиска задач Jira, собранный по уникальным тестам этой '
+            + 'выгрузки. Вставьте его в поиск задач или откройте сразу. Выгрузка оттуда: '
+            + 'Export → «CSV (все поля)» — в файле будут ключ (в русской Jira колонка '
+            + '«Код»), название («Тема») и шаги (Manual Test Steps); компактнее — '
+            + 'добавить эти колонки в таблицу и выбрать «CSV (текущие поля)».'}
+        />
+        {filter.keys.length > 0 && (
+          // 16px = паддинг серого бокса шага 1 (6) + паддинг его строк (10):
+          // правые края всех пилюль-счётчиков на одной вертикали.
+          <CountPill style={{ marginLeft: 'auto', marginRight: '16px' }}>
+            {filter.keys.length} {plural(filter.keys.length, ['тест', 'теста', 'тестов'])}
+          </CountPill>
+        )}
+      </div>
+      {filter.keys.length > 0 ? (
+        <div style={{ marginBottom: '18px' }}>
+          {/* Простая копируемая строка (решение пользователя: чипы-ключи
+              отклонены, форматирование ЕДИНОЕ). Неразрывные звенья: «key in (»
+              приклеен к ПЕРВОМУ ключу, «)» — к последнему, каждый ключ несёт
+              свою запятую. ⚠ Пробелы-разделители — ГОЛЫМ текстом МЕЖДУ
+              звеньями: пробел внутри nowrap-спана не даёт точки переноса
+              вовсе (ревью: строка уезжала вправо одной лентой, горизонтальный
+              классический скроллбар съедал низ поля). Выделение и копирование
+              дают ровно filter.jql. */}
+          <div
+            className="island-scroll"
+            style={{
+              fontFamily: MONO, fontSize: '12px', lineHeight: 1.7,
+              color: colors.textSecondary,
+              background: 'rgba(0,0,0,0.03)',
+              border: `1px solid ${colors.border}`,
+              borderRadius: radii.sm,
+              padding: '9px 12px',
+              maxHeight: '96px', overflowY: 'auto',
+              userSelect: 'all',
+            }}
+          >
+            {filter.keys.map((k, i) => (
+              <React.Fragment key={k}>
+                {i > 0 && ' '}
+                <span style={{ whiteSpace: 'nowrap' }}>
+                  {i === 0 && 'key in ('}
+                  {k}
+                  {i < filter.keys.length - 1 ? ',' : ')'}
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+          {/* Во всю ширину модалки (ревью), сегменты равные. */}
+          <div style={{
+            display: 'flex',
+            width: '100%',
+            height: '30px',
+            boxSizing: 'border-box',
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.pill,
+            overflow: 'hidden',
+            marginTop: '10px',
+          }}>
+            <button
+              onClick={() => { void handleCopyJql(); }}
+              style={{ ...segmentButtonStyle, flex: 1 }}
+              onMouseEnter={segmentHoverOn}
+              onMouseLeave={segmentHoverOff}
+            >
+              Скопировать JQL
+            </button>
+            {jiraSearchUrl && (
+              <button
+                onClick={() => { window.open(jiraSearchUrl, '_blank', 'noopener,noreferrer'); }}
+                style={{ ...segmentButtonStyle, flex: 1, borderLeft: `1px solid ${colors.border}` }}
+                onMouseEnter={segmentHoverOn}
+                onMouseLeave={segmentHoverOff}
+              >
+                Открыть в Jira
+              </button>
+            )}
+          </div>
+          {filter.skipped > 0 && (
+            <div style={{ fontSize: '11.5px', color: colors.textTertiary, marginTop: '8px', lineHeight: 1.45 }}>
+              Не вошли в фильтр: {filter.skipped} — ключ не по формату или задачи нет
+              в Jira (такие ключи ломали бы весь запрос)
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{
+          fontSize: '12.5px', color: colors.textTertiary, lineHeight: 1.5,
+          padding: '10px 12px', marginBottom: '18px',
+          border: `1px dashed ${colors.borderHover}`, borderRadius: radii.sm,
+        }}>
+          {filter.skipped > 0
+            ? 'У тестов этой выгрузки не осталось ключей, пригодных для поиска в Jira: не по формату или задач уже нет'
+            : 'В выбранных статусах нет привязок с тестами — фильтру не из чего собраться'}
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px' }}>
         <ModalButton variant="secondary" onClick={onClose}>Отмена</ModalButton>

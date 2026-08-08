@@ -512,14 +512,16 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       {/* Фильтр по статусу привязок — сегмент-контрол над деревом (бэклог
           «UX-пакет»; переделан из чипов-россыпи по отзыву пользователя — тот
           же язык и урок, что фильтры яруса 2 «Тестов»: одна рамка читается
-          одним элементом). Во всю ширину сайдбара, сегменты делят её поровну,
-          длинная подпись уходит в эллипсис на самом узком дереве. Активный
-          сегмент — зелёная заливка с белым текстом; клик по активному
-          снимает фильтр; нулевой сегмент глушится (охрана в onClick — title
-          и курсор должны жить, урок v1.6.0). Счётчики — нейтральные пилюли,
-          на активном — полупрозрачно-белые (в точности ярус 2). Ряд виден,
-          только когда есть «тревожные» привязки; TreeReveal — приходит и
-          уходит в общем ритме 160мс. */}
+          одним элементом). Во всю ширину сайдбара; ширина делится ПО
+          СОДЕРЖИМОМУ (решение пользователя v1.8.1): «Ждут проверки» держит
+          естественную ширину и НЕ уходит в эллипсис, «Утрачены» забирает
+          остаток и уступает на самом узком дереве. Активный сегмент —
+          зелёная заливка с белым текстом; клик по активному снимает фильтр;
+          нулевой сегмент глушится (охрана в onClick — title и курсор должны
+          жить, урок v1.6.0). Счётчики — нейтральные пилюли, на активном —
+          полупрозрачно-белые (в точности ярус 2). Ряд виден, только когда
+          есть «тревожные» привязки; TreeReveal — приходит и уходит в общем
+          ритме 160мс. */}
       <TreeReveal expanded={!loading && (statusTotals.outdated > 0 || statusTotals.lost > 0)}>
         <div style={{ padding: '10px 10px 2px' }}>
           <div style={{
@@ -535,6 +537,10 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               const count = statusTotals[segment.key];
               const active = statusFilter === segment.key;
               const disabled = count === 0 && !active;
+              // «Ждут проверки» — самый длинный ярлык: его сегмент держит
+              // естественную ширину (flexShrink 0), эллипсис ему запрещён;
+              // ширину отдаёт сосед «Утрачены» (flex 1 + minWidth 0).
+              const keepsWidth = segment.key === 'outdated';
               return (
                 <button
                   key={segment.key}
@@ -546,10 +552,11 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
                     ? 'Таких привязок сейчас нет'
                     : active ? 'Снять фильтр' : segment.title}
                   style={{
-                    flex: 1,
-                    minWidth: 0,
+                    ...(keepsWidth
+                      ? { flexShrink: 0 }
+                      : { flex: 1, minWidth: 0 }),
                     height: '100%',
-                    padding: '0 8px',
+                    padding: '0 10px',
                     border: 'none',
                     background: active ? colors.greenAccent : 'transparent',
                     color: active ? '#fff'
@@ -578,7 +585,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
                       : disabled ? colors.textTertiary : colors.textSecondary;
                   }}
                 >
-                  <span style={{
+                  <span style={keepsWidth ? { whiteSpace: 'nowrap' } : {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',

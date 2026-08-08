@@ -9,7 +9,7 @@
 // клик по шапке-статусу listает «Требует проверки» по кругу, стрелки — все
 // подряд. Очередь живёт в памяти (F5 её закрывает — сценарий одного захода).
 import React, {
-  createContext, useCallback, useContext, useMemo, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +18,7 @@ import { ProjectTree, TreeNodeItem } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
 import { useToast } from './Toast';
 import { useFadeToggle } from './fadePresence';
+import { StatusAlertIcon } from './icons';
 import { XIcon } from './Modal';
 
 interface QueuePage {
@@ -77,10 +78,32 @@ export function collectQueuePages(
   );
 }
 
+// Церемония завершения очереди (v1.8.2, ритуал «Актуализировать» в панели):
+// по «Готово» бар не гаснет мгновенно — кольцо прогресса перетекает в
+// зелёную галочку, держится паузу и только потом бар растворяется.
+const QUEUE_FINISH_MS = 900;
+
 export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [queue, setQueue] = useState<QueueState | null>(null);
+  // Фаза «галочка успеха» после «Готово»: бар ещё жив, переходы заглушены.
+  const [finishing, setFinishing] = useState(false);
+  const finishTimerRef = useRef<number | null>(null);
+
+  const cancelFinish = useCallback(() => {
+    if (finishTimerRef.current !== null) {
+      clearTimeout(finishTimerRef.current);
+      finishTimerRef.current = null;
+    }
+    setFinishing(false);
+  }, []);
+
+  // Размонтирование провайдера (выход из аккаунта) — таймер не должен
+  // выстрелить по мёртвому состоянию.
+  useEffect(() => () => {
+    if (finishTimerRef.current !== null) clearTimeout(finishTimerRef.current);
+  }, []);
 
   const start = useCallback(async (projectId: string, projectName: string) => {
     try {
@@ -92,6 +115,7 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
           `В проекте «${projectName}» нет привязок со статусом «Требует проверки»`);
         return;
       }
+      cancelFinish();
       setQueue({ projectId, projectName, pages, index: 0 });
       // ?focus=outdated — страница откроет панель на первой «Требует
       // проверки» (механизм диплинка ?highlight, PageDetailPage).
@@ -99,29 +123,39 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch (e: any) {
       showToast('error', 'Не удалось собрать очередь проверки', e.message);
     }
-  }, [navigate, showToast]);
+  }, [navigate, showToast, cancelFinish]);
 
   const next = useCallback(() => {
-    if (!queue) return;
+    if (!queue || finishing) return;
     const nextIndex = queue.index + 1;
     if (nextIndex >= queue.pages.length) {
-      setQueue(null);
-      showToast('success', 'Очередь проверки пройдена',
-        `Просмотрены все страницы с привязками «Требует проверки»: ${queue.pages.length}`);
+      // Церемония: галочка → пауза → бар гаснет, тост подводит итог.
+      setFinishing(true);
+      finishTimerRef.current = window.setTimeout(() => {
+        finishTimerRef.current = null;
+        setFinishing(false);
+        setQueue(null);
+        showToast('success', 'Очередь проверки пройдена',
+          `Просмотрены все страницы с привязками «Требует проверки»: ${queue.pages.length}`);
+      }, QUEUE_FINISH_MS);
       return;
     }
     setQueue({ ...queue, index: nextIndex });
     navigate(`/pages/${queue.pages[nextIndex].id}?focus=outdated`);
-  }, [queue, navigate, showToast]);
+  }, [queue, finishing, navigate, showToast]);
 
   const prev = useCallback(() => {
-    if (!queue || queue.index === 0) return;
+    if (!queue || queue.index === 0 || finishing) return;
     const prevIndex = queue.index - 1;
     setQueue({ ...queue, index: prevIndex });
     navigate(`/pages/${queue.pages[prevIndex].id}?focus=outdated`);
-  }, [queue, navigate]);
+  }, [queue, finishing, navigate]);
 
-  const stop = useCallback(() => setQueue(null), []);
+  // Крестик работает и во время церемонии: закрыть — значит закрыть сейчас.
+  const stop = useCallback(() => {
+    cancelFinish();
+    setQueue(null);
+  }, [cancelFinish]);
 
   const value = useMemo(
     () => ({ queue, start, next, prev, stop }),
@@ -131,9 +165,17 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
   return (
     <ReviewQueueContext.Provider value={value}>
       {children}
-      <QueueBar queue={queue} onNext={next} onPrev={prev} onStop={stop} onJump={page => {
-        navigate(`/pages/${page.id}?focus=outdated`);
-      }} />
+      <QueueBar
+        queue={queue}
+        finishing={finishing}
+        onNext={next}
+        onPrev={prev}
+        onStop={stop}
+        onJump={page => {
+          if (finishing) return;
+          navigate(`/pages/${page.id}?focus=outdated`);
+        }}
+      />
     </ReviewQueueContext.Provider>
   );
 };
@@ -144,40 +186,70 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
 // ревью: «не несёт смысла»): заполняется в долю (index+1)/total — ровно те же
 // числа, что в тексте «Проверка: N из M», доля пройденного видна боковым
 // зрением без чтения цифр. Поворот -90° — старт с 12 часов.
-const QueueProgressRing: React.FC<{ index: number; total: number }> = ({ index, total }) => {
+// done — фаза церемонии «Готово»: кольцо сжимается и растворяется, на его
+// месте вырастает зелёная галочка (тайминги — как у SoftCheckbox).
+const QueueProgressRing: React.FC<{ index: number; total: number; done?: boolean }> = ({
+  index, total, done,
+}) => {
   const size = 16;
   const strokeWidth = 2.5;
   const r = (size - strokeWidth) / 2;
   const c = 2 * Math.PI * r;
   const progress = total > 0 ? (index + 1) / total : 0;
   return (
-    <svg
-      width={size}
-      height={size}
-      style={{ transform: 'rotate(-90deg)', flexShrink: 0, display: 'block' }}
-    >
-      <circle
-        cx={size / 2} cy={size / 2} r={r}
-        fill="none" stroke="rgba(0,0,0,0.10)" strokeWidth={strokeWidth}
-      />
-      <circle
-        cx={size / 2} cy={size / 2} r={r}
-        fill="none" stroke={colors.greenAccent} strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        strokeDasharray={`${c * progress} ${c}`}
-        style={{ transition: 'stroke-dasharray 0.3s ease' }}
-      />
-    </svg>
+    <span style={{
+      position: 'relative', width: `${size}px`, height: `${size}px`,
+      display: 'inline-flex', flexShrink: 0,
+    }}>
+      <svg
+        width={size}
+        height={size}
+        style={{
+          display: 'block',
+          opacity: done ? 0 : 1,
+          transform: `rotate(-90deg) scale(${done ? 0.6 : 1})`,
+          transition: 'opacity 0.2s ease, transform 0.2s ease',
+        }}
+      >
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke="rgba(0,0,0,0.10)" strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke={colors.greenAccent} strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={`${c * progress} ${c}`}
+          style={{ transition: 'stroke-dasharray 0.3s ease' }}
+        />
+      </svg>
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: colors.statusActive,
+          opacity: done ? 1 : 0,
+          transform: `scale(${done ? 1 : 0.5})`,
+          // Лёгкая задержка: галочка вырастает, когда кольцо уже тает.
+          transition: 'opacity 0.2s ease 0.08s, transform 0.2s ease 0.08s',
+        }}
+      >
+        <StatusAlertIcon kind="ok" size={size} />
+      </span>
+    </span>
   );
 };
 
 const QueueBar: React.FC<{
   queue: QueueState | null;
+  /** Церемония «Готово»: кольцо → галочка, переходы заглушены. */
+  finishing: boolean;
   onNext: () => void;
   onPrev: () => void;
   onStop: () => void;
   onJump: (page: QueuePage) => void;
-}> = ({ queue, onNext, onPrev, onStop, onJump }) => {
+}> = ({ queue, finishing, onNext, onPrev, onStop, onJump }) => {
   const { mounted, fadeStyle } = useFadeToggle(!!queue);
   // На время затухания рисуем последнее состояние (queue уже null).
   const lastRef = useRef(queue);
@@ -222,7 +294,7 @@ const QueueBar: React.FC<{
         ...fadeStyle,
       }}
     >
-      <QueueProgressRing index={q.index} total={q.pages.length} />
+      <QueueProgressRing index={q.index} total={q.pages.length} done={finishing} />
       <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', flexShrink: 0 }}>
         Проверка: {q.index + 1} из {q.pages.length}
       </span>

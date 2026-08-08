@@ -12,7 +12,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFadeToggle } from './fadePresence';
-import { HelpCircleIcon, StatusAlertIcon } from './icons';
+import { StatusAlertIcon } from './icons';
 import { colors, radii, shadows } from '../styles/tokens';
 
 const POPOVER_WIDTH = 280;
@@ -93,14 +93,13 @@ export const KeyIssueInformer: React.FC<{
     };
   }, [open]);
 
-  // Состояния кнопки. issue — янтарная лестница заливок 15/26/33 (как у
-  // чипов ключей), подложка появляется только на ховере: значок и так
-  // предупреждающе-цветной. help — серая лестница на ПОСТОЯННОЙ подложке
-  // (rgba 0.05/0.08/0.12): нейтральный «?» без подложки терялся бы. Открытый
-  // поповер держит заливку ховера — принадлежность видна, пока он жив.
+  // Состояния кнопки — вид един для обоих вариантов (ревью v1.8.2): залитый
+  // круг StatusAlertIcon без постоянной подложки, подложка-лестница только
+  // на ховере/прессе. issue — янтарь 15/26/33, help — серый знак и серая
+  // лестница. Открытый поповер держит заливку ховера — принадлежность
+  // видна, пока он жив.
   const isHelp = variant === 'help';
-  const bgRest = isHelp ? 'rgba(0,0,0,0.05)' : 'transparent';
-  const bgHover = isHelp ? 'rgba(0,0,0,0.08)' : `${colors.statusOutdated}15`;
+  const bgHover = isHelp ? 'rgba(0,0,0,0.05)' : `${colors.statusOutdated}15`;
   const bgOpen = isHelp ? 'rgba(0,0,0,0.08)' : `${colors.statusOutdated}26`;
   const bgPress = isHelp ? 'rgba(0,0,0,0.12)' : `${colors.statusOutdated}33`;
 
@@ -113,20 +112,18 @@ export const KeyIssueInformer: React.FC<{
         style={{
           width: `${size + 8}px`, height: `${size + 8}px`, borderRadius: radii.sm,
           border: 'none',
-          background: open ? bgOpen : bgRest,
-          color: isHelp ? colors.textSecondary : colors.statusOutdated,
+          background: open ? bgOpen : 'transparent',
+          color: isHelp ? colors.textTertiary : colors.statusOutdated,
           cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, padding: 0, transition: 'background 0.15s',
         }}
         onMouseEnter={e => { e.currentTarget.style.background = open ? bgOpen : bgHover; }}
-        onMouseLeave={e => { e.currentTarget.style.background = open ? bgOpen : bgRest; }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? bgOpen : 'transparent'; }}
         onMouseDown={e => { e.currentTarget.style.background = bgPress; }}
         onMouseUp={e => { e.currentTarget.style.background = bgOpen; }}
       >
-        {isHelp
-          ? <HelpCircleIcon size={size} />
-          : <StatusAlertIcon kind="warning" size={size} />}
+        <StatusAlertIcon kind={isHelp ? 'help' : 'warning'} size={size} />
       </button>
       {mounted && pos && createPortal(
         <div

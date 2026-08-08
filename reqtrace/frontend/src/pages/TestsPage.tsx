@@ -42,7 +42,9 @@ export function plural(n: number, forms: [string, string, string]): string {
 // Мини-пилюля счётчика статуса — общий вид для яруса 1 и строк яруса 2.
 // label — необязательная словесная подпись («19 требуют проверки»): на
 // крупных карточках яруса 1 (v1.8.2) место есть, и подпись честнее голой
-// цифры; строки яруса 2 остаются с компактными цифрами.
+// цифры; строки яруса 2 остаются с компактными цифрами. Кружок-индикатор —
+// только у чипов БЕЗ подписи (ревью v1.8.2): со словами он избыточен, а у
+// голой цифры остаётся единственным носителем смысла цвета.
 export const StatusCountPill: React.FC<{
   color: string; count: number; title: string; label?: string;
 }> = ({ color, count, title, label }) => (
@@ -56,9 +58,11 @@ export const StatusCountPill: React.FC<{
       flexShrink: 0,
     }}
   >
-    <span style={{
-      width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
-    }} />
+    {!label && (
+      <span style={{
+        width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
+      }} />
+    )}
     {count}{label ? ` ${label}` : ''}
   </span>
 );

@@ -63,27 +63,18 @@ export const StatusCountPill: React.FC<{ color: string; count: number; title: st
 );
 
 // Элемент строки-легенды статусов на крупной карточке (v1.8.2): цвет — только
-// в точке-ключе, текст тихий. Точка и цифра — в нейтральной пилюле (как
-// счётчики фильтров яруса 2), подпись снаружи: светофор цветных заливок на
-// большой карточке перетягивал внимание (ревью).
+// в точке-ключе, текст тихий, цифра чуть темнее. Никаких заливок и рамок —
+// светофор пилюль на большой карточке перетягивал внимание (ревью).
+// ⚠ Цифры в нейтральных пилюлях пробовали и откатили в тот же день
+// (решение пользователя) — голая строка лучше, не предлагать снова.
 const LegendItem: React.FC<{ color: string; count: number; label: string; title: string }> = ({
   color, count, label, title,
 }) => (
-  <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+  <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '5px',
-      padding: '1px 7px', borderRadius: radii.pill,
-      background: 'rgba(0,0,0,0.05)',
-    }}>
-      <span style={{
-        width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
-      }} />
-      <span style={{
-        fontSize: '11px', fontWeight: 700, color: colors.textPrimary, lineHeight: 1.5,
-      }}>
-        {count}
-      </span>
-    </span>
+      width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
+    }} />
+    <span style={{ fontWeight: 700, color: colors.textPrimary }}>{count}</span>
     {label}
   </span>
 );

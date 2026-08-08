@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, ModalButton, modalTextStyle } from './Modal';
 import { colors, radii, shadows } from '../styles/tokens';
-import { BellIcon, ICON_TINTS, LockIcon, PlusIcon, SearchIcon, StatusAlertIcon } from './icons';
+import {
+  BellIcon, ICON_TINTS, KeyboardIcon, LockIcon, PlusIcon, SearchIcon, StatusAlertIcon,
+} from './icons';
 
 // Инструкция «Как работает ReqTrace» (v1.6.5) — широкая модалка со степпером.
 // Единственный носитель онбординга: сюда переехали три иллюстрации из блока
@@ -111,14 +113,21 @@ const artMenuRow = (icon: React.ReactNode, width: string, highlighted?: boolean)
 const ArtAddPage: React.FC = () => (
   <div style={{
     ...artRootStyle,
+    position: 'relative',
     background: ICON_TINTS.green.bg,
     border: `1px solid ${ICON_TINTS.green.border}`,
     padding: '14px 16px',
-    justifyContent: 'center',
-    gap: '8px',
+    overflow: 'hidden',
   }}>
-    {/* Шапка карточки проекта: точка подключения + название + кнопка «⋮». */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    {/* Карточка проекта: точка подключения + название + кнопка «⋮». */}
+    <div style={{
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '10px',
+      boxShadow: shadows.card,
+      padding: '10px 12px',
+      display: 'flex', alignItems: 'center', gap: '8px',
+    }}>
       <span style={{
         width: '7px', height: '7px', borderRadius: '50%',
         background: colors.statusActive, flexShrink: 0,
@@ -126,13 +135,12 @@ const ArtAddPage: React.FC = () => (
       <span style={artBar('42%')} />
       <span style={{
         marginLeft: 'auto',
-        width: '26px', height: '26px', borderRadius: '9px',
-        background: colors.white,
+        width: '24px', height: '24px', borderRadius: '8px',
         border: `1px solid ${colors.borderHover}`,
+        background: 'rgba(0,0,0,0.03)',
         color: colors.textSecondary,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: '2px',
-        boxShadow: shadows.card,
       }}>
         {[0, 1, 2].map(i => (
           <span key={i} style={{
@@ -142,9 +150,28 @@ const ArtAddPage: React.FC = () => (
         ))}
       </span>
     </div>
-    {/* Меню карточки: первый пункт — «Добавить страницу». */}
+    {/* Вторая карточка — «призрак» у нижнего края (обрезана overflow):
+        заполняет низ и читается как продолжение списка проектов. */}
     <div style={{
-      alignSelf: 'flex-end', width: '72%',
+      position: 'absolute', left: '16px', right: '16px', bottom: '-26px',
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '10px',
+      padding: '10px 12px',
+      display: 'flex', alignItems: 'center', gap: '8px',
+      opacity: 0.55,
+    }}>
+      <span style={{
+        width: '7px', height: '7px', borderRadius: '50%',
+        background: 'rgba(0,0,0,0.12)', flexShrink: 0,
+      }} />
+      <span style={artBar('34%')} />
+    </div>
+    {/* Меню карточки — повисло под кнопкой «⋮», первый пункт «Добавить
+        страницу» подсвечен. Абсолютная привязка к правому краю: меню
+        визуально принадлежит кнопке. */}
+    <div style={{
+      position: 'absolute', top: '62px', right: '24px', width: '62%',
       background: colors.white,
       border: `1px solid ${colors.border}`,
       borderRadius: '8px',
@@ -543,6 +570,17 @@ export const OnboardingModal: React.FC<{ onClose: () => void }> = ({ onClose }) 
         >
           Назад
         </ModalButton>
+        {/* Тихая подсказка про шпаргалку клавиш (ревью v1.8.2): видна на
+            каждом шаге, а не только в тексте шага «Поиск». Про «закройте
+            окно» — честно: поверх диалогов «?» сознательно не работает. */}
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          marginLeft: '6px',
+          color: colors.textTertiary, fontSize: '12px',
+        }}>
+          <KeyboardIcon size={14} />
+          Шпаргалка клавиш — по нажатию «?» (когда это окно закрыто)
+        </span>
         <span style={{ flex: 1 }} />
         <ModalButton
           variant="primary"

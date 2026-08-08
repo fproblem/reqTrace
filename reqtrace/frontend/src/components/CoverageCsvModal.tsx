@@ -241,11 +241,12 @@ export const CoverageCsvModal: React.FC<{
         <KeyIssueInformer
           variant="help"
           size={13}
-          ariaLabel="Зачем нужен JQL-фильтр"
-          text={'JQL — фильтр поиска задач в Jira. Здесь он собран по уникальным тестам, '
-            + 'которые попадут в файл при выбранных статусах: вставьте его в поиск задач '
-            + '(или откройте сразу) — и все тесты выгрузки перед глазами, оттуда удобно '
-            + 'выгрузить их со всеми полями и шагами.'}
+          ariaLabel="Зачем нужен JQL-фильтр и как выгрузить тесты из Jira"
+          text={'JQL — фильтр поиска задач Jira, собранный по уникальным тестам этой '
+            + 'выгрузки. Вставьте его в поиск задач или откройте сразу. Выгрузка оттуда: '
+            + 'Export → «CSV (All fields)» — ключ (Key), название (Summary) и шаги '
+            + '(Manual Test Steps) будут колонками файла; компактнее — добавить эти '
+            + 'колонки в таблицу (Columns) и выбрать «CSV (Current fields)».'}
         />
         {filter.keys.length > 0 && (
           <CountPill style={{ marginLeft: 'auto', marginRight: '10px' }}>
@@ -256,18 +257,18 @@ export const CoverageCsvModal: React.FC<{
       {filter.keys.length > 0 ? (
         <div style={{ marginBottom: '18px' }}>
           {/* Простая копируемая строка (решение пользователя: чипы-ключи
-              отклонены). Неразрывные звенья: «key in (» приклеен к ПЕРВОМУ
+              отклонены, форматирование ЕДИНОЕ — жирные ключи «выглядели
+              странно»). Неразрывные звенья: «key in (» приклеен к ПЕРВОМУ
               ключу, «)» — к последнему, каждый ключ несёт свою запятую —
               перенос возможен только между звеньями, дефис внутри SI-12834
               и скобки строку не рвут (пробелы в голом тексте давали разрыв
-              после «in» — ревью). Двухтоновость — служебный синтаксис тише
-              ключей; выделение и копирование дают ровно filter.jql,
-              тонирование — только CSS. */}
+              после «in» — ревью). Выделение и копирование дают ровно
+              filter.jql. */}
           <div
             className="island-scroll"
             style={{
               fontFamily: MONO, fontSize: '12px', lineHeight: 1.7,
-              color: colors.textTertiary,
+              color: colors.textSecondary,
               background: 'rgba(0,0,0,0.03)',
               border: `1px solid ${colors.border}`,
               borderRadius: radii.sm,
@@ -279,7 +280,7 @@ export const CoverageCsvModal: React.FC<{
             {filter.keys.map((k, i) => (
               <span key={k} style={{ whiteSpace: 'nowrap' }}>
                 {i === 0 && 'key in ('}
-                <span style={{ color: colors.textPrimary, fontWeight: 600 }}>{k}</span>
+                {k}
                 {i < filter.keys.length - 1 ? ', ' : ')'}
               </span>
             ))}

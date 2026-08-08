@@ -256,11 +256,13 @@ export const CoverageCsvModal: React.FC<{
       {filter.keys.length > 0 ? (
         <div style={{ marginBottom: '18px' }}>
           {/* Простая копируемая строка (решение пользователя: чипы-ключи
-              отклонены). Каждый «ключ + запятая» — в nowrap-обёртке: перенос
-              возможен только МЕЖДУ ключами, дефис внутри SI-12834 строку не
-              рвёт (голый текст переносился на дефисах — «выглядит плохо»).
-              Двухтоновость — служебный синтаксис тише ключей; выделение и
-              копирование дают ровно filter.jql, тонирование — только CSS. */}
+              отклонены). Неразрывные звенья: «key in (» приклеен к ПЕРВОМУ
+              ключу, «)» — к последнему, каждый ключ несёт свою запятую —
+              перенос возможен только между звеньями, дефис внутри SI-12834
+              и скобки строку не рвут (пробелы в голом тексте давали разрыв
+              после «in» — ревью). Двухтоновость — служебный синтаксис тише
+              ключей; выделение и копирование дают ровно filter.jql,
+              тонирование — только CSS. */}
           <div
             className="island-scroll"
             style={{
@@ -274,14 +276,13 @@ export const CoverageCsvModal: React.FC<{
               userSelect: 'all',
             }}
           >
-            {'key in ('}
             {filter.keys.map((k, i) => (
               <span key={k} style={{ whiteSpace: 'nowrap' }}>
+                {i === 0 && 'key in ('}
                 <span style={{ color: colors.textPrimary, fontWeight: 600 }}>{k}</span>
-                {i < filter.keys.length - 1 ? ', ' : ''}
+                {i < filter.keys.length - 1 ? ', ' : ')'}
               </span>
             ))}
-            {')'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
             <ModalButton variant="secondary" style={smallButtonStyle} onClick={() => { void handleCopyJql(); }}>

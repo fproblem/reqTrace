@@ -18,7 +18,6 @@ import { ProjectTree, TreeNodeItem } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
 import { useToast } from './Toast';
 import { useFadeToggle } from './fadePresence';
-import { TargetIcon } from './icons';
 import { XIcon } from './Modal';
 
 interface QueuePage {
@@ -141,6 +140,37 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 // --- Плавающий бар очереди -------------------------------------------------
 
+// Кольцо прогресса очереди (v1.8.2, вместо декоративной мишени TargetIcon —
+// ревью: «не несёт смысла»): заполняется в долю (index+1)/total — ровно те же
+// числа, что в тексте «Проверка: N из M», доля пройденного видна боковым
+// зрением без чтения цифр. Поворот -90° — старт с 12 часов.
+const QueueProgressRing: React.FC<{ index: number; total: number }> = ({ index, total }) => {
+  const size = 16;
+  const strokeWidth = 2.5;
+  const r = (size - strokeWidth) / 2;
+  const c = 2 * Math.PI * r;
+  const progress = total > 0 ? (index + 1) / total : 0;
+  return (
+    <svg
+      width={size}
+      height={size}
+      style={{ transform: 'rotate(-90deg)', flexShrink: 0, display: 'block' }}
+    >
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none" stroke="rgba(0,0,0,0.10)" strokeWidth={strokeWidth}
+      />
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none" stroke={colors.greenAccent} strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeDasharray={`${c * progress} ${c}`}
+        style={{ transition: 'stroke-dasharray 0.3s ease' }}
+      />
+    </svg>
+  );
+};
+
 const QueueBar: React.FC<{
   queue: QueueState | null;
   onNext: () => void;
@@ -192,9 +222,7 @@ const QueueBar: React.FC<{
         ...fadeStyle,
       }}
     >
-      <span style={{ color: colors.greenDark, display: 'flex', flexShrink: 0 }}>
-        <TargetIcon size={15} />
-      </span>
+      <QueueProgressRing index={q.index} total={q.pages.length} />
       <span style={{ fontSize: '13px', fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', flexShrink: 0 }}>
         Проверка: {q.index + 1} из {q.pages.length}
       </span>

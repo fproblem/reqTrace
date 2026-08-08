@@ -17,11 +17,13 @@ import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
 
-// Чипы фильтра дерева по статусу привязок. Подписи — те же короткие, что у
-// сегмент-контрола на «Тестах» («Ждут проверки», «Утрачены»); точный смысл
-// («страницы, где есть такие привязки») несёт title. Чип виден, только когда
-// таких привязок больше нуля, — пустой фильтр был бы шумом.
-const STATUS_FILTER_CHIPS: { key: 'outdated' | 'lost'; label: string; title: string }[] = [
+// Сегменты фильтра дерева по статусу привязок. Подписи — те же короткие,
+// что у сегмент-контрола на «Тестах» («Ждут проверки», «Утрачены»); точный
+// смысл («страницы, где есть такие привязки») несёт title. Отдельные
+// чипы-россыпь пробовали и переделали (отзыв пользователя v1.8.1) — тот же
+// урок, что на ярусе 2: одна рамка читается одним элементом, россыпь
+// «сваливается в дерево».
+const STATUS_FILTER_SEGMENTS: { key: 'outdated' | 'lost'; label: string; title: string }[] = [
   {
     key: 'outdated',
     label: 'Ждут проверки',
@@ -507,55 +509,101 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
         </HeaderIconButton>
       </div>
 
-      {/* Чипы фильтра по статусу привязок — над деревом (бэклог «UX-пакет»):
-          обзорное дополнение к точкам статусов у страниц. Появляются только
-          когда в дереве есть «тревожные» привязки; TreeReveal — ряд приходит
-          и уходит в общем ритме 160мс, без скачка раскладки. Активный чип —
-          в языке активной строки дерева (greenLight/greenDark), счётчик —
-          нейтральный (цветные счётчики в чипах отклонены в v1.7.5). */}
+      {/* Фильтр по статусу привязок — сегмент-контрол над деревом (бэклог
+          «UX-пакет»; переделан из чипов-россыпи по отзыву пользователя — тот
+          же язык и урок, что фильтры яруса 2 «Тестов»: одна рамка читается
+          одним элементом). Во всю ширину сайдбара, сегменты делят её поровну,
+          длинная подпись уходит в эллипсис на самом узком дереве. Активный
+          сегмент — зелёная заливка с белым текстом; клик по активному
+          снимает фильтр; нулевой сегмент глушится (охрана в onClick — title
+          и курсор должны жить, урок v1.6.0). Счётчики — нейтральные пилюли,
+          на активном — полупрозрачно-белые (в точности ярус 2). Ряд виден,
+          только когда есть «тревожные» привязки; TreeReveal — приходит и
+          уходит в общем ритме 160мс. */}
       <TreeReveal expanded={!loading && (statusTotals.outdated > 0 || statusTotals.lost > 0)}>
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '6px',
-          padding: '10px 10px 2px',
-        }}>
-          {STATUS_FILTER_CHIPS.map(chip => {
-            const count = statusTotals[chip.key];
-            if (count === 0) return null;
-            const active = statusFilter === chip.key;
-            return (
-              <button
-                key={chip.key}
-                onClick={() => setStatusFilter(active ? null : chip.key)}
-                title={active ? 'Снять фильтр' : chip.title}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '3px 9px',
-                  borderRadius: radii.pill,
-                  border: `1px solid ${active ? 'transparent' : colors.border}`,
-                  background: active ? colors.greenLight : 'transparent',
-                  color: active ? colors.greenDark : colors.textSecondary,
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => {
-                  if (!active) e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
-                }}
-                onMouseLeave={e => {
-                  if (!active) e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                {chip.label}
-                <span style={{ opacity: 0.75 }}>{count}</span>
-              </button>
-            );
-          })}
+        <div style={{ padding: '10px 10px 2px' }}>
+          <div style={{
+            display: 'flex',
+            height: '30px',
+            boxSizing: 'border-box',
+            borderRadius: radii.md,
+            border: `1px solid ${colors.border}`,
+            overflow: 'hidden',
+            background: colors.white,
+          }}>
+            {STATUS_FILTER_SEGMENTS.map(segment => {
+              const count = statusTotals[segment.key];
+              const active = statusFilter === segment.key;
+              const disabled = count === 0 && !active;
+              return (
+                <button
+                  key={segment.key}
+                  onClick={() => {
+                    if (disabled) return;
+                    setStatusFilter(active ? null : segment.key);
+                  }}
+                  title={disabled
+                    ? 'Таких привязок сейчас нет'
+                    : active ? 'Снять фильтр' : segment.title}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '100%',
+                    padding: '0 8px',
+                    border: 'none',
+                    background: active ? colors.greenAccent : 'transparent',
+                    color: active ? '#fff'
+                      : disabled ? colors.textTertiary : colors.textSecondary,
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: disabled ? 'default' : 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                  }}
+                  onMouseEnter={e => {
+                    if (active) {
+                      e.currentTarget.style.background = colors.greenDark;
+                    } else if (!disabled) {
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                      e.currentTarget.style.color = colors.textPrimary;
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = active ? colors.greenAccent : 'transparent';
+                    e.currentTarget.style.color = active ? '#fff'
+                      : disabled ? colors.textTertiary : colors.textSecondary;
+                  }}
+                >
+                  <span style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    minWidth: 0,
+                  }}>
+                    {segment.label}
+                  </span>
+                  {count > 0 && (
+                    <span style={{
+                      padding: '1px 6px',
+                      borderRadius: radii.pill,
+                      background: active ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.05)',
+                      color: active ? '#fff' : colors.textSecondary,
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      lineHeight: 1.4,
+                      flexShrink: 0,
+                    }}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </TreeReveal>
 

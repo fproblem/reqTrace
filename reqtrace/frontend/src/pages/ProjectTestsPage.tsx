@@ -1020,6 +1020,8 @@ export const ProjectTestsPage: React.FC = () => {
           projectId={projectId}
           projectName={data.project_name}
           counts={csvCounts}
+          tests={data.tests}
+          jiraBaseUrl={data.jira_base_url}
           onClose={() => setCsvModalOpen(false)}
         />
       )}

@@ -16,8 +16,10 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, CrossIcon, SearchIcon, TableIcon } from '../components/icons';
-import { HeaderIconButton, highlightMatch } from '../components/Layout/PageTree';
+import { ChevronRightIcon, CrossIcon, DownloadIcon, SearchIcon } from '../components/icons';
+import { highlightMatch } from '../components/Layout/PageTree';
+import { CoverageCsvModal } from '../components/CoverageCsvModal';
+import { CsvStatus } from '../components/csvExport';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
 import { KeyIssueInformer } from '../components/KeyIssueInformer';
@@ -201,30 +203,11 @@ export const ProjectTestsPage: React.FC = () => {
   const [linksByKey, setLinksByKey] = useState<Record<string, TestLinkRef[]>>({});
   const pendingKeysRef = useRef<Set<string>>(new Set());
 
-  // Выгрузка CSV-среза покрытия (v1.8.1): Blob с бэка, имя файла — проект +
-  // дата (символы, запрещённые в именах файлов, заменяются дефисом).
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const handleExportCsv = async () => {
-    if (!projectId || exportingCsv) return;
-    setExportingCsv(true);
-    try {
-      const blob = await api.downloadCoverageCsv(projectId);
-      const safeName = (data?.project_name || 'project')
-        .replace(/[\\/:*?"<>|]/g, '-').trim();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `reqtrace-покрытие-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      showToast('error', 'Не удалось выгрузить CSV', e.message);
-    } finally {
-      setExportingCsv(false);
-    }
-  };
+  // Выгрузка CSV-среза покрытия — через модалку выбора статусов (v1.8.2):
+  // срез стал сырьём для внешней ИИ-системы актуализации тестов, и частичные
+  // файлы («только требующие проверки») нужны чаще полного. Скачивание,
+  // имя файла и снек — в CoverageCsvModal.
+  const [csvModalOpen, setCsvModalOpen] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -338,6 +321,24 @@ export const ProjectTestsPage: React.FC = () => {
       nonstandard: allRows.filter(r => r.nonstandard).length,
     };
   }, [allRows, data, uncoveredTotal]);
+
+  // Счётчики модалки CSV: будущие СТРОКИ файла по статусам (привязка × тест
+  // плюс строки привязок без тестов) — человек видит размер выгрузки до
+  // клика; сумма по тестам, а не по привязкам: привязка с двумя тестами —
+  // две строки файла.
+  const csvCounts = useMemo<Record<CsvStatus, number>>(() => {
+    const total = { active: 0, outdated: 0, lost: 0 };
+    if (!data) return total;
+    for (const t of data.tests) {
+      total.active += t.active;
+      total.outdated += t.outdated;
+      total.lost += t.lost;
+    }
+    total.active += data.uncovered.active;
+    total.outdated += data.uncovered.outdated;
+    total.lost += data.uncovered.lost;
+    return total;
+  }, [data]);
 
   // Порядок строк: несущие больше всего привязок — сверху, внутри равных —
   // натуральный порядок ключей (REQ-9 выше REQ-10, testOrder.ts).
@@ -659,16 +660,40 @@ export const ProjectTestsPage: React.FC = () => {
           );
         })}
       </div>
-      {/* Выгрузка CSV-среза покрытия (v1.8.1) — HeaderIconButton (общий
-          стиль кнопок шапок, как лупа поиска): весь срез «страница ×
-          привязка × тест» одним файлом под русский Excel / Google Sheets. */}
-      <HeaderIconButton
-        title="Выгрузить срез покрытия в CSV: страница, цитата, статус, тест — по строке на каждую пару"
-        onClick={() => { void handleExportCsv(); }}
-        disabled={exportingCsv}
+      {/* Выгрузка CSV-среза покрытия (v1.8.1; модалка выбора статусов —
+          v1.8.2). Кнопка с подписью вместо иконки-таблицы: «таблица»
+          читалась как вид отображения списка, а не скачивание файла.
+          Габариты и ховер — как у HeaderIconButton, ширина по содержимому. */}
+      <button
+        title="Выгрузить срез покрытия в CSV: страница, тест, статус, цитата, дифф изменений — с выбором статусов"
+        onClick={() => setCsvModalOpen(true)}
+        disabled={!data}
+        style={{
+          height: '34px', padding: '0 12px',
+          borderRadius: radii.md,
+          border: `1px solid ${colors.border}`,
+          background: colors.white,
+          color: colors.textSecondary,
+          cursor: data ? 'pointer' : 'default',
+          display: 'inline-flex', alignItems: 'center', gap: '7px',
+          fontSize: '12px', fontWeight: 600, fontFamily: 'inherit',
+          flexShrink: 0, transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => {
+          if (!data) return;
+          e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+          e.currentTarget.style.borderColor = colors.borderHover;
+          e.currentTarget.style.color = colors.textPrimary;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = colors.white;
+          e.currentTarget.style.borderColor = colors.border;
+          e.currentTarget.style.color = colors.textSecondary;
+        }}
       >
-        {exportingCsv ? <RefreshIcon size={15} spinning /> : <TableIcon size={16} />}
-      </HeaderIconButton>
+        <DownloadIcon size={15} />
+        CSV
+      </button>
     </>
   );
 
@@ -990,6 +1015,14 @@ export const ProjectTestsPage: React.FC = () => {
         </div>
       )}
       </FadeIn>
+      {csvModalOpen && data && projectId && (
+        <CoverageCsvModal
+          projectId={projectId}
+          projectName={data.project_name}
+          counts={csvCounts}
+          onClose={() => setCsvModalOpen(false)}
+        />
+      )}
     </IslandScreen>
   );
 };

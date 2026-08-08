@@ -22,7 +22,15 @@ const CENTERED_MAX_WIDTH = 320;
 
 // size — размер значка (кнопка на 8px больше): ярус 2 «Тестов» носит
 // информеры крупнее рядового (v1.7.5) — они несут предупреждающую функцию.
-export const KeyIssueInformer: React.FC<{ text: string; size?: number }> = ({ text, size = 14 }) => {
+// variant='help' (v1.8.2) — серый справочный вариант: знак вопроса на
+// постоянной серой подложке, для пояснения метрик и терминов без
+// предупреждающего тона (карточки яруса 1: «что такое покрытие»).
+export const KeyIssueInformer: React.FC<{
+  text: string;
+  size?: number;
+  variant?: 'issue' | 'help';
+  ariaLabel?: string;
+}> = ({ text, size = 14, variant = 'issue', ariaLabel }) => {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const { mounted, fadeStyle } = useFadeToggle(open);
@@ -85,31 +93,37 @@ export const KeyIssueInformer: React.FC<{ text: string; size?: number }> = ({ te
     };
   }, [open]);
 
-  // Состояния кнопки — янтарная лестница заливок 15/26/33 (как у чипов
-  // ключей): ховер, пресс и «нажато» (открытый поповер держит заливку
-  // ховера — принадлежность видна, пока поповер жив).
-  const tint = colors.statusOutdated;
+  // Состояния кнопки — вид един для обоих вариантов (ревью v1.8.2): залитый
+  // круг StatusAlertIcon без постоянной подложки, подложка-лестница только
+  // на ховере/прессе. issue — янтарь 15/26/33, help — серый знак и серая
+  // лестница. Открытый поповер держит заливку ховера — принадлежность
+  // видна, пока он жив.
+  const isHelp = variant === 'help';
+  const bgHover = isHelp ? 'rgba(0,0,0,0.05)' : `${colors.statusOutdated}15`;
+  const bgOpen = isHelp ? 'rgba(0,0,0,0.08)' : `${colors.statusOutdated}26`;
+  const bgPress = isHelp ? 'rgba(0,0,0,0.12)' : `${colors.statusOutdated}33`;
 
   return (
     <>
       <button
         ref={btnRef}
         onClick={toggle}
-        aria-label="Почему ключ не ведёт в Jira"
+        aria-label={ariaLabel ?? (isHelp ? 'Что это значит' : 'Почему ключ не ведёт в Jira')}
         style={{
           width: `${size + 8}px`, height: `${size + 8}px`, borderRadius: radii.sm,
           border: 'none',
-          background: open ? `${tint}26` : 'transparent',
-          color: tint, cursor: 'pointer',
+          background: open ? bgOpen : 'transparent',
+          color: isHelp ? colors.textTertiary : colors.statusOutdated,
+          cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, padding: 0, transition: 'background 0.15s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = `${tint}${open ? '26' : '15'}`; }}
-        onMouseLeave={e => { e.currentTarget.style.background = open ? `${tint}26` : 'transparent'; }}
-        onMouseDown={e => { e.currentTarget.style.background = `${tint}33`; }}
-        onMouseUp={e => { e.currentTarget.style.background = `${tint}26`; }}
+        onMouseEnter={e => { e.currentTarget.style.background = open ? bgOpen : bgHover; }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? bgOpen : 'transparent'; }}
+        onMouseDown={e => { e.currentTarget.style.background = bgPress; }}
+        onMouseUp={e => { e.currentTarget.style.background = bgOpen; }}
       >
-        <StatusAlertIcon kind="warning" size={size} />
+        <StatusAlertIcon kind={isHelp ? 'help' : 'warning'} size={size} />
       </button>
       {mounted && pos && createPortal(
         <div

@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, ModalButton, modalTextStyle } from './Modal';
 import { colors, radii, shadows } from '../styles/tokens';
-import { BellIcon, ICON_TINTS, LockIcon, PlusIcon, StatusAlertIcon } from './icons';
+import {
+  BellIcon, ICON_TINTS, KeyboardIcon, LockIcon, PlusIcon, SearchIcon, StatusAlertIcon,
+} from './icons';
 
 // Инструкция «Как работает ReqTrace» (v1.6.5) — широкая модалка со степпером.
 // Единственный носитель онбординга: сюда переехали три иллюстрации из блока
 // «Начните за 3 простых шага» (SettingsPage, v1.5.7) и добавились шаги про
 // фичи, появившиеся позже, — автообновление с дайджестом и экран «Тесты».
-// Пополняется с каждым релизом, который меняет путь пользователя.
+// Пополняется с каждым релизом, который меняет путь пользователя;
+// актуализация v1.8.2: добавление страниц — из меню карточки проекта,
+// «Тесты» — карточки-сводки + очередь проверки + CSV, новый шаг «Поиск»
+// (⌘K, «Недавнее», шпаргалка «?», воронка дерева).
 //
 // Шаги листаются кнопками, кликом по степперу и стрелками ←/→; переключение
 // мгновенное (fade при листании читается как переинициализация — отклонён
@@ -83,21 +88,26 @@ const ArtConnect: React.FC = () => (
   </div>
 );
 
-// Шаг 2: белый «лист» дерева страниц на бледно-зелёной подложке, обрезанный
-// нижним краем (как будто список продолжается), с кнопкой «+» поверх.
-// Строка дерева: маркер (точка статуса у первой, квадратики-листы у прочих) + текст.
-const artTreeRow = (marker: React.ReactNode, width: string) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-    {marker}
-    <span style={artBar(width)} />
-  </div>
-);
-
+// Шаг 2: карточка проекта с кнопкой «⋮» и раскрытым меню — первый пункт
+// («Добавить страницу», с плюсом) подсвечен. Добавление живёт в меню
+// карточки проекта с v1.8.1 — прежняя иллюстрация с «плюсом» над деревом
+// показывала кнопку, которой больше нет.
 const artLeafSquare = (
   <span style={{
     width: '8px', height: '8px', borderRadius: '2.5px',
     background: 'rgba(0, 0, 0, 0.08)', flexShrink: 0,
   }} />
+);
+
+const artMenuRow = (icon: React.ReactNode, width: string, highlighted?: boolean) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: '7px',
+    padding: '6px 8px', borderRadius: '6px',
+    background: highlighted ? 'rgba(0,0,0,0.04)' : 'transparent',
+  }}>
+    {icon}
+    <span style={artBar(width)} />
+  </div>
 );
 
 const ArtAddPage: React.FC = () => (
@@ -106,44 +116,77 @@ const ArtAddPage: React.FC = () => (
     position: 'relative',
     background: ICON_TINTS.green.bg,
     border: `1px solid ${ICON_TINTS.green.border}`,
-    padding: '12px 14px 0',
+    padding: '14px 16px',
     overflow: 'hidden',
   }}>
+    {/* Карточка проекта: точка подключения + название + кнопка «⋮». */}
     <div style={{
-      flex: 1,
       background: colors.white,
       border: `1px solid ${colors.border}`,
-      borderBottom: 'none',
-      borderRadius: '8px 8px 0 0',
-      padding: '12px 14px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px',
-    }}>
-      {artTreeRow(
-        <span style={{
-          width: '7px', height: '7px', borderRadius: '50%',
-          background: colors.statusOutdated, flexShrink: 0,
-        }} />,
-        '46%',
-      )}
-      {artTreeRow(artLeafSquare, '62%')}
-      {artTreeRow(artLeafSquare, '54%')}
-      {artTreeRow(artLeafSquare, '66%')}
-      {artTreeRow(artLeafSquare, '44%')}
-    </div>
-    {/* Мини-копия настоящей кнопки «Добавить страницу» из шапки дерева. */}
-    <span style={{
-      position: 'absolute', top: '16px', right: '18px',
-      width: '26px', height: '26px', borderRadius: '10px',
-      background: colors.white,
-      border: `1px solid ${colors.border}`,
-      color: colors.textSecondary,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      borderRadius: '10px',
       boxShadow: shadows.card,
+      padding: '10px 12px',
+      display: 'flex', alignItems: 'center', gap: '8px',
     }}>
-      <PlusIcon size={13} />
-    </span>
+      <span style={{
+        width: '7px', height: '7px', borderRadius: '50%',
+        background: colors.statusActive, flexShrink: 0,
+      }} />
+      <span style={artBar('42%')} />
+      <span style={{
+        marginLeft: 'auto',
+        width: '24px', height: '24px', borderRadius: '8px',
+        border: `1px solid ${colors.borderHover}`,
+        background: 'rgba(0,0,0,0.03)',
+        color: colors.textSecondary,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: '2px',
+      }}>
+        {[0, 1, 2].map(i => (
+          <span key={i} style={{
+            width: '2.5px', height: '2.5px', borderRadius: '50%',
+            background: 'currentColor',
+          }} />
+        ))}
+      </span>
+    </div>
+    {/* Вторая карточка — «призрак» у нижнего края (обрезана overflow):
+        заполняет низ и читается как продолжение списка проектов. */}
+    <div style={{
+      position: 'absolute', left: '16px', right: '16px', bottom: '-26px',
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '10px',
+      padding: '10px 12px',
+      display: 'flex', alignItems: 'center', gap: '8px',
+      opacity: 0.55,
+    }}>
+      <span style={{
+        width: '7px', height: '7px', borderRadius: '50%',
+        background: 'rgba(0,0,0,0.12)', flexShrink: 0,
+      }} />
+      <span style={artBar('34%')} />
+    </div>
+    {/* Меню карточки — повисло под кнопкой «⋮», первый пункт «Добавить
+        страницу» подсвечен. Абсолютная привязка к правому краю: меню
+        визуально принадлежит кнопке. */}
+    <div style={{
+      position: 'absolute', top: '62px', right: '24px', width: '62%',
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '8px',
+      boxShadow: shadows.panel,
+      padding: '5px',
+      display: 'flex', flexDirection: 'column', gap: '2px',
+    }}>
+      {artMenuRow(
+        <span style={{ color: colors.textSecondary, display: 'flex' }}><PlusIcon size={12} /></span>,
+        '58%',
+        true,
+      )}
+      {artMenuRow(artLeafSquare, '46%')}
+      {artMenuRow(artLeafSquare, '52%')}
+    </div>
   </div>
 );
 
@@ -288,6 +331,66 @@ const ArtTests: React.FC = () => (
   </div>
 );
 
+// Шаг 6: палитра глобального поиска ⌘K — поле с лупой, подсказка-сочетание,
+// выдача с подсвеченной строкой.
+const artPaletteRow = (marker: React.ReactNode, width: string, highlighted?: boolean) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: '7px',
+    padding: '6px 8px', borderRadius: '6px',
+    background: highlighted ? colors.greenLight : 'transparent',
+  }}>
+    {marker}
+    <span style={artBar(width)} />
+  </div>
+);
+
+const ArtSearch: React.FC = () => (
+  <div style={{
+    ...artRootStyle,
+    background: colors.background,
+    padding: '14px 16px',
+    justifyContent: 'center',
+  }}>
+    <div style={{
+      background: colors.white,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '10px',
+      boxShadow: shadows.panel,
+      padding: '8px',
+      display: 'flex', flexDirection: 'column', gap: '4px',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '7px',
+        padding: '4px 8px 8px',
+        borderBottom: `1px solid ${colors.border}`,
+        color: colors.textTertiary,
+      }}>
+        <SearchIcon size={12} />
+        <span style={artBar('34%')} />
+        <span style={{
+          marginLeft: 'auto',
+          fontFamily: MONO, fontSize: '9.5px', fontWeight: 600,
+          color: colors.textTertiary,
+          border: `1px solid ${colors.border}`, borderRadius: '5px',
+          padding: '1px 5px',
+        }}>
+          ⌘K
+        </span>
+      </div>
+      {artPaletteRow(
+        <span style={{
+          width: '7px', height: '7px', borderRadius: '50%',
+          background: colors.greenAccent, flexShrink: 0,
+        }} />,
+        '62%',
+        true,
+      )}
+      {artPaletteRow(artLeafSquare, '48%')}
+      {artPaletteRow(artLeafSquare, '56%')}
+    </div>
+  </div>
+);
+
 // --- Шаги инструкции ---
 
 const STEPS: {
@@ -309,7 +412,7 @@ const STEPS: {
     label: 'Страницы',
     title: 'Добавьте страницы требований',
     paragraphs: [
-      'Вставьте ссылку на страницу требований — кнопка «плюс» над деревом слева. Раздел подтянется целиком, вместе с вложенными страницами, и дерево повторит структуру Confluence.',
+      'Откройте меню карточки проекта в профиле и выберите «Добавить страницу» (пока страниц нет, та же кнопка есть прямо на стартовом экране). Вставьте ссылку — раздел подтянется целиком, вместе с вложенными страницами, и дерево слева повторит структуру Confluence.',
       'Дальше структура следит за собой сама: перемещения и новые страницы подтягиваются при синхронизации, вручную вести ничего не нужно.',
     ],
     art: <ArtAddPage />,
@@ -319,7 +422,7 @@ const STEPS: {
     title: 'Привяжите тесты к требованиям',
     paragraphs: [
       'Выделите фрагмент требования, нажмите «Привязать тесты» и укажите ключ тест-кейса из Jira. Выделение станет привязкой — маркером, закреплённым ровно за этим местом страницы.',
-      'Процент покрытия страницы виден в её шапке, а клик по привязке открывает боковую панель: цитата требования, статус и список тестов.',
+      'Процент покрытия страницы виден в её шапке, а клик по привязке открывает боковую панель: цитата требования, статус и список тестов. У каждой привязки есть постоянная ссылка — кнопка в шапке панели: вставьте её в тест-кейс, и коллеги попадут точно на нужное требование.',
     ],
     art: <ArtLinkTest />,
   },
@@ -336,10 +439,19 @@ const STEPS: {
     label: 'Тесты',
     title: 'Смотрите на покрытие со стороны тестов',
     paragraphs: [
-      'Экран «Тесты» разворачивает картину: по каждому тест-кейсу видно, какие требования он проверяет и в каком они статусе. Так легко находить тесты, которым пора на ревизию, — например, если их требования устарели или утрачены.',
-      'У каждой привязки есть постоянная ссылка — кнопка в шапке панели. Вставьте её в тест-кейс или задачу Jira, и коллеги попадут точно на нужное требование.',
+      'Экран «Тесты» встречает карточками-сводками проектов: сколько тестов, какая доля привязок покрыта, статусы и объём в страницах. Кнопка «Очередь проверки» на карточке проведёт по всем привязкам «Требует проверки» потоком — страница за страницей, с прогрессом.',
+      'Внутри проекта по каждому тест-кейсу видно, какие требования он проверяет и в каком они статусе, а кнопка «CSV» выгружает срез покрытия файлом — с выбором статусов и диффом изменившихся цитат, для Excel или внешних систем.',
     ],
     art: <ArtTests />,
+  },
+  {
+    label: 'Поиск',
+    title: 'Перемещайтесь мгновенно',
+    paragraphs: [
+      'Сочетание ⌘K (Ctrl+K на Windows) открывает глобальный поиск: страницы по названию, тесты по ключу и названию из Jira, проекты. Пустая строка показывает «Недавнее» — вчерашняя работа продолжается двумя нажатиями, а дерево само раскрывается на выбранной странице.',
+      'Клавиши работают повсюду: стрелки листают привязки, Esc закрывает панель, а «?» показывает шпаргалку всех сочетаний. Дерево фильтруется кнопкой-воронкой — оставьте только страницы с «Требует проверки» или «Утрачено».',
+    ],
+    art: <ArtSearch />,
   },
 ];
 
@@ -458,6 +570,17 @@ export const OnboardingModal: React.FC<{ onClose: () => void }> = ({ onClose }) 
         >
           Назад
         </ModalButton>
+        {/* Тихая подсказка про шпаргалку клавиш (ревью v1.8.2): видна на
+            каждом шаге, а не только в тексте шага «Поиск». Про «закройте
+            окно» — честно: поверх диалогов «?» сознательно не работает. */}
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          marginLeft: '6px',
+          color: colors.textTertiary, fontSize: '12px',
+        }}>
+          <KeyboardIcon size={14} />
+          Шпаргалка клавиш — по нажатию «?» (когда это окно закрыто)
+        </span>
         <span style={{ flex: 1 }} />
         <ModalButton
           variant="primary"

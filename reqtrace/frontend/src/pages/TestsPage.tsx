@@ -9,7 +9,11 @@ import { ProjectTestsStats } from '../types';
 import { FadeIn } from '../components/fadePresence';
 import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, ClipboardCheckIcon, StatusAlertIcon } from '../components/icons';
+import {
+  ChevronRightIcon, ClipboardCheckIcon, DocumentIcon, PlusIcon,
+  StatusAlertIcon,
+} from '../components/icons';
+import { KeyIssueInformer } from '../components/KeyIssueInformer';
 import { useReviewQueue } from '../components/reviewQueue';
 import { colors, radii, shadows } from '../styles/tokens';
 import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
@@ -35,7 +39,9 @@ export function plural(n: number, forms: [string, string, string]): string {
   return forms[2];
 }
 
-// Мини-пилюля счётчика статуса — общий вид для яруса 1 и строк яруса 2.
+// Мини-пилюля счётчика статуса — вид строк яруса 2 (на крупных карточках
+// яруса 1 вместо пилюль — тихая строка-легенда, ревью v1.8.2: светофор
+// заливок перетягивал внимание).
 export const StatusCountPill: React.FC<{ color: string; count: number; title: string }> = ({
   color, count, title,
 }) => (
@@ -53,6 +59,23 @@ export const StatusCountPill: React.FC<{ color: string; count: number; title: st
       width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
     }} />
     {count}
+  </span>
+);
+
+// Элемент строки-легенды статусов на крупной карточке (v1.8.2): цвет — только
+// в точке-ключе, текст тихий, цифра чуть темнее. Никаких заливок и рамок —
+// светофор пилюль на большой карточке перетягивал внимание (ревью).
+// ⚠ Цифры в нейтральных пилюлях пробовали и откатили в тот же день
+// (решение пользователя) — голая строка лучше, не предлагать снова.
+const LegendItem: React.FC<{ color: string; count: number; label: string; title: string }> = ({
+  color, count, label, title,
+}) => (
+  <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+    <span style={{
+      width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
+    }} />
+    <span style={{ fontWeight: 700, color: colors.textPrimary }}>{count}</span>
+    {label}
   </span>
 );
 
@@ -76,26 +99,26 @@ const freshPlaqueStyle = (color: string): React.CSSProperties => ({
   lineHeight: 1.35,
 });
 
-// Скелетон карточки проекта — каркас в габаритах настоящей (заголовок,
-// главная цифра, пилюли, свежесть); количество и точные высоты придут
-// только с данными, несовпадение прощает FadeIn контента.
+// Скелетон карточки проекта — каркас в габаритах настоящей крупной карточки
+// (шапка, три колонки цифр, плашка свежести); точные высоты придут только
+// с данными, несовпадение прощает FadeIn контента.
 const ProjectCardSkeleton: React.FC = () => (
   <div style={{
     background: colors.cardBgSolid,
     border: `1px solid ${colors.border}`,
     borderRadius: radii.lg,
-    padding: '18px 22px',
+    padding: '20px 26px',
     boxShadow: shadows.card,
-    display: 'flex', flexDirection: 'column', gap: '14px',
+    display: 'flex', flexDirection: 'column', gap: '18px',
   }}>
-    <SkeletonBar width="45%" height={12} />
-    <SkeletonBar width="70%" height={16} />
-    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-      <SkeletonBar width="34px" height={18} radius={9} />
-      <SkeletonBar width="34px" height={18} radius={9} />
-      <SkeletonBar width="72px" height={10} style={{ marginLeft: 'auto' }} />
+    <SkeletonBar width="30%" height={16} />
+    <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
+      <SkeletonBar width="44px" height={44} radius={14} />
+      <SkeletonBar width="22%" height={22} />
+      <SkeletonBar width="34%" height={14} />
+      <SkeletonBar width="18%" height={14} />
     </div>
-    <SkeletonBar width="55%" height={10} />
+    <SkeletonBar width="100%" height={40} radius={14} />
   </div>
 );
 
@@ -142,11 +165,7 @@ export const TestsPage: React.FC = () => {
       <IslandScreen barLeft={bar} contentMaxWidth="1060px" surface="canvas">
         {showSkeleton && (
           <FadeIn>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-              gap: '14px',
-            }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <ProjectCardSkeleton />
               <ProjectCardSkeleton />
             </div>
@@ -164,29 +183,28 @@ export const TestsPage: React.FC = () => {
       {/* Мягкое появление данных (v1.7.1): и при переходе на экран, и после
           скелетона контент проявляется теми же 160мс, что модалки. */}
       <FadeIn>
-      {stats.length === 0 ? (
-        <div style={{
-          padding: '28px', borderRadius: radii.lg,
-          border: `1px solid ${colors.border}`, background: colors.cardBgSolid,
-          color: colors.textSecondary, fontSize: '13px', lineHeight: 1.55,
-        }}>
-          Пока нет ни одного проекта. Подключитесь к проекту в{' '}
-          <span
-            onClick={() => navigate('/settings')}
-            style={{ color: colors.greenDark, fontWeight: 600, cursor: 'pointer' }}
-          >
-            профиле
-          </span>
-          {' '}— и здесь появится сводка его тестов.
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-          gap: '14px',
-        }}>
+      {/* Крупные карточки во всю колонку (v1.8.2, концепт пользователя):
+          прежняя сетка minmax(380) на широком экране оставляла груду пустого
+          места вокруг тесных карточек. Теперь карточка — строка-сводка:
+          шапка с действиями, три колонки цифр (тесты / покрытие / объём),
+          плашка свежести во всю ширину. */}
+      {stats.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {stats.map(s => {
             const coverage = s.highlights > 0 ? Math.round((s.covered / s.highlights) * 100) : 0;
+            // Свежесть автообновления (v1.6.2): янтарь — последняя попытка
+            // не удалась (VPN/сеть/креды, v1.6.4) или прогона не было дольше
+            // двух суток. ⚠ Точка-индикатор у названия ОТКЛОНЕНА повторно
+            // (v1.8.2, как и в v1.8.0): на профиле точка про подключение,
+            // здесь читалась бы иначе — не добавлять.
+            const failing = s.last_attempt_reason;
+            const stale = !s.last_auto_refresh_at
+              || Date.now() - new Date(s.last_auto_refresh_at).getTime() > 48 * 3600 * 1000;
+            const warn = !!failing || stale;
+            const plaqueColor = warn ? colors.statusOutdated : colors.statusActive;
+            const labelStyle: React.CSSProperties = {
+              fontSize: '12px', fontWeight: 600, color: colors.textSecondary,
+            };
             return (
               <div
                 key={s.project_id}
@@ -196,12 +214,12 @@ export const TestsPage: React.FC = () => {
                   background: colors.cardBgSolid,
                   border: `1px solid ${colors.border}`,
                   borderRadius: radii.lg,
-                  padding: '18px 22px',
+                  padding: '20px 26px',
                   boxShadow: shadows.card,
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px',
+                  gap: '18px',
                   transition: 'border-color 0.15s, box-shadow 0.15s',
                 }}
                 onMouseEnter={e => {
@@ -213,12 +231,10 @@ export const TestsPage: React.FC = () => {
                   e.currentTarget.style.boxShadow = shadows.card;
                 }}
               >
-                {/* Точку-индикатор у названия пробовали и убрали (ревью):
-                    на профиле точка про подключение, здесь была бы про статусы
-                    привязок — одинаковый вид с разным смыслом путает. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {/* Шапка: имя + «Проверить» + шеврон. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{
-                    fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+                    fontSize: '20px', fontWeight: 700, color: colors.textPrimary,
                     flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {s.project_name}
@@ -235,128 +251,232 @@ export const TestsPage: React.FC = () => {
                       демо
                     </span>
                   )}
-                  <ChevronRightIcon size={14} style={{ color: colors.textTertiary }} />
-                </div>
-
-                {/* Главная цифра карточки — тесты: экран-то про них. Процент
-                    покрытия живёт чипом в шапке карточки, строка остаётся
-                    словесной дробью. */}
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <ClipboardCheckIcon size={16} style={{ color: colors.greenDark, alignSelf: 'center' }} />
-                  <span style={{ fontSize: '20px', fontWeight: 700, color: colors.textPrimary }}>
-                    {s.tests}
-                  </span>
-                  <span style={{ fontSize: '13px', color: colors.textSecondary, minWidth: 0 }}>
-                    {plural(s.tests, ['тест', 'теста', 'тестов'])} · покрыто {s.covered} из {s.highlights}{' '}
-                    {plural(s.highlights, ['привязки', 'привязок', 'привязок'])}
-                  </span>
-                </div>
-
-                {/* Ряд открывает мини-версия чипа «Покрытие: N%» из бара
-                    страницы (ревью: чип в шапке карточки и приписка в строке
-                    цифры отклонены) — тот же текст и вид, ужатый до высоты
-                    статусных пилюль. flexWrap — на минимальной ширине карточки
-                    ряд переносится, а не выталкивает счётчик страниц. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', rowGap: '6px' }}>
-                  <span
-                    title={`Покрытие: доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
+                  {/* Очередь проверки — постоянное место в шапке (v1.8.2).
+                      Кнопка НЕЙТРАЛЬНАЯ (ревью: янтарь — «слишком цветасто»,
+                      акцент не нужен; сигнал «есть работа» несут чипы и
+                      плашка) и БЕЗ шеврона (следом шеврон самой карточки).
+                      При нуле — приглушена, охрана в onClick (урок v1.6.0:
+                      с disabled-атрибутом не живут title и курсор).
+                      stopPropagation — карточка кликабельна целиком. */}
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (s.outdated > 0) void startReviewQueue(s.project_id, s.project_name);
+                    }}
+                    aria-disabled={s.outdated === 0}
+                    title={s.outdated > 0
+                      ? 'Пройти все привязки «Требует проверки» потоком: страница за страницей, с прогрессом'
+                      : 'Привязок «Требует проверки» нет — очередь проверки пуста'}
                     style={{
-                      padding: '2px 10px',
-                      borderRadius: radii.pill,
-                      background: 'rgba(0,0,0,0.05)',
-                      color: colors.textSecondary,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      lineHeight: 1.5,
-                      flexShrink: 0,
+                      display: 'inline-flex', alignItems: 'center',
+                      height: '34px', padding: '0 14px', borderRadius: radii.pill,
+                      background: colors.white,
+                      border: `1px solid ${colors.border}`,
+                      color: s.outdated > 0 ? colors.textSecondary : colors.textTertiary,
+                      fontSize: '13px', fontWeight: 600, fontFamily: 'inherit',
+                      cursor: s.outdated > 0 ? 'pointer' : 'default',
+                      flexShrink: 0, transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      if (s.outdated === 0) return;
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                      e.currentTarget.style.borderColor = colors.borderHover;
+                      e.currentTarget.style.color = colors.textPrimary;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = colors.white;
+                      e.currentTarget.style.borderColor = colors.border;
+                      e.currentTarget.style.color = s.outdated > 0 ? colors.textSecondary : colors.textTertiary;
                     }}
                   >
-                    Покрытие: {coverage}%
-                  </span>
-                  {s.active > 0 && (
-                    <StatusCountPill color={colors.statusActive} count={s.active} title="Привязок в статусе «Актуально»" />
-                  )}
-                  {s.outdated > 0 && (
-                    <StatusCountPill color={colors.statusOutdated} count={s.outdated} title="Привязок в статусе «Требует проверки»" />
-                  )}
-                  {s.lost > 0 && (
-                    <StatusCountPill color={colors.statusLost} count={s.lost} title="Привязок в статусе «Утрачено»" />
-                  )}
-                  {/* Очередь проверки: кнопка-пилюля в янтаре статуса — пройти
-                      все «Требует проверки» проекта потоком, страница за
-                      страницей. stopPropagation — карточка кликабельна целиком. */}
-                  {s.outdated > 0 && (
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        void startReviewQueue(s.project_id, s.project_name);
-                      }}
-                      title={'Пройти все привязки «Требует проверки» потоком: страница за страницей, с прогрессом'}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                        padding: '2px 10px', borderRadius: radii.pill,
-                        background: `${colors.statusOutdated}15`,
-                        border: `1px solid ${colors.statusOutdated}33`,
-                        color: colors.statusOutdated,
-                        fontSize: '11px', fontWeight: 700, lineHeight: 1.5,
-                        cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = `${colors.statusOutdated}26`; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = `${colors.statusOutdated}15`; }}
-                    >
-                      Проверить
-                      <ChevronRightIcon size={11} />
-                    </button>
-                  )}
-                  <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.textTertiary }}>
-                    {s.pages} {plural(s.pages, ['страница', 'страницы', 'страниц'])}
-                  </span>
+                    Очередь проверки
+                  </button>
+                  <ChevronRightIcon size={16} style={{ color: colors.textTertiary }} />
                 </div>
 
-                {/* Свежесть автообновления (v1.6.2) — статусной ПЛАШКОЙ в языке
-                    карточек профиля (ревью v1.8.0: яркая вставка про состояние
-                    тестов делает карточку значимее). Статусы экрана ровно
-                    настолько актуальны, насколько свеж последний прогон —
-                    плашка отвечает на вопрос «можно ли им верить». Янтарь —
-                    последняя попытка не удалась (VPN/сеть/креды, v1.6.4) или
-                    прогона не было дольше двух суток (или вовсе). */}
-                {!s.is_demo && (() => {
-                  const failing = s.last_attempt_reason;
-                  const stale = !s.last_auto_refresh_at
-                    || Date.now() - new Date(s.last_auto_refresh_at).getTime() > 48 * 3600 * 1000;
-                  const reasonText = failing === 'no_valid_credentials'
-                    ? 'Нет работающих подключений'
-                    : 'Confluence недоступен';
-                  const warn = !!failing || stale;
-                  const plaqueColor = warn ? colors.statusOutdated : colors.statusActive;
-                  return (
-                    <div
-                      title={failing
-                        ? `Последняя попытка обновления (${s.last_attempt_at
-                            ? formatCheckedAt(s.last_attempt_at) : '—'}) не удалась — `
-                          + 'показаны данные последнего успешного прогона'
-                        : 'Когда автообновление в последний раз проверяло страницы проекта'}
-                      style={freshPlaqueStyle(plaqueColor)}
-                    >
-                      <StatusAlertIcon kind={warn ? 'warning' : 'ok'} size={16} />
-                      <span style={{ minWidth: 0 }}>
-                        {failing
-                          ? (s.last_auto_refresh_at
-                            ? `${reasonText} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
-                            : `${reasonText} — страницы ещё не проверялись`)
-                          : (s.last_auto_refresh_at
-                            ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
-                            : 'Автообновление ещё не проверяло проект')}
+                {/* Три колонки сводки: тесты / покрытие / объём — с
+                    вертикальными дивайдерами. Боковые колонки РАВНЫЕ, центру
+                    больше всех (ревью v1.8.2): чипы статусов обязаны
+                    помещаться в одну строку. */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1.9fr 1fr',
+                  columnGap: '24px',
+                  alignItems: 'center',
+                }}>
+                  {/* Тесты — главная цифра экрана; иконка без подложки
+                      (ревью v1.8.2: плитку-бейдж убрали). */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                    <ClipboardCheckIcon size={26} style={{ color: colors.greenDark }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                        <span style={{ fontSize: '32px', fontWeight: 700, color: colors.textPrimary, lineHeight: 1.1 }}>
+                          {s.tests}
+                        </span>
+                        <span style={{ fontSize: '14px', color: colors.textSecondary }}>
+                          {plural(s.tests, ['тест', 'теста', 'тестов'])}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: colors.textSecondary, marginTop: '2px' }}>
+                        покрыто {s.covered} из {s.highlights}{' '}
+                        {plural(s.highlights, ['привязки', 'привязок', 'привязок'])}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Покрытие: шкала с процентом + пилюли всех трёх статусов
+                      со словесными подписями (место есть — нулевые тоже
+                      видны, ноль тут хорошая новость). */}
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0,
+                    borderLeft: `1px solid ${colors.border}`, paddingLeft: '24px',
+                    alignSelf: 'stretch', justifyContent: 'center',
+                  }}>
+                    {/* Информер «?» (ревью v1.8.2): по тапу объясняет, за что
+                        отвечает метрика покрытия, — серый вариант того же
+                        поповера, что у нестандартных ключей яруса 2. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={labelStyle}>Покрытие</span>
+                      <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex' }}>
+                        <KeyIssueInformer
+                          variant="help"
+                          size={13}
+                          ariaLabel="Что такое покрытие"
+                          text={`Покрытие — доля привязок проекта, к которым привязан хотя бы один тест: сейчас ${s.covered} из ${s.highlights}. Чипы рядом — статусы самих привязок после последнего обновления страниц.`}
+                        />
                       </span>
                     </div>
-                  );
-                })()}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        flex: 1, height: '6px', borderRadius: radii.pill,
+                        background: 'rgba(0,0,0,0.07)', overflow: 'hidden',
+                      }}>
+                        {/* Заливка — приглушённая фирменная зелень (две
+                            итерации ревью v1.8.2): сплошной greenAccent
+                            «слишком яркий», нейтральный серый — слишком
+                            глухой; полупрозрачная зелень (тот же приём, что
+                            focusBorder в tokens: «сплошной звенел неоном»). */}
+                        <div style={{
+                          width: `${coverage}%`, height: '100%',
+                          borderRadius: radii.pill,
+                          background: 'rgba(122, 224, 90, 0.55)',
+                        }} />
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: colors.textPrimary, flexShrink: 0 }}>
+                        {coverage}%
+                      </span>
+                    </div>
+                    {/* Строка-легенда в языке мет (через «·»), по центру
+                        колонки, всегда одной строкой — ширину гарантирует
+                        широкая центральная колонка. */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: '8px', whiteSpace: 'nowrap',
+                      fontSize: '12px', color: colors.textSecondary,
+                    }}>
+                      <LegendItem
+                        color={colors.statusActive} count={s.active} label="актуально"
+                        title="Привязок в статусе «Актуально»"
+                      />
+                      <span style={{ color: colors.textTertiary }}>·</span>
+                      <LegendItem
+                        color={colors.statusOutdated} count={s.outdated}
+                        label={plural(s.outdated, ['требует проверки', 'требуют проверки', 'требуют проверки'])}
+                        title="Привязок в статусе «Требует проверки»"
+                      />
+                      <span style={{ color: colors.textTertiary }}>·</span>
+                      <LegendItem
+                        color={colors.statusLost} count={s.lost} label="утрачено"
+                        title="Привязок в статусе «Утрачено»"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Объём проекта в страницах (подстрока «всего в проекте»
+                      убрана по ревью — смысл несёт title). */}
+                  <div
+                    title="Страниц в проекте всего"
+                    style={{
+                      display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0,
+                      borderLeft: `1px solid ${colors.border}`, paddingLeft: '24px',
+                      alignSelf: 'stretch', justifyContent: 'center',
+                    }}
+                  >
+                    <span style={labelStyle}>Объём</span>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                      <DocumentIcon size={16} style={{ color: colors.textSecondary, alignSelf: 'center' }} />
+                      <span style={{ fontSize: '17px', fontWeight: 700, color: colors.textPrimary }}>
+                        {s.pages}
+                      </span>
+                      <span style={{ fontSize: '13px', color: colors.textSecondary }}>
+                        {plural(s.pages, ['страница', 'страницы', 'страниц'])}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Свежесть автообновления — плашкой во всю ширину (язык
+                    карточек профиля): статусы экрана ровно настолько
+                    актуальны, насколько свеж последний прогон. */}
+                {!s.is_demo && (
+                  <div
+                    title={failing
+                      ? `Последняя попытка обновления (${s.last_attempt_at
+                          ? formatCheckedAt(s.last_attempt_at) : '—'}) не удалась — `
+                        + 'показаны данные последнего успешного прогона'
+                      : 'Когда автообновление в последний раз проверяло страницы проекта'}
+                    style={freshPlaqueStyle(plaqueColor)}
+                  >
+                    <StatusAlertIcon kind={warn ? 'warning' : 'ok'} size={16} />
+                    <span style={{ minWidth: 0 }}>
+                      {failing
+                        ? (s.last_auto_refresh_at
+                          ? `${failing === 'no_valid_credentials' ? 'Нет работающих подключений' : 'Confluence недоступен'} — данные от ${formatCheckedAt(s.last_auto_refresh_at)}`
+                          : `${failing === 'no_valid_credentials' ? 'Нет работающих подключений' : 'Confluence недоступен'} — страницы ещё не проверялись`)
+                        : (s.last_auto_refresh_at
+                          ? `Страницы проверены ${formatCheckedAt(s.last_auto_refresh_at)}`
+                          : 'Автообновление ещё не проверяло проект')}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Приглашение подключить проект (концепт v1.8.2) — пунктирная карточка
+          под списком; она же — пустое состояние экрана. Подключение живёт в
+          профиле (личные креды), поэтому ведём туда. */}
+      <div
+        onClick={() => navigate('/settings')}
+        title="Открыть профиль — подключение проекта (личные креды Confluence, опционально Jira) настраивается там"
+        style={{
+          marginTop: stats.length > 0 ? '14px' : 0,
+          padding: '30px',
+          border: '2px dashed rgba(0,0,0,0.12)',
+          borderRadius: radii.lg,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+          cursor: 'pointer',
+          transition: 'border-color 0.15s, background 0.15s',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.borderColor = 'rgba(0,0,0,0.22)';
+          e.currentTarget.style.background = 'rgba(255,255,255,0.55)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.borderColor = 'rgba(0,0,0,0.12)';
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <PlusIcon size={20} style={{ color: colors.textTertiary }} />
+        <span style={{ fontSize: '15px', fontWeight: 600, color: colors.textPrimary, marginTop: '4px' }}>
+          Подключить проект
+        </span>
+        <span style={{ fontSize: '13px', color: colors.textSecondary }}>
+          Добавьте Confluence и Jira для начала работы
+        </span>
+      </div>
       </FadeIn>
     </IslandScreen>
   );

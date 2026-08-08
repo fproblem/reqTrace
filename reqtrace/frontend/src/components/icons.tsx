@@ -175,6 +175,12 @@ export const TableIcon = makeIcon(<>
   <line x1="12" y1="10" x2="12" y2="20" />
 </>);
 
+export const DownloadIcon = makeIcon(<>
+  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+  <polyline points="7 10 12 15 17 10" />
+  <line x1="12" y1="3" x2="12" y2="15" />
+</>);
+
 export const KeyboardIcon = makeIcon(<>
   <rect x="2.5" y="6" width="19" height="12" rx="2" />
   <line x1="7" y1="14.5" x2="17" y2="14.5" />
@@ -281,10 +287,11 @@ export const QuoteIcon = makeIcon(<>
 </>);
 
 /** Залитый круг статуса с белым знаком: галочка (ok), «!» (warning), крестик
- *  (error). Цвет круга — через `color` родителя. Единая иконка статус-плашек:
- *  статус привязки в панели выделения, статус подключения на карточке проекта. */
+ *  (error), «?» (help — справочные информеры, v1.8.2). Цвет круга — через
+ *  `color` родителя. Единая иконка статус-плашек: статус привязки в панели
+ *  выделения, статус подключения на карточке проекта. */
 export const StatusAlertIcon: React.FC<{
-  kind: 'ok' | 'warning' | 'error';
+  kind: 'ok' | 'warning' | 'error' | 'help';
   size?: number;
   style?: React.CSSProperties;
 }> = ({
@@ -308,6 +315,15 @@ export const StatusAlertIcon: React.FC<{
       <>
         <line x1="9" y1="9" x2="15" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
         <line x1="15" y1="9" x2="9" y2="15" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+      </>
+    )}
+    {kind === 'help' && (
+      <>
+        <path
+          d="M9.4 9.4a2.6 2.6 0 1 1 3.63 2.8c-.7.32-1.03.83-1.03 1.5v.3"
+          fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round"
+        />
+        <circle cx="12" cy="16.8" r="1.3" fill="#fff" />
       </>
     )}
   </svg>

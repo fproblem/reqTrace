@@ -793,11 +793,10 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
         background: colors.cardBgSolid,
         border: `1px solid ${colors.border}`,
         borderRadius: radii.lg,
-        padding: '18px 22px',
+        // Крупная карточка во всю колонку (v1.8.2, вслед за ярусом 1
+        // «Тестов») — просторные поля вместо тесноты сетки.
+        padding: '20px 26px',
         boxShadow: shadows.card,
-        // Колонка: грид тянет соседние карточки на одну высоту, а свободное
-        // место внутри забирает статус-плашка (flex: 1 у её обёртки) — плашки
-        // соседних карточек выравниваются по высоте, ряд закрывается ровно.
         display: 'flex',
         flexDirection: 'column',
         transition: 'border-color 0.15s, box-shadow 0.15s',
@@ -824,7 +823,8 @@ const ProjectCard: React.FC<{ project: Project; onChanged: () => void }> = ({ pr
           background: statusColor, flexShrink: 0,
         }} />
         <span style={{
-          fontSize: '16px', fontWeight: 600, color: colors.textPrimary,
+          // 20/700 — как у заголовков крупных карточек яруса 1 «Тестов».
+          fontSize: '20px', fontWeight: 700, color: colors.textPrimary,
           flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {project.name}
@@ -1174,8 +1174,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <SkeletonBar width="200px" height={22} style={{ marginBottom: '16px' }} />
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+              display: 'flex', flexDirection: 'column',
               gap: '14px',
             }}>
               {[0, 1].map(i => (
@@ -1348,10 +1347,9 @@ export const SettingsPage: React.FC = () => {
         </div>
       ) : (
         <div style={{
-          display: 'grid',
-          // auto-fill вместо жёстких двух колонок: на узком окне карточки
-          // складываются в одну колонку, не сжимаясь до нечитаемых.
-          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+          // Одна крупная карточка на строку (v1.8.2, вслед за ярусом 1
+          // «Тестов»): сетка minmax(380) жала контент при куче пустого места.
+          display: 'flex', flexDirection: 'column',
           gap: '14px',
         }}>
           {joined.map(project => (

@@ -339,9 +339,12 @@ export const TestsPage: React.FC = () => {
                         flex: 1, height: '6px', borderRadius: radii.pill,
                         background: 'rgba(0,0,0,0.07)', overflow: 'hidden',
                       }}>
+                        {/* Заливка нейтральная (ревью v1.8.2): яркая зелень
+                            читалась лишним акцентом — цвет на карточке несут
+                            только чипы статусов. */}
                         <div style={{
                           width: `${coverage}%`, height: '100%',
-                          borderRadius: radii.pill, background: colors.greenAccent,
+                          borderRadius: radii.pill, background: colors.textTertiary,
                         }} />
                       </div>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: colors.textPrimary, flexShrink: 0 }}>

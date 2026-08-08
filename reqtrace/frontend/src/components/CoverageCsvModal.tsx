@@ -259,9 +259,11 @@ export const CoverageCsvModal: React.FC<{
               {STATUS_LABEL[s]}
             </span>
             {/* Счётчик — со словом-единицей (ревью: голые цифры читались
-                неоднозначно: тут строки будущего файла, у шага 2 — тесты). */}
+                неоднозначно; «привязок» — выбор пользователя: язык процесса.
+                Численно это строки будущего файла — привязка с двумя
+                тестами даст две). */}
             <CountPill>
-              {counts[s]} {plural(counts[s], ['строка', 'строки', 'строк'])}
+              {counts[s]} {plural(counts[s], ['привязка', 'привязки', 'привязок'])}
             </CountPill>
           </label>
         ))}
@@ -324,8 +326,10 @@ export const CoverageCsvModal: React.FC<{
               </React.Fragment>
             ))}
           </div>
+          {/* Во всю ширину модалки (ревью), сегменты равные. */}
           <div style={{
-            display: 'inline-flex',
+            display: 'flex',
+            width: '100%',
             height: '30px',
             boxSizing: 'border-box',
             border: `1px solid ${colors.border}`,
@@ -335,7 +339,7 @@ export const CoverageCsvModal: React.FC<{
           }}>
             <button
               onClick={() => { void handleCopyJql(); }}
-              style={segmentButtonStyle}
+              style={{ ...segmentButtonStyle, flex: 1 }}
               onMouseEnter={segmentHoverOn}
               onMouseLeave={segmentHoverOff}
             >
@@ -344,7 +348,7 @@ export const CoverageCsvModal: React.FC<{
             {jiraSearchUrl && (
               <button
                 onClick={() => { window.open(jiraSearchUrl, '_blank', 'noopener,noreferrer'); }}
-                style={{ ...segmentButtonStyle, borderLeft: `1px solid ${colors.border}` }}
+                style={{ ...segmentButtonStyle, flex: 1, borderLeft: `1px solid ${colors.border}` }}
                 onMouseEnter={segmentHoverOn}
                 onMouseLeave={segmentHoverOff}
               >

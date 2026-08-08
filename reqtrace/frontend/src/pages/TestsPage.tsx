@@ -234,14 +234,13 @@ export const TestsPage: React.FC = () => {
                       демо
                     </span>
                   )}
-                  {/* Очередь проверки — постоянное место в шапке (v1.8.2):
-                      при outdated>0 кнопка в янтаре статуса (сигнал v1.8.1
-                      сохранён), при нуле — нейтральная с охраной в onClick
-                      (урок v1.6.0: с disabled-атрибутом не живут title и
-                      курсор). Подпись — именем фичи, с шевроном перехода
-                      (ревью: «Проверить» со стрелками читалось как проверка
-                      доступов с профиля). stopPropagation — карточка
-                      кликабельна целиком. */}
+                  {/* Очередь проверки — постоянное место в шапке (v1.8.2).
+                      Кнопка НЕЙТРАЛЬНАЯ (ревью: янтарь — «слишком цветасто»,
+                      акцент не нужен; сигнал «есть работа» несут чипы и
+                      плашка) и БЕЗ шеврона (следом шеврон самой карточки).
+                      При нуле — приглушена, охрана в onClick (урок v1.6.0:
+                      с disabled-атрибутом не живут title и курсор).
+                      stopPropagation — карточка кликабельна целиком. */}
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -252,34 +251,40 @@ export const TestsPage: React.FC = () => {
                       ? 'Пройти все привязки «Требует проверки» потоком: страница за страницей, с прогрессом'
                       : 'Привязок «Требует проверки» нет — очередь проверки пуста'}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      display: 'inline-flex', alignItems: 'center',
                       height: '34px', padding: '0 14px', borderRadius: radii.pill,
-                      background: s.outdated > 0 ? `${colors.statusOutdated}15` : colors.white,
-                      border: `1px solid ${s.outdated > 0 ? `${colors.statusOutdated}33` : colors.border}`,
-                      color: s.outdated > 0 ? colors.statusOutdated : colors.textTertiary,
+                      background: colors.white,
+                      border: `1px solid ${colors.border}`,
+                      color: s.outdated > 0 ? colors.textSecondary : colors.textTertiary,
                       fontSize: '13px', fontWeight: 600, fontFamily: 'inherit',
                       cursor: s.outdated > 0 ? 'pointer' : 'default',
-                      flexShrink: 0, transition: 'background 0.15s',
+                      flexShrink: 0, transition: 'all 0.15s',
                     }}
                     onMouseEnter={e => {
-                      if (s.outdated > 0) e.currentTarget.style.background = `${colors.statusOutdated}26`;
+                      if (s.outdated === 0) return;
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                      e.currentTarget.style.borderColor = colors.borderHover;
+                      e.currentTarget.style.color = colors.textPrimary;
                     }}
                     onMouseLeave={e => {
-                      if (s.outdated > 0) e.currentTarget.style.background = `${colors.statusOutdated}15`;
+                      e.currentTarget.style.background = colors.white;
+                      e.currentTarget.style.borderColor = colors.border;
+                      e.currentTarget.style.color = s.outdated > 0 ? colors.textSecondary : colors.textTertiary;
                     }}
                   >
                     Очередь проверки
-                    <ChevronRightIcon size={12} />
                   </button>
                   <ChevronRightIcon size={16} style={{ color: colors.textTertiary }} />
                 </div>
 
                 {/* Три колонки сводки: тесты / покрытие / объём — с
-                    вертикальными дивайдерами между ними (ревью v1.8.2). */}
+                    вертикальными дивайдерами. Боковые колонки РАВНЫЕ, центру
+                    больше всех (ревью v1.8.2): чипы статусов обязаны
+                    помещаться в одну строку. */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '1.1fr 1.5fr 0.8fr',
-                  columnGap: '28px',
+                  gridTemplateColumns: '1fr 1.9fr 1fr',
+                  columnGap: '24px',
                   alignItems: 'center',
                 }}>
                   {/* Тесты — главная цифра экрана; иконка без подложки
@@ -307,7 +312,7 @@ export const TestsPage: React.FC = () => {
                       видны, ноль тут хорошая новость). */}
                   <div style={{
                     display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0,
-                    borderLeft: `1px solid ${colors.border}`, paddingLeft: '28px',
+                    borderLeft: `1px solid ${colors.border}`, paddingLeft: '24px',
                     alignSelf: 'stretch', justifyContent: 'center',
                   }}>
                     <span style={labelStyle}>Покрытие</span>
@@ -328,7 +333,9 @@ export const TestsPage: React.FC = () => {
                         {coverage}%
                       </span>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', rowGap: '6px' }}>
+                    {/* nowrap: чипы всегда в одну строку (ревью) — ширину
+                        гарантирует широкая центральная колонка. */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
                       <StatusCountPill
                         color={colors.statusActive} count={s.active} label="актуально"
                         title="Привязок в статусе «Актуально»"
@@ -351,7 +358,7 @@ export const TestsPage: React.FC = () => {
                     title="Страниц в проекте всего"
                     style={{
                       display: 'flex', flexDirection: 'column', gap: '9px', minWidth: 0,
-                      borderLeft: `1px solid ${colors.border}`, paddingLeft: '28px',
+                      borderLeft: `1px solid ${colors.border}`, paddingLeft: '24px',
                       alignSelf: 'stretch', justifyContent: 'center',
                     }}
                   >

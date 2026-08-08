@@ -9,10 +9,10 @@
 // клик по шапке-статусу listает «Требует проверки» по кругу, стрелки — все
 // подряд. Очередь живёт в памяти (F5 её закрывает — сценарий одного захода).
 import React, {
-  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
+  createContext, useCallback, useContext, useMemo, useRef, useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { ProjectTree, TreeNodeItem } from '../types';
 import { colors, radii, shadows } from '../styles/tokens';
@@ -153,46 +153,6 @@ const QueueBar: React.FC<{
   const lastRef = useRef(queue);
   if (queue) lastRef.current = queue;
   const q = queue ?? lastRef.current;
-
-  // Центровка по герой-острову контента страницы (полировка v1.8.2): бар
-  // «принадлежит» странице, а не окну — по центру вьюпорта он висел
-  // смещённым относительно контента (слева дерево, справа панель привязки).
-  // Якорь — data-rt-page-island (PageDetailPage); ResizeObserver ведёт бар
-  // за анимацией панели (320мс) и ресайзом дерева покадрово — движение
-  // синхронно самому острову, отдельный transition не нужен. Вне страницы
-  // (ушли гулять по приложению посреди очереди) якоря нет — центр окна.
-  const location = useLocation();
-  const [centerX, setCenterX] = useState<number | null>(null);
-  useEffect(() => {
-    if (!mounted) return;
-    const update = () => {
-      const island = document.querySelector('[data-rt-page-island]');
-      if (!island) {
-        setCenterX(null);
-        return;
-      }
-      const rect = island.getBoundingClientRect();
-      // Кламп: у зажатого панелью острова бар не должен вылезать за окно.
-      const half = Math.min(620, window.innerWidth - 48) / 2;
-      setCenterX(Math.round(Math.min(
-        window.innerWidth - 24 - half,
-        Math.max(24 + half, rect.left + rect.width / 2),
-      )));
-    };
-    update();
-    window.addEventListener('resize', update);
-    const island = document.querySelector('[data-rt-page-island]');
-    let ro: ResizeObserver | null = null;
-    if (island && typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(update);
-      ro.observe(island);
-    }
-    return () => {
-      window.removeEventListener('resize', update);
-      ro?.disconnect();
-    };
-  }, [mounted, location]);
-
   if (!mounted || !q) return null;
 
   const current = q.pages[q.index];
@@ -203,7 +163,11 @@ const QueueBar: React.FC<{
     <div
       style={{
         position: 'fixed',
-        left: centerX !== null ? `${centerX}px` : '50%',
+        // Центр ОКНА сознательно (пробовали центровать по острову контента
+        // и откатили в тот же день, v1.8.2): при «Далее» следующая страница
+        // грузится с закрытой панелью, остров меняет ширину по мере загрузки
+        // и открытия панели — бар «ездил по экрану» на каждом переходе.
+        left: '50%',
         bottom: '22px',
         transform: 'translateX(-50%)',
         display: 'flex',

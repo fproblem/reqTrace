@@ -1157,11 +1157,19 @@ export const SettingsPage: React.FC = () => {
     return () => window.removeEventListener('reqtrace:refresh-run-finished', onRunFinished);
   }, []);
 
+  // Мета в баре-острове (v1.8.2, как у «Тестов»): экран объясняет себя сам —
+  // заодно проговаривает модель кред («личные», видимость по участникам).
+  const barTitle = (
+    <IslandBarTitle meta="Аккаунт и подключения к проектам: креды Confluence и Jira личные — контент проекта видят только его участники.">
+      Профиль
+    </IslandBarTitle>
+  );
+
   if (loading) {
     // Заголовок в баре-острове — настоящий с первого кадра; скелетоны
     // занимают место карточки профиля и карточек проектов.
     return (
-      <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="1060px" surface="canvas">
+      <IslandScreen barLeft={barTitle} contentMaxWidth="1060px" surface="canvas">
         {showSkeleton && (
           <FadeIn>
             <div style={{
@@ -1207,7 +1215,7 @@ export const SettingsPage: React.FC = () => {
     // Скроллит контент-остров IslandScreen (v1.8.0), main не скроллится.
     // Колонка 1060 — как у «Тестов» (ревью): карточки проектов на обоих
     // экранах одной ширины, сетки у них и так одинаковые (minmax 380 / 14).
-    <IslandScreen barLeft={<IslandBarTitle>Профиль</IslandBarTitle>} contentMaxWidth="1060px" surface="canvas">
+    <IslandScreen barLeft={barTitle} contentMaxWidth="1060px" surface="canvas">
       {/* Мягкое появление экрана и данных — 160мс, как у модалок (v1.7.1). */}
       <FadeIn>
 

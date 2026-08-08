@@ -21,7 +21,7 @@ import { useFadeToggle } from './fadePresence';
 import { ClipboardCheckIcon, DocumentIcon, SearchIcon, TargetIcon } from './icons';
 import { OVERLAY_Z } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
-import { highlightMatch } from './Layout/PageTree';
+import { highlightMatch, requestTreeReveal } from './Layout/PageTree';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
 import { PaletteEntry, PaletteKind, searchPalette } from './paletteSearch';
@@ -213,6 +213,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
       // В историю страница попадёт сама — при загрузке (recordRecentPage
       // в PageDetailPage), с честным названием с сервера.
       navigate(`/pages/${entry.id}`);
+      // Дерево раскрывается на цели (отзыв v1.8.1): прыжок из поиска не
+      // должен оставлять сайдбар свёрнутым «как было» — фильтры сбросятся,
+      // предки развернутся, строка доедет в видимую область.
+      requestTreeReveal(entry.id);
     } else if (entry.kind === 'project') {
       navigate(`/tests/${entry.projectId}`);
     } else {

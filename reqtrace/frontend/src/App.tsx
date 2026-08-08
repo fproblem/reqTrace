@@ -13,6 +13,7 @@ import { TreeRefreshProvider } from './hooks/useTreeRefresh';
 import { colors, fonts, island } from './styles/tokens';
 import { ModalButton } from './components/Modal';
 import { DocumentIcon } from './components/icons';
+import { requestTreeReveal } from './components/Layout/PageTree';
 import { listRecentEntries } from './components/recentPages';
 
 // Пустое состояние «/» — в языке экрана виртуальной страницы (заголовок +
@@ -81,7 +82,12 @@ const HomeScreen: React.FC = () => {
             {recent.map(p => (
               <button
                 key={p.id}
-                onClick={() => navigate(`/pages/${p.id}`)}
+                onClick={() => {
+                  navigate(`/pages/${p.id}`);
+                  // Тот же прыжок «издалека», что из палитры: дерево
+                  // раскрывается на цели (см. requestTreeReveal).
+                  requestTreeReveal(p.id);
+                }}
                 title={p.title}
                 style={{
                   display: 'flex',

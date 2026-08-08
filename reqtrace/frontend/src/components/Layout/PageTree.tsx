@@ -10,9 +10,24 @@ import { useDelayedFlag } from '../Skeleton';
 import { TreeReveal } from '../TreeReveal';
 import { ChevronRightIcon, CrossIcon, DocumentIcon, FilterIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
+import { collectRevealKeys } from './treeReveal';
 import { colors, radii, shadows } from '../../styles/tokens';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
+
+// Заявка «раскрой дерево на странице» (v1.8.1, отзыв пользователя): переход
+// из глобального поиска и недавних должен показать страницу в дереве —
+// сбросить поиск/фильтр и развернуть предков. Буфер-модуль, а не только
+// событие: при дереве, свёрнутом в рельсу, PageTree размонтирован — заявка
+// дожидается разворота, но недолго (TTL: раскрытие через полчаса читалось
+// бы как самодеятельность).
+let pendingReveal: { pageId: string; at: number } | null = null;
+const REVEAL_TTL_MS = 15000;
+
+export function requestTreeReveal(pageId: string): void {
+  pendingReveal = { pageId, at: Date.now() };
+  window.dispatchEvent(new Event('reqtrace:reveal-page'));
+}
 
 // Опции фильтра дерева по статусу привязок — чипы в поповере под
 // кнопкой-воронкой в шапке (итог трёх итераций с пользователем v1.8.1:
@@ -166,6 +181,43 @@ export const PageTree: React.FC = () => {
   const location = useLocation();
   const { showToast } = useToast();
   const { version: treeVersion } = useTreeRefresh();
+
+  // Раскрытие дерева на странице по заявке requestTreeReveal: сбрасываем
+  // поиск и фильтр (они прятали бы цель), раскрываем проект → спейс →
+  // предков и доводим строку в видимую область после каскада TreeReveal.
+  const tryConsumeReveal = useCallback(() => {
+    if (!pendingReveal) return;
+    if (Date.now() - pendingReveal.at > REVEAL_TTL_MS) {
+      pendingReveal = null;
+      return;
+    }
+    const { pageId } = pendingReveal;
+    const keys = collectRevealKeys(projects, pageId);
+    // null — дерево ещё не доехало (или страницы нет): заявка ждёт
+    // следующего прихода projects, TTL отсеет безнадёжные.
+    if (!keys) return;
+    pendingReveal = null;
+    setSearchQuery('');
+    setStatusFilter(null);
+    setExpandState(prev => {
+      const next = { ...prev };
+      for (const key of keys) next[key] = true;
+      saveExpandState(next);
+      return next;
+    });
+    window.setTimeout(() => {
+      document.querySelector(`[data-tree-page-id="${pageId}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    }, 220);
+  }, [projects]);
+
+  useEffect(() => {
+    window.addEventListener('reqtrace:reveal-page', tryConsumeReveal);
+    return () => window.removeEventListener('reqtrace:reveal-page', tryConsumeReveal);
+  }, [tryConsumeReveal]);
+
+  // Дерево доехало (маунт после рельсы, перезагрузка) — применить заявку.
+  useEffect(() => { tryConsumeReveal(); }, [tryConsumeReveal]);
 
   // Поповер фильтра закрывается кликом вне и Escape — как меню «⋮» страницы.
   useEffect(() => {
@@ -993,6 +1045,9 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
       <button
         onClick={handleClick}
         title={nodeTooltip}
+        // Якорь подскролла: раскрытие дерева на странице (requestTreeReveal)
+        // доводит эту строку в видимую область.
+        data-tree-page-id={node.id}
         style={{
           display: 'flex',
           alignItems: 'center',

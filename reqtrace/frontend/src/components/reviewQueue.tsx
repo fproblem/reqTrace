@@ -41,6 +41,9 @@ interface ReviewQueueValue {
   start: (projectId: string, projectName: string) => Promise<void>;
   /** Явное «Далее»: следующая страница; на последней — завершение. */
   next: () => void;
+  /** «Назад»: предыдущая страница очереди — страховка от случайного
+   * «Далее»; на первой странице делать нечего. */
+  prev: () => void;
   /** Свернуть очередь досрочно. */
   stop: () => void;
 }
@@ -112,14 +115,24 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
     navigate(`/pages/${queue.pages[nextIndex].id}?focus=outdated`);
   }, [queue, navigate, showToast]);
 
+  const prev = useCallback(() => {
+    if (!queue || queue.index === 0) return;
+    const prevIndex = queue.index - 1;
+    setQueue({ ...queue, index: prevIndex });
+    navigate(`/pages/${queue.pages[prevIndex].id}?focus=outdated`);
+  }, [queue, navigate]);
+
   const stop = useCallback(() => setQueue(null), []);
 
-  const value = useMemo(() => ({ queue, start, next, stop }), [queue, start, next, stop]);
+  const value = useMemo(
+    () => ({ queue, start, next, prev, stop }),
+    [queue, start, next, prev, stop],
+  );
 
   return (
     <ReviewQueueContext.Provider value={value}>
       {children}
-      <QueueBar queue={queue} onNext={next} onStop={stop} onJump={page => {
+      <QueueBar queue={queue} onNext={next} onPrev={prev} onStop={stop} onJump={page => {
         navigate(`/pages/${page.id}?focus=outdated`);
       }} />
     </ReviewQueueContext.Provider>
@@ -131,9 +144,10 @@ export const ReviewQueueProvider: React.FC<{ children: React.ReactNode }> = ({ c
 const QueueBar: React.FC<{
   queue: QueueState | null;
   onNext: () => void;
+  onPrev: () => void;
   onStop: () => void;
   onJump: (page: QueuePage) => void;
-}> = ({ queue, onNext, onStop, onJump }) => {
+}> = ({ queue, onNext, onPrev, onStop, onJump }) => {
   const { mounted, fadeStyle } = useFadeToggle(!!queue);
   // На время затухания рисуем последнее состояние (queue уже null).
   const lastRef = useRef(queue);
@@ -143,6 +157,7 @@ const QueueBar: React.FC<{
 
   const current = q.pages[q.index];
   const isLast = q.index === q.pages.length - 1;
+  const isFirst = q.index === 0;
 
   return createPortal(
     <div
@@ -154,7 +169,14 @@ const QueueBar: React.FC<{
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
+        // Ширина бара ФИКСИРОВАНА (просьба пользователя): название страницы —
+        // резиновая середина с эллипсисом, а «Назад»/«Далее» стоят на одном
+        // месте при любой длине названия и разрядности счётчика — случайный
+        // промах мимо уехавшей кнопки исключён. У кнопок фиксированная
+        // ширина: смена подписи «Далее» → «Готово» их тоже не двигает.
+        width: '620px',
         maxWidth: 'calc(100vw - 48px)',
+        boxSizing: 'border-box',
         padding: '8px 8px 8px 16px',
         background: colors.white,
         border: `1px solid ${colors.border}`,
@@ -173,7 +195,8 @@ const QueueBar: React.FC<{
         Проверка: {q.index + 1} из {q.pages.length}
       </span>
       {/* Название текущей страницы — кликом можно вернуться к ней, если
-          ушли гулять по приложению посреди очереди. */}
+          ушли гулять по приложению посреди очереди. flex 1 — забирает всё
+          между счётчиком и кнопками, лишнее — в эллипсис. */}
       <button
         onClick={() => onJump(current)}
         title={`Вернуться к странице «${current.title}» (привязок «Требует проверки» на старте очереди: ${current.outdated})`}
@@ -188,7 +211,8 @@ const QueueBar: React.FC<{
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          maxWidth: '260px',
+          textAlign: 'left',
+          flex: 1,
           minWidth: 0,
         }}
         onMouseEnter={e => { e.currentTarget.style.color = colors.greenDark; }}
@@ -196,14 +220,54 @@ const QueueBar: React.FC<{
       >
         {current.title}
       </button>
+      {/* «Назад» — страховка от случайного «Далее»: очередь листается в обе
+          стороны. Охрана в onClick, а не disabled-атрибут: у недоступной
+          кнопки должны жить title и курсор (урок v1.6.0). */}
+      <button
+        onClick={() => { if (!isFirst) onPrev(); }}
+        aria-disabled={isFirst}
+        title={isFirst
+          ? 'Это первая страница очереди — назад некуда'
+          : 'К предыдущей странице очереди'}
+        style={{
+          width: '76px',
+          height: '30px',
+          padding: 0,
+          borderRadius: radii.pill,
+          border: `1px solid ${colors.border}`,
+          background: 'transparent',
+          color: isFirst ? colors.textTertiary : colors.textSecondary,
+          fontSize: '12px',
+          fontWeight: 600,
+          cursor: isFirst ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit',
+          flexShrink: 0,
+          opacity: isFirst ? 0.5 : 1,
+          transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => {
+          if (isFirst) return;
+          e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+          e.currentTarget.style.borderColor = colors.borderHover;
+          e.currentTarget.style.color = colors.textPrimary;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.borderColor = colors.border;
+          e.currentTarget.style.color = isFirst ? colors.textTertiary : colors.textSecondary;
+        }}
+      >
+        Назад
+      </button>
       <button
         onClick={onNext}
         title={isLast
           ? 'Завершить очередь проверки'
           : 'К следующей странице с привязками «Требует проверки»'}
         style={{
+          width: '84px',
           height: '30px',
-          padding: '0 14px',
+          padding: 0,
           borderRadius: radii.pill,
           border: 'none',
           background: colors.greenAccent,

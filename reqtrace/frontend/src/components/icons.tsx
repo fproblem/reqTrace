@@ -181,6 +181,12 @@ export const DownloadIcon = makeIcon(<>
   <line x1="12" y1="3" x2="12" y2="15" />
 </>);
 
+export const HelpCircleIcon = makeIcon(<>
+  <circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+  <line x1="12" y1="17" x2="12.01" y2="17" />
+</>);
+
 export const KeyboardIcon = makeIcon(<>
   <rect x="2.5" y="6" width="19" height="12" rx="2" />
   <line x1="7" y1="14.5" x2="17" y2="14.5" />

@@ -13,6 +13,7 @@ import {
   ChevronRightIcon, ClipboardCheckIcon, DocumentIcon, PlusIcon,
   StatusAlertIcon,
 } from '../components/icons';
+import { KeyIssueInformer } from '../components/KeyIssueInformer';
 import { useReviewQueue } from '../components/reviewQueue';
 import { colors, radii, shadows } from '../styles/tokens';
 import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
@@ -315,11 +316,21 @@ export const TestsPage: React.FC = () => {
                     borderLeft: `1px solid ${colors.border}`, paddingLeft: '24px',
                     alignSelf: 'stretch', justifyContent: 'center',
                   }}>
-                    <span style={labelStyle}>Покрытие</span>
-                    <div
-                      title={`Доля привязок проекта, к которым привязан хотя бы один тест — ${s.covered} из ${s.highlights}`}
-                      style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
-                    >
+                    {/* Информер «?» (ревью v1.8.2): по тапу объясняет, за что
+                        отвечает метрика покрытия, — серый вариант того же
+                        поповера, что у нестандартных ключей яруса 2. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={labelStyle}>Покрытие</span>
+                      <span onClick={e => e.stopPropagation()} style={{ display: 'inline-flex' }}>
+                        <KeyIssueInformer
+                          variant="help"
+                          size={13}
+                          ariaLabel="Что такое покрытие"
+                          text={`Покрытие — доля привязок проекта, к которым привязан хотя бы один тест: сейчас ${s.covered} из ${s.highlights}. Чипы рядом — статусы самих привязок после последнего обновления страниц.`}
+                        />
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{
                         flex: 1, height: '6px', borderRadius: radii.pill,
                         background: 'rgba(0,0,0,0.07)', overflow: 'hidden',
@@ -334,8 +345,9 @@ export const TestsPage: React.FC = () => {
                       </span>
                     </div>
                     {/* nowrap: чипы всегда в одну строку (ревью) — ширину
-                        гарантирует широкая центральная колонка. */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
+                        гарантирует широкая центральная колонка; ряд
+                        отцентрован по ней (ревью v1.8.2). */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center' }}>
                       <StatusCountPill
                         color={colors.statusActive} count={s.active} label="актуально"
                         title="Привязок в статусе «Актуально»"

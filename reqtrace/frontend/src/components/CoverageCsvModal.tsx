@@ -244,9 +244,9 @@ export const CoverageCsvModal: React.FC<{
           ariaLabel="Зачем нужен JQL-фильтр и как выгрузить тесты из Jira"
           text={'JQL — фильтр поиска задач Jira, собранный по уникальным тестам этой '
             + 'выгрузки. Вставьте его в поиск задач или откройте сразу. Выгрузка оттуда: '
-            + 'Export → «CSV (All fields)» — ключ (Key), название (Summary) и шаги '
-            + '(Manual Test Steps) будут колонками файла; компактнее — добавить эти '
-            + 'колонки в таблицу (Columns) и выбрать «CSV (Current fields)».'}
+            + 'Export → «CSV (все поля)» — в файле будут ключ (в русской Jira колонка '
+            + '«Код»), название («Тема») и шаги (Manual Test Steps); компактнее — '
+            + 'добавить эти колонки в таблицу и выбрать «CSV (текущие поля)».'}
         />
         {filter.keys.length > 0 && (
           <CountPill style={{ marginLeft: 'auto', marginRight: '10px' }}>

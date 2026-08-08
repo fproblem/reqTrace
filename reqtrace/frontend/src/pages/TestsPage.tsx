@@ -39,15 +39,12 @@ export function plural(n: number, forms: [string, string, string]): string {
   return forms[2];
 }
 
-// Мини-пилюля счётчика статуса — общий вид для яруса 1 и строк яруса 2.
-// label — необязательная словесная подпись («19 требуют проверки»): на
-// крупных карточках яруса 1 (v1.8.2) место есть, и подпись честнее голой
-// цифры; строки яруса 2 остаются с компактными цифрами. Кружок-индикатор —
-// только у чипов БЕЗ подписи (ревью v1.8.2): со словами он избыточен, а у
-// голой цифры остаётся единственным носителем смысла цвета.
-export const StatusCountPill: React.FC<{
-  color: string; count: number; title: string; label?: string;
-}> = ({ color, count, title, label }) => (
+// Мини-пилюля счётчика статуса — вид строк яруса 2 (на крупных карточках
+// яруса 1 вместо пилюль — тихая строка-легенда, ревью v1.8.2: светофор
+// заливок перетягивал внимание).
+export const StatusCountPill: React.FC<{ color: string; count: number; title: string }> = ({
+  color, count, title,
+}) => (
   <span
     title={title}
     style={{
@@ -58,12 +55,25 @@ export const StatusCountPill: React.FC<{
       flexShrink: 0,
     }}
   >
-    {!label && (
-      <span style={{
-        width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
-      }} />
-    )}
-    {count}{label ? ` ${label}` : ''}
+    <span style={{
+      width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
+    }} />
+    {count}
+  </span>
+);
+
+// Элемент строки-легенды статусов на крупной карточке (v1.8.2): цвет — только
+// в точке-ключе, текст тихий, цифра чуть темнее. Никаких заливок и рамок —
+// светофор пилюль на большой карточке перетягивал внимание (ревью).
+const LegendItem: React.FC<{ color: string; count: number; label: string; title: string }> = ({
+  color, count, label, title,
+}) => (
+  <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+    <span style={{
+      width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0,
+    }} />
+    <span style={{ fontWeight: 700, color: colors.textPrimary }}>{count}</span>
+    {label}
   </span>
 );
 
@@ -354,20 +364,26 @@ export const TestsPage: React.FC = () => {
                         {coverage}%
                       </span>
                     </div>
-                    {/* nowrap: чипы всегда в одну строку (ревью) — ширину
-                        гарантирует широкая центральная колонка; ряд
-                        отцентрован по ней (ревью v1.8.2). */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap', justifyContent: 'center' }}>
-                      <StatusCountPill
+                    {/* Строка-легенда в языке мет (через «·»), по центру
+                        колонки, всегда одной строкой — ширину гарантирует
+                        широкая центральная колонка. */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: '8px', whiteSpace: 'nowrap',
+                      fontSize: '12px', color: colors.textSecondary,
+                    }}>
+                      <LegendItem
                         color={colors.statusActive} count={s.active} label="актуально"
                         title="Привязок в статусе «Актуально»"
                       />
-                      <StatusCountPill
+                      <span style={{ color: colors.textTertiary }}>·</span>
+                      <LegendItem
                         color={colors.statusOutdated} count={s.outdated}
                         label={plural(s.outdated, ['требует проверки', 'требуют проверки', 'требуют проверки'])}
                         title="Привязок в статусе «Требует проверки»"
                       />
-                      <StatusCountPill
+                      <span style={{ color: colors.textTertiary }}>·</span>
+                      <LegendItem
                         color={colors.statusLost} count={s.lost} label="утрачено"
                         title="Привязок в статусе «Утрачено»"
                       />

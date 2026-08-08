@@ -16,7 +16,7 @@
  */
 import React, { useState } from 'react';
 import { api } from '../api/client';
-import { colors, radii } from '../styles/tokens';
+import { colors, radii, shadows } from '../styles/tokens';
 import { Modal, ModalButton, modalTextStyle } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
 import { useToast } from './Toast';
@@ -29,6 +29,60 @@ const STATUS_LABEL: Record<CsvStatus, string> = {
   active: 'Актуально',
   outdated: 'Требует проверки',
   lost: 'Утрачено',
+};
+
+// Свой мягкий чекбокс: нативный accent-color рисует системный квадрат —
+// резкий, кислотный, с чёрной галочкой (замечание пользователя). Здесь —
+// пастельный язык «выбранного» ReqTrace (как активные чипы фильтра дерева):
+// greenLight-заливка, greenDark-галочка, мягкая рамка focusBorder. Нативный
+// input остаётся в DOM невидимым поверх бокса — клик по label и клавиатура
+// (Tab/пробел) живут как раньше; фокус — рамкой и кольцом, как у полей.
+const SoftCheckbox: React.FC<{ checked: boolean; onChange: () => void }> = ({
+  checked, onChange,
+}) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <span style={{
+      position: 'relative', width: '18px', height: '18px',
+      display: 'inline-flex', flexShrink: 0,
+    }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          margin: 0, opacity: 0, cursor: 'pointer',
+        }}
+      />
+      <span aria-hidden="true" style={{
+        width: '100%', height: '100%', boxSizing: 'border-box',
+        borderRadius: '6px',
+        border: `1px solid ${checked ? colors.focusBorder
+          : focused ? colors.borderHover : colors.border}`,
+        background: checked ? colors.greenLight : colors.white,
+        boxShadow: focused ? shadows.focusRing : undefined,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        pointerEvents: 'none',
+        transition: 'all 0.15s',
+      }}>
+        <svg
+          width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke={colors.greenDark} strokeWidth="3.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          style={{
+            opacity: checked ? 1 : 0,
+            transform: checked ? 'scale(1)' : 'scale(0.6)',
+            transition: 'all 0.15s',
+          }}
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </span>
+    </span>
+  );
 };
 
 export const CoverageCsvModal: React.FC<{
@@ -107,15 +161,7 @@ export const CoverageCsvModal: React.FC<{
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <input
-              type="checkbox"
-              checked={picked.has(s)}
-              onChange={() => toggle(s)}
-              style={{
-                width: '15px', height: '15px', margin: 0,
-                accentColor: colors.greenAccent, cursor: 'pointer',
-              }}
-            />
+            <SoftCheckbox checked={picked.has(s)} onChange={() => toggle(s)} />
             <span style={{ fontSize: '13px', color: colors.textPrimary, flex: 1 }}>
               {STATUS_LABEL[s]}
             </span>

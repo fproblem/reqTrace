@@ -15,6 +15,12 @@ import {
   ownTextNodes,
 } from '../HighlightLayer';
 
+/** Окно контекста вокруг цитаты (text_before/text_after): столько символов
+ * до/после выделения уезжает на сервер при создании привязки. Единственное
+ * определение — рендер контекста утраченной цитаты (quoteContext.ts) судит
+ * об обрезке ровно по этой величине; колонка БД — String(100). */
+export const CONTEXT_WINDOW = 100;
+
 export interface SelectionAnchors {
   textBefore: string;
   textAfter: string;
@@ -94,10 +100,12 @@ export function captureSelectionAnchors(
   const offsetInContainer =
     measureTextOffset(container, range.startContainer, range.startOffset) + leadingTrimmed;
 
-  const textBefore = fullText.substring(Math.max(0, offsetInContainer - 100), offsetInContainer);
+  const textBefore = fullText.substring(
+    Math.max(0, offsetInContainer - CONTEXT_WINDOW), offsetInContainer,
+  );
   const textAfter = fullText.substring(
     offsetInContainer + text.length,
-    offsetInContainer + text.length + 100,
+    offsetInContainer + text.length + CONTEXT_WINDOW,
   );
 
   const segments = getContentSegments(container);

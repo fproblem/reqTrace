@@ -10,6 +10,7 @@ import { FadeIn } from '../components/fadePresence';
 import { SkeletonBar, useDelayedFlag } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
 import { ChevronRightIcon, ClipboardCheckIcon, StatusAlertIcon } from '../components/icons';
+import { useReviewQueue } from '../components/reviewQueue';
 import { colors, radii, shadows } from '../styles/tokens';
 import { IslandScreen, IslandBarTitle } from '../components/common/IslandScreen';
 
@@ -101,6 +102,7 @@ const ProjectCardSkeleton: React.FC = () => (
 export const TestsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { start: startReviewQueue } = useReviewQueue();
   const [stats, setStats] = useState<ProjectTestsStats[] | null>(null);
   // Каркас — только если ответ не мгновенный: мигание хуже его отсутствия.
   const showSkeleton = useDelayedFlag(stats === null);
@@ -279,6 +281,33 @@ export const TestsPage: React.FC = () => {
                   )}
                   {s.lost > 0 && (
                     <StatusCountPill color={colors.statusLost} count={s.lost} title="Привязок в статусе «Утрачено»" />
+                  )}
+                  {/* Очередь проверки: кнопка-пилюля в янтаре статуса — пройти
+                      все «Требует проверки» проекта потоком, страница за
+                      страницей. stopPropagation — карточка кликабельна целиком. */}
+                  {s.outdated > 0 && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        void startReviewQueue(s.project_id, s.project_name);
+                      }}
+                      title={'Пройти все привязки «Требует проверки» потоком: страница за страницей, с прогрессом'}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                        padding: '2px 10px', borderRadius: radii.pill,
+                        background: `${colors.statusOutdated}15`,
+                        border: `1px solid ${colors.statusOutdated}33`,
+                        color: colors.statusOutdated,
+                        fontSize: '11px', fontWeight: 700, lineHeight: 1.5,
+                        cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = `${colors.statusOutdated}26`; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = `${colors.statusOutdated}15`; }}
+                    >
+                      Проверить
+                      <ChevronRightIcon size={11} />
+                    </button>
                   )}
                   <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.textTertiary }}>
                     {s.pages} {plural(s.pages, ['страница', 'страницы', 'страниц'])}

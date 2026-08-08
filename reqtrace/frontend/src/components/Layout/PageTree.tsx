@@ -1,21 +1,52 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
-import { Project, ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
+import { ProjectTree, SpaceTree, TreeNodeItem } from '../../types';
 import { useToast } from '../Toast';
 import { RefreshIcon } from '../RefreshIcon';
 import { LockIcon } from '../icons';
-import { Select } from '../Select';
-import { FadeIn } from '../fadePresence';
-import { Modal, ModalButton, modalTextStyle } from '../Modal';
+import { FadeIn, useFadeToggle } from '../fadePresence';
 import { useDelayedFlag } from '../Skeleton';
 import { TreeReveal } from '../TreeReveal';
-import { ChevronRightIcon, CrossIcon, DocumentIcon, PlusIcon, SearchIcon } from '../icons';
+import { ChevronRightIcon, CrossIcon, DocumentIcon, FilterIcon, SearchIcon } from '../icons';
 import { useTreeRefresh } from '../../hooks/useTreeRefresh';
+import { collectRevealKeys } from './treeReveal';
 import { colors, radii, shadows } from '../../styles/tokens';
-import { urlBelongsToBase } from '../../utils/baseUrl';
 
 const TREE_STATE_KEY = 'reqtrace_tree_state';
+
+// Заявка «раскрой дерево на странице» (v1.8.1, отзыв пользователя): переход
+// из глобального поиска и недавних должен показать страницу в дереве —
+// сбросить поиск/фильтр и развернуть предков. Буфер-модуль, а не только
+// событие: при дереве, свёрнутом в рельсу, PageTree размонтирован — заявка
+// дожидается разворота, но недолго (TTL: раскрытие через полчаса читалось
+// бы как самодеятельность).
+let pendingReveal: { pageId: string; at: number } | null = null;
+const REVEAL_TTL_MS = 15000;
+
+export function requestTreeReveal(pageId: string): void {
+  pendingReveal = { pageId, at: Date.now() };
+  window.dispatchEvent(new Event('reqtrace:reveal-page'));
+}
+
+// Опции фильтра дерева по статусу привязок — чипы в поповере под
+// кнопкой-воронкой в шапке (итог трёх итераций с пользователем v1.8.1:
+// чипы-россыпь над деревом «сваливались» в него, сегмент-контрол спорил за
+// ширину узкого сайдбара — поповер даёт чипам воздух, а шапке тишину).
+// Подписи — те же короткие, что на «Тестах» («Ждут проверки», «Утрачены»);
+// точный смысл («страницы, где есть такие привязки») несёт title.
+const STATUS_FILTERS: { key: 'outdated' | 'lost'; label: string; title: string }[] = [
+  {
+    key: 'outdated',
+    label: 'Ждут проверки',
+    title: 'Показать только страницы с привязками, требующими проверки',
+  },
+  {
+    key: 'lost',
+    label: 'Утрачены',
+    title: 'Показать только страницы с утраченными привязками',
+  },
+];
 
 // Плейсхолдер поиска на узком дереве обрезался жёстко, посреди буквы
 // («Поиск стран») — многоточие через ::placeholder, инлайн-стилям
@@ -68,7 +99,9 @@ const TreeChevron: React.FC<{ expanded: boolean; size?: number }> = ({ expanded,
 
 // Кнопка-иконка шапки сайдбара — в точности как кнопки верхних баров страницы
 // («Обновить», «Ещё действия»): 34×34, рамка, белый фон, тот же ховер.
-const HeaderIconButton: React.FC<{
+// Экспорт (ревью v1.8.1): ею же живут лупа глобального поиска в главной
+// шапке и выгрузка CSV на «Тестах» — стиль в одном месте, не в четырёх.
+export const HeaderIconButton: React.FC<{
   title: string;
   onClick: () => void;
   disabled?: boolean;
@@ -122,39 +155,86 @@ function saveExpandState(state: Record<string, boolean>) {
   localStorage.setItem(TREE_STATE_KEY, JSON.stringify(state));
 }
 
-interface PageTreeProps {
-  onPageAdded?: () => void;
-}
-
-export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
+// Модалка добавления страницы больше не живёт здесь (v1.8.1): добавление —
+// редкое действие настройки, его входы — меню карточки проекта в профиле,
+// пустой экран «/» и пустое дерево; все шлют reqtrace:open-add-page, слушает
+// Layout (он смонтирован и при дереве, свёрнутом в рельсу).
+export const PageTree: React.FC = () => {
   const [projects, setProjects] = useState<ProjectTree[]>([]);
   const [loading, setLoading] = useState(true);
   // Лоадер — только если ответ не мгновенный (v1.7.1, как у страниц):
   // мелькание «Загрузки…» на быстрых ответах хуже её отсутствия.
   const showLoader = useDelayedFlag(loading);
   const [expandState, setExpandState] = useState<Record<string, boolean>>(loadExpandState);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newUrl, setNewUrl] = useState('');
-  const [adding, setAdding] = useState(false);
-
-  // Модалку добавления умеет открывать и пустой экран «/» (кнопка «Добавить
-  // страницу») — через событие, как reqtrace:refresh-run-finished: модалка и
-  // её состояние живут здесь, у дерева.
-  useEffect(() => {
-    const onOpenAdd = () => setShowAddModal(true);
-    window.addEventListener('reqtrace:open-add-page', onOpenAdd);
-    return () => window.removeEventListener('reqtrace:open-add-page', onOpenAdd);
-  }, []);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  // Список проектов с base URL — для выбора проекта при добавлении страницы.
-  const [myProjects, setMyProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  // Фильтр по статусу привязок (бэклог «UX-пакет»): сужает дерево до
+  // страниц, где есть что проверить/перепривязать. Живёт в памяти
+  // (не в localStorage): фильтр — рабочий инструмент на один заход.
+  const [statusFilter, setStatusFilter] = useState<'outdated' | 'lost' | null>(null);
+  // Поповер опций фильтра — под кнопкой-воронкой в шапке (на месте бывшего
+  // «плюса»); мягкое появление/гашение — как у меню действий.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const { mounted: filterMounted, fadeStyle: filterFade } = useFadeToggle(filterOpen);
+  const filterRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
   const { version: treeVersion } = useTreeRefresh();
+
+  // Раскрытие дерева на странице по заявке requestTreeReveal: сбрасываем
+  // поиск и фильтр (они прятали бы цель), раскрываем проект → спейс →
+  // предков и доводим строку в видимую область после каскада TreeReveal.
+  const tryConsumeReveal = useCallback(() => {
+    if (!pendingReveal) return;
+    if (Date.now() - pendingReveal.at > REVEAL_TTL_MS) {
+      pendingReveal = null;
+      return;
+    }
+    const { pageId } = pendingReveal;
+    const keys = collectRevealKeys(projects, pageId);
+    // null — дерево ещё не доехало (или страницы нет): заявка ждёт
+    // следующего прихода projects, TTL отсеет безнадёжные.
+    if (!keys) return;
+    pendingReveal = null;
+    setSearchQuery('');
+    setStatusFilter(null);
+    setExpandState(prev => {
+      const next = { ...prev };
+      for (const key of keys) next[key] = true;
+      saveExpandState(next);
+      return next;
+    });
+    window.setTimeout(() => {
+      document.querySelector(`[data-tree-page-id="${pageId}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    }, 220);
+  }, [projects]);
+
+  useEffect(() => {
+    window.addEventListener('reqtrace:reveal-page', tryConsumeReveal);
+    return () => window.removeEventListener('reqtrace:reveal-page', tryConsumeReveal);
+  }, [tryConsumeReveal]);
+
+  // Дерево доехало (маунт после рельсы, перезагрузка) — применить заявку.
+  useEffect(() => { tryConsumeReveal(); }, [tryConsumeReveal]);
+
+  // Поповер фильтра закрывается кликом вне и Escape — как меню «⋮» страницы.
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!filterRef.current?.contains(e.target as Node)) setFilterOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFilterOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [filterOpen]);
 
   const loadTree = useCallback(async () => {
     try {
@@ -171,29 +251,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
   // and on explicit refresh signal (изменения проектов на экране настроек).
   useEffect(() => { loadTree(); }, [location.pathname, treeVersion, loadTree]);
 
-  // Проекты с кредами подтягиваются при открытии формы добавления.
-  useEffect(() => {
-    if (!showAddModal) return;
-    api.listProjects()
-      .then(setMyProjects)
-      .catch(() => setMyProjects([]));
-  }, [showAddModal]);
-
-  // Проекты текущего пользователя, которым подходит введённая ссылка.
-  const candidateProjects = useMemo(() => {
-    const url = newUrl.trim();
-    if (!url) return [];
-    return myProjects.filter(
-      p => p.joined && p.my_status === 'ok' && urlBelongsToBase(url, p.confluence_base_url)
-    );
-  }, [newUrl, myProjects]);
-
-  useEffect(() => {
-    if (candidateProjects.length > 0 && !candidateProjects.some(p => p.id === selectedProjectId)) {
-      setSelectedProjectId(candidateProjects[0].id);
-    }
-  }, [candidateProjects, selectedProjectId]);
-
   const toggleExpand = useCallback((key: string) => {
     setExpandState(prev => {
       // Default is collapsed, so undefined → expand (true)
@@ -203,34 +260,6 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
       return next;
     });
   }, []);
-
-  const closeAddModal = useCallback(() => {
-    setShowAddModal(false);
-    setNewUrl('');
-    setError('');
-  }, []);
-
-  const handleAddPage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUrl.trim()) return;
-    setAdding(true);
-    setError('');
-    try {
-      const projectId = candidateProjects.length > 1 ? selectedProjectId : undefined;
-      const page = await api.addPage(newUrl.trim(), projectId);
-      setNewUrl('');
-      setShowAddModal(false);
-      await loadTree();
-      navigate(`/pages/${page.id}`);
-      onPageAdded?.();
-    } catch (e: any) {
-      const msg = e.message || 'Ошибка при добавлении';
-      setError(msg);
-      showToast('error', 'Не удалось добавить страницу', msg);
-    } finally {
-      setAdding(false);
-    }
-  };
 
   const handleAddDemo = async () => {
     try {
@@ -279,10 +308,15 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     return match ? match[1] : null;
   }, [location.pathname]);
 
-  const filterSpace = useCallback((space: SpaceTree, q: string): SpaceTree | null => {
+  // Фильтр спейса по произвольному предикату страницы (поиск по названию,
+  // статус привязок или их сочетание) — подходящие страницы плюс их предки,
+  // чтобы дерево оставалось связным.
+  const filterSpace = useCallback((
+    space: SpaceTree, matches: (page: TreeNodeItem) => boolean,
+  ): SpaceTree | null => {
     const matched = new Set<string>();
     for (const page of space.pages) {
-      if (page.title.toLowerCase().includes(q)) {
+      if (matches(page)) {
         matched.add(page.confluence_page_id);
       }
     }
@@ -306,26 +340,59 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
     };
   }, []);
 
+  // Сколько привязок каждого «тревожного» статуса видно в дереве — для
+  // счётчиков на чипах фильтра; нули прячут чип (фильтровать нечего).
+  const statusTotals = useMemo(() => {
+    let outdated = 0;
+    let lost = 0;
+    for (const project of projects) {
+      if (project.no_access) continue;
+      for (const space of project.spaces) {
+        for (const page of space.pages) {
+          outdated += page.highlights_outdated;
+          lost += page.highlights_lost;
+        }
+      }
+    }
+    return { outdated, lost };
+  }, [projects]);
+
+  // Счётчик фильтра дошёл до нуля (всё проверили/перепривязали, дерево
+  // перезагрузилось) — чип исчезает, фильтр обязан сброситься вместе с ним,
+  // иначе дерево останется пустым без видимой причины.
+  useEffect(() => {
+    if (statusFilter && statusTotals[statusFilter] === 0) setStatusFilter(null);
+  }, [statusFilter, statusTotals]);
+
   const filteredProjects = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return projects;
+    if (!q && !statusFilter) return projects;
+
+    const matches = (page: TreeNodeItem) =>
+      (!q || page.title.toLowerCase().includes(q)) &&
+      (!statusFilter || (statusFilter === 'outdated'
+        ? page.highlights_outdated > 0
+        : page.highlights_lost > 0));
 
     return projects
       .map(project => {
         if (project.no_access) return null; // содержимое закрыто — не ищется
         const spaces = project.spaces
-          .map(space => filterSpace(space, q))
+          .map(space => filterSpace(space, matches))
           .filter((s): s is SpaceTree => s !== null);
         if (spaces.length === 0) return null;
         return { ...project, spaces } as ProjectTree;
       })
       .filter((p): p is ProjectTree => p !== null);
-  }, [projects, searchQuery, filterSpace]);
+  }, [projects, searchQuery, statusFilter, filterSpace]);
 
   const isSearching = searchQuery.trim().length > 0;
+  // Любой активный отбор (поиск или чип статуса) принудительно раскрывает
+  // дерево — найденное должно быть видно без ручного разворачивания.
+  const isFiltering = isSearching || statusFilter !== null;
 
   const hasAnyPages = projects.some(p => p.spaces.some(s => s.pages.length > 0));
-  const isEmptySearch = isSearching && filteredProjects.length === 0;
+  const isEmptySearch = isFiltering && filteredProjects.length === 0;
   // Поиску нечего искать без страниц (и пока дерево грузится).
   const searchDisabled = loading || !hasAnyPages;
 
@@ -441,76 +508,123 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
         >
           <RefreshIcon size={16} spinning={syncing} />
         </HeaderIconButton>
-        <HeaderIconButton title="Добавить страницу" onClick={() => setShowAddModal(true)}>
-          <PlusIcon />
-        </HeaderIconButton>
-      </div>
-
-      {/* Модалка добавления страницы: в узком сайдбаре инлайн-форме тесно —
-          URL не влезает, а выбор проекта появлялся неожиданно. */}
-      {showAddModal && (
-        <Modal title="Добавить страницу" onClose={closeAddModal} width="460px">
-          <form onSubmit={handleAddPage}>
-            <p style={modalTextStyle}>
-              Вставьте ссылку на страницу Confluence — она добавится в дерево
-              вместе со структурой своего раздела.
-            </p>
-            <input
-              type="text"
-              value={newUrl}
-              onChange={e => setNewUrl(e.target.value)}
-              placeholder="https://confluence…/pages/viewpage.action?pageId=…"
-              autoFocus
+        {/* Фильтр по статусу привязок — воронка на месте бывшего «плюса»
+            (решение пользователя v1.8.1: добавление страницы — редкое
+            действие настройки, уехало к карточке проекта в профиле).
+            По тапу — поповер с чипами опций; кнопка зелёная, пока фильтр
+            активен. Обе опции по нулям — кнопка глушится с подсказкой
+            (охрана в onClick, урок v1.6.0). */}
+        <div style={{ position: 'relative', flexShrink: 0 }} ref={filterRef}>
+          {(() => {
+            const filterActive = statusFilter !== null;
+            const filterEmpty = statusTotals.outdated === 0 && statusTotals.lost === 0;
+            return (
+              <button
+                onClick={() => { if (!filterEmpty) setFilterOpen(prev => !prev); }}
+                aria-haspopup="menu"
+                aria-expanded={filterOpen}
+                title={filterEmpty
+                  ? 'Фильтровать нечего: привязок «Требует проверки» или «Утрачено» нет'
+                  : 'Фильтр дерева по статусу привязок'}
+                style={{
+                  width: '34px', height: '34px', padding: 0,
+                  borderRadius: radii.md,
+                  border: `1px solid ${filterActive ? 'rgba(122, 224, 90, 0.55)' : colors.border}`,
+                  background: filterActive ? colors.greenLight : colors.white,
+                  color: filterActive ? colors.greenDark
+                    : filterEmpty ? colors.textTertiary : colors.textSecondary,
+                  cursor: filterEmpty ? 'default' : 'pointer',
+                  opacity: filterEmpty ? 0.55 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  if (filterActive || filterEmpty) return;
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                  e.currentTarget.style.borderColor = colors.borderHover;
+                  e.currentTarget.style.color = colors.textPrimary;
+                }}
+                onMouseLeave={e => {
+                  if (filterActive || filterEmpty) return;
+                  e.currentTarget.style.background = colors.white;
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.color = colors.textSecondary;
+                }}
+              >
+                <FilterIcon size={15} />
+              </button>
+            );
+          })()}
+          {filterMounted && (
+            <div
+              role="menu"
               style={{
-                width: '100%',
-                padding: '9px 12px',
-                borderRadius: radii.md,
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                right: 0,
+                zIndex: 30,
+                padding: '8px',
+                background: colors.white,
                 border: `1px solid ${colors.border}`,
-                fontSize: '13px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
+                borderRadius: radii.md,
+                boxShadow: shadows.panel,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                ...filterFade,
               }}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = colors.focusBorder;
-                e.currentTarget.style.boxShadow = shadows.focusRing;
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = colors.border;
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            {/* Ссылка подходит нескольким проектам (общий сервер) — явный выбор */}
-            {candidateProjects.length > 1 && (
-              <Select
-                value={selectedProjectId}
-                onChange={setSelectedProjectId}
-                size="sm"
-                title="Проект, в который добавить страницу"
-                style={{ marginTop: '10px', width: '100%' }}
-                options={candidateProjects.map(p => ({
-                  value: p.id,
-                  label: `В проект: ${p.name}`,
-                }))}
-              />
-            )}
-            {error && (
-              <div style={{ color: colors.statusLost, fontSize: '12px', marginTop: '10px' }}>
-                {error}
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
-              <ModalButton type="button" onClick={closeAddModal}>
-                Отмена
-              </ModalButton>
-              <ModalButton type="submit" variant="primary" disabled={!newUrl.trim() || adding}>
-                {adding ? 'Добавляем…' : 'Добавить'}
-              </ModalButton>
+            >
+              {STATUS_FILTERS.map(option => {
+                const count = statusTotals[option.key];
+                const active = statusFilter === option.key;
+                const disabled = count === 0 && !active;
+                return (
+                  <button
+                    key={option.key}
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => {
+                      if (disabled) return;
+                      setStatusFilter(active ? null : option.key);
+                      setFilterOpen(false);
+                    }}
+                    title={disabled
+                      ? 'Таких привязок сейчас нет'
+                      : active ? 'Снять фильтр' : option.title}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 10px',
+                      borderRadius: radii.pill,
+                      border: `1px solid ${active ? 'transparent' : colors.border}`,
+                      background: active ? colors.greenLight : 'transparent',
+                      color: active ? colors.greenDark
+                        : disabled ? colors.textTertiary : colors.textSecondary,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: disabled ? 'default' : 'pointer',
+                      fontFamily: 'inherit',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.15s',
+                      opacity: disabled ? 0.55 : 1,
+                    }}
+                    onMouseEnter={e => {
+                      if (!active && !disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!active) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {option.label}
+                    <span style={{ opacity: 0.75, marginLeft: 'auto' }}>{count}</span>
+                  </button>
+                );
+              })}
             </div>
-          </form>
-        </Modal>
-      )}
+          )}
+        </div>
+      </div>
 
       {/* Tree content */}
       <div className="island-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 10px 4px' }}>
@@ -591,21 +705,44 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginBottom: '12px' }}>
               Нет страниц
             </div>
-            <button
-              onClick={handleAddDemo}
-              style={{
-                padding: '6px 12px',
-                borderRadius: radii.sm,
-                border: `1px solid ${colors.border}`,
-                background: 'transparent',
-                color: colors.textSecondary,
-                fontSize: '11px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              Демо-страница
-            </button>
+            {/* Колонкой, как в состоянии «нет проектов»: главное действие —
+                добавить первую страницу (кнопка из шапки дерева уехала к
+                карточке проекта, v1.8.1 — пустому дереву нужен свой вход). */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+            }}>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('reqtrace:open-add-page'))}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: 'none',
+                  background: colors.greenAccent,
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Добавить страницу
+              </button>
+              <button
+                onClick={handleAddDemo}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: radii.sm,
+                  border: `1px solid ${colors.border}`,
+                  background: 'transparent',
+                  color: colors.textSecondary,
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Демо-страница
+              </button>
+            </div>
           </div>
         ) : isEmptySearch ? (
           <div style={{ padding: '12px 4px', textAlign: 'center' }}>
@@ -622,7 +759,7 @@ export const PageTree: React.FC<PageTreeProps> = ({ onPageAdded }) => {
               toggleExpand={toggleExpand}
               activePageId={activePageId}
               navigate={navigate}
-              isSearching={isSearching}
+              isSearching={isFiltering}
               searchQuery={searchQuery}
             />
           ))
@@ -908,6 +1045,9 @@ const TreeNodeComponent: React.FC<TreeNodeProps> = React.memo(({
       <button
         onClick={handleClick}
         title={nodeTooltip}
+        // Якорь подскролла: раскрытие дерева на странице (requestTreeReveal)
+        // доводит эту строку в видимую область.
+        data-tree-page-id={node.id}
         style={{
           display: 'flex',
           alignItems: 'center',

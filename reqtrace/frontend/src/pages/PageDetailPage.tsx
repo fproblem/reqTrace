@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { PageDetail, Highlight } from '../types';
 import { ContentRenderer, contentStyles } from '../components/PageView/ContentRenderer';
@@ -15,6 +15,8 @@ import { ExpandingSpinner, RefreshIcon, useSpinnerCeremony } from '../components
 import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
+import { recordRecentPage } from '../components/recentPages';
+import { useAuth } from '../auth/AuthContext';
 import { colors, radii, shadows, island } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -39,6 +41,8 @@ function sameRenderReport(a: HighlightRenderReport | null, b: HighlightRenderRep
 export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const { showToast, showPromptToast, dismissToast } = useToast();
   // Точки статусов в дереве считаются по привязкам страницы. Само дерево
   // перечитывается только при навигации — после действий, меняющих статусы
@@ -92,33 +96,63 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       setHighlights(hlData);
       // Jira теперь свойство проекта страницы — приходит вместе с ней.
       setJiraBaseUrl(pageData.jira_base_url || '');
+      // История визитов — пустое состояние глобального поиска (Cmd+K).
+      // Персональная (ключ с id пользователя): аккаунты в одном браузере
+      // не должны видеть чужие страницы.
+      if (user) recordRecentPage(user.id, pageData.id, pageData.title);
       return hlData;
     } catch (e: any) {
       showToast('error', 'Не удалось загрузить страницу', e.message);
     } finally {
       setLoading(false);
     }
-  }, [pageId, showToast]);
+  }, [pageId, showToast, user]);
 
-  // Загрузка при навигации. Диплинк ?highlight=<id> (кнопка «Скопировать
-  // ссылку» в панели) применяется ровно здесь — к привязкам, пришедшим для
-  // ЭТОЙ навигации, а не к остаткам прошлой страницы в состоянии: открываем
-  // панель и подскролливаем к выделению, как после «Привязать тесты».
-  // Повторные loadPage (добавление теста и т.п.) диплинк не переприменяют.
+  // Загрузка при навигации. Диплинки ?highlight=<id> («Скопировать ссылку»)
+  // и ?focus=outdated (очередь проверки) применяются ровно здесь — к
+  // привязкам, пришедшим для ЭТОЙ навигации, а не к остаткам прошлой
+  // страницы. Повторные loadPage (добавление теста и т.п.) их не
+  // переприменяют. Три тонкости (ревью v1.8.1):
+  // • параметры снимаются с location НАВИГАЦИИ, а не с window.location в
+  //   момент ответа сети — при быстрых «Далее» очереди отставший ответ
+  //   страницы B читал бы уже URL страницы C и открывал чужую привязку;
+  // • cancelled гасит отставшие продолжения тем же сценарием;
+  // • перезапуск — по location (новый объект на каждую навигацию): смена
+  //   ТОЛЬКО query (клик «Вернуться» в баре очереди на уже открытой
+  //   странице) тоже обязана переприменить диплинк, а :pageId не меняется.
   useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams(location.search);
     void loadPage().then(hls => {
-      if (!hls) return;
-      const id = new URLSearchParams(window.location.search).get('highlight');
-      if (!id) return;
-      const target = hls.find(h => h.id === id);
-      if (!target) {
-        showToast('warning', 'Привязка по ссылке не найдена', 'Возможно, её удалили после того, как ссылку скопировали');
+      if (!hls || cancelled) return;
+      const focusHighlight = (target: Highlight) => {
+        setSelectedHighlight(target);
+        pendingScrollHighlightRef.current = target.id;
+      };
+      const id = params.get('highlight');
+      if (id) {
+        const target = hls.find(h => h.id === id);
+        if (!target) {
+          showToast('warning', 'Привязка по ссылке не найдена', 'Возможно, её удалили после того, как ссылку скопировали');
+          return;
+        }
+        focusHighlight(target);
         return;
       }
-      setSelectedHighlight(target);
-      pendingScrollHighlightRef.current = target.id;
+      // Очередь проверки: панель — на ПЕРВОЙ по тексту страницы привязке
+      // «Требует проверки» (порядок якорей; DOM ещё не отрисован, и
+      // compareByDomThenAnchor честно падает на якорное сравнение — API
+      // отдаёт привязки по created_at, это порядок создания, не текста).
+      // Все уже проверены (вернулись повторно) — обычная страница, без тостов.
+      if (params.get('focus') === 'outdated') {
+        const target = [...hls]
+          .sort(compareByDomThenAnchor(highlightDomOrder()))
+          .find(h => h.status === 'outdated');
+        if (target) focusHighlight(target);
+      }
     });
-  }, [loadPage, showToast]);
+    return () => { cancelled = true; };
+  }, [loadPage, showToast, location]);
 
   // Предложение «Закрепить текущую версию?» (тост после актуализации последней
   // outdated-привязки) адресовано конкретной странице — при уходе с неё тост

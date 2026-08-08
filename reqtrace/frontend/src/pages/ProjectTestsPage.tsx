@@ -16,8 +16,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client';
 import { ProjectTestIndex, TestIndexEntry, TestLinkRef } from '../types';
 import { useToast } from '../components/Toast';
-import { ChevronRightIcon, CrossIcon, SearchIcon } from '../components/icons';
-import { highlightMatch } from '../components/Layout/PageTree';
+import { ChevronRightIcon, CrossIcon, SearchIcon, TableIcon } from '../components/icons';
+import { HeaderIconButton, highlightMatch } from '../components/Layout/PageTree';
 import { isLikelyJiraKey } from '../components/PageView/testKeyFormat';
 import { FadeIn } from '../components/fadePresence';
 import { KeyIssueInformer } from '../components/KeyIssueInformer';
@@ -200,6 +200,31 @@ export const ProjectTestsPage: React.FC = () => {
   // запоминаются до конца визита — повторное раскрытие мгновенно и без сети.
   const [linksByKey, setLinksByKey] = useState<Record<string, TestLinkRef[]>>({});
   const pendingKeysRef = useRef<Set<string>>(new Set());
+
+  // Выгрузка CSV-среза покрытия (v1.8.1): Blob с бэка, имя файла — проект +
+  // дата (символы, запрещённые в именах файлов, заменяются дефисом).
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const handleExportCsv = async () => {
+    if (!projectId || exportingCsv) return;
+    setExportingCsv(true);
+    try {
+      const blob = await api.downloadCoverageCsv(projectId);
+      const safeName = (data?.project_name || 'project')
+        .replace(/[\\/:*?"<>|]/g, '-').trim();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reqtrace-покрытие-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      showToast('error', 'Не удалось выгрузить CSV', e.message);
+    } finally {
+      setExportingCsv(false);
+    }
+  };
 
   useEffect(() => {
     if (!projectId) return;
@@ -634,6 +659,16 @@ export const ProjectTestsPage: React.FC = () => {
           );
         })}
       </div>
+      {/* Выгрузка CSV-среза покрытия (v1.8.1) — HeaderIconButton (общий
+          стиль кнопок шапок, как лупа поиска): весь срез «страница ×
+          привязка × тест» одним файлом под русский Excel / Google Sheets. */}
+      <HeaderIconButton
+        title="Выгрузить срез покрытия в CSV: страница, цитата, статус, тест — по строке на каждую пару"
+        onClick={() => { void handleExportCsv(); }}
+        disabled={exportingCsv}
+      >
+        {exportingCsv ? <RefreshIcon size={15} spinning /> : <TableIcon size={16} />}
+      </HeaderIconButton>
     </>
   );
 

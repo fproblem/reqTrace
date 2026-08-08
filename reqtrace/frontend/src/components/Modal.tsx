@@ -19,7 +19,9 @@ const REDUCED_MOTION = typeof window !== 'undefined'
 // Фокус: ловушка на Tab внутри окна, возврат фокуса при закрытии.
 
 // Выше выпадающих меню и попапов страницы (z 1000), ниже тостов (z 9999).
-const OVERLAY_Z = 2000;
+// Экспорт — слой модальных оверлеев один на приложение (CommandPalette
+// стоит на нём же; бар очереди проверки — ниже, 1500).
+export const OVERLAY_Z = 2000;
 
 const overlayStyle: React.CSSProperties = {
   position: 'fixed',

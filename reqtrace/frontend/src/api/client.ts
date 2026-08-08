@@ -103,6 +103,20 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
 }
 
+/** Общий разбор неудачного ответа: detail из JSON (или сырой текст) →
+ * человеческое сообщение → ApiError. Один на request() и не-JSON загрузки
+ * (downloadCoverageCsv) — правки маппинга ошибок не должны делаться дважды. */
+async function throwHttpError(res: Response): Promise<never> {
+  let detail = '';
+  try {
+    const body = await res.json();
+    detail = body.detail || JSON.stringify(body);
+  } catch {
+    detail = await res.text().catch(() => '');
+  }
+  throw new ApiError(res.status, humanizeError(res.status, detail));
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -120,14 +134,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    let detail = '';
-    try {
-      const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch {
-      detail = await res.text().catch(() => '');
-    }
-    throw new ApiError(res.status, humanizeError(res.status, detail));
+    await throwHttpError(res);
   }
 
   if (res.status === 204) return undefined as T;
@@ -249,6 +256,20 @@ export const api = {
   // «Привязки без тестов».
   getUncoveredLinks: (projectId: string) =>
     request<UncoveredLinks>(`/projects/${projectId}/uncovered-links`),
+
+  /** CSV-срез покрытия проекта (v1.8.1). Отдаёт Blob — сохранение и имя
+   *  файла (проект + дата) на вызывающем; request() не годится: тело не JSON. */
+  downloadCoverageCsv: async (projectId: string): Promise<Blob> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/projects/${projectId}/coverage.csv`);
+    } catch {
+      throw new ApiError(0, 'Сервер недоступен. Проверьте подключение к сети');
+    }
+    if (res.status === 401) unauthorizedHandler?.();
+    if (!res.ok) await throwHttpError(res);
+    return res.blob();
+  },
 
   // Projects (v1.5.1): личные креды, живая проверка подключения
   listProjects: () =>

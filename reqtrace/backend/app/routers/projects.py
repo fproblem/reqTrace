@@ -4,17 +4,22 @@
 Confluence — это и есть контроль доступа: без работающих кред к Confluence
 проекта членства нет. Пароли хранятся зашифрованными (Fernet, CREDENTIALS_KEY).
 """
+import csv
+import io
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
+from app.config import settings
 from app.crypto import decrypt_secret, encrypt_secret
 from app.services.jira import JiraAuthError
 from app.database import get_db
@@ -433,6 +438,112 @@ async def project_uncovered_links(
     ]
     links.sort(key=lambda l: (l.page_title, l.excerpt))
     return UncoveredLinks(links=links)
+
+
+# Статусы в выгрузке — теми же словами, что в интерфейсе (statusLabels фронта).
+_STATUS_RU = {"active": "Актуально", "outdated": "Требует проверки", "lost": "Утрачено"}
+
+
+def _csv_cell(value: str) -> str:
+    """Нейтрализация CSV-инъекции: текст ячеек приходит из Confluence/Jira/
+    имён пользователей, а значение, начинающееся с =, +, -, @ или таба,
+    Excel исполняет как формулу (файл нарочно делается «под двойной клик»).
+    Ведущий апостроф Excel и Sheets прячут, показывая текст как есть."""
+    return f"'{value}" if value[:1] in ("=", "+", "-", "@", "\t") else value
+
+
+def _report_tz():
+    """Часовой пояс дат выгрузки — тот же, что у ночного прогона
+    (AUTO_REFRESH_TZ, по умолчанию Москва): даты в CSV должны совпадать с
+    датами на экранах команды, а не с UTC-полуночью."""
+    try:
+        return ZoneInfo(settings.AUTO_REFRESH_TZ)
+    except Exception:
+        return timezone.utc
+
+
+@router.get("/{project_id}/coverage.csv")
+async def project_coverage_csv(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Выгружаемый срез покрытия (бэклог: «отчёт о покрытии + экспорт CSV»).
+
+    Одна строка = привязка × тест; привязка без единого теста — одна строка
+    с пустыми колонками теста (иначе долг покрытия выпадал бы из среза).
+    Формат — под русский Excel: UTF-8 с BOM, разделитель «;», CRLF; Google
+    Sheets и LibreOffice понимают его автоматически. Названия тестов — из
+    кэша test_details (ночная синхронизация с Jira, v1.7.0).
+
+    Доступ — как к контенту проекта (членство ok; чужое демо «не существует»).
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await require_project_access(db, project, current_user)
+
+    rows = (await db.execute(
+        select(
+            Page.title, Page.space_key, Page.confluence_url,
+            Highlight.status, Highlight.text_content, Highlight.created_at,
+            User.name, HighlightTest.test_key,
+        )
+        .join(Page, Page.id == Highlight.page_id)
+        .join(User, User.id == Highlight.created_by)
+        .outerjoin(HighlightTest, HighlightTest.highlight_id == Highlight.id)
+        .where(Page.project_id == project.id)
+    )).all()
+
+    details = await test_names.load_details(db, project.id)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    writer.writerow([
+        "Страница", "Спейс", "Статус привязки", "Цитата", "Тест",
+        "Название теста", "Автор привязки", "Привязка создана",
+        "Страница в Confluence",
+    ])
+    report_tz = _report_tz()
+    records = [
+        {
+            "title": title or "",
+            "space": space or "",
+            "url": url or "",
+            "status": _STATUS_RU.get(status, status),
+            "quote": quote or "",
+            "created": created_at.astimezone(report_tz).strftime("%d.%m.%Y") if created_at else "",
+            "author": author or "",
+            "key": _norm_key(test_key) if test_key else "",
+        }
+        for title, space, url, status, quote, created_at, author, test_key in rows
+    ]
+    # Сортировка по именованным полям, не по индексам кортежа select:
+    # перестановка колонок запроса не должна молча менять порядок среза.
+    records.sort(key=lambda r: (r["title"], r["quote"], r["key"]))
+    for r in records:
+        detail = details.get(r["key"]) if r["key"] else None
+        writer.writerow([
+            _csv_cell(r["title"]),
+            _csv_cell(r["space"]),
+            r["status"],
+            _csv_cell(r["quote"]),
+            _csv_cell(r["key"]),
+            _csv_cell((detail.summary or "") if detail else ""),
+            _csv_cell(r["author"]),
+            r["created"],
+            r["url"],  # всегда https?://… из Confluence — формулой не бывает
+        ])
+
+    filename = f"reqtrace-coverage-{datetime.now(report_tz).date().isoformat()}.csv"
+    return Response(
+        # BOM — иначе русский Excel открывает UTF-8 кракозябрами.
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        # Имя в заголовке — ASCII-запасное; человекочитаемое (с именем
+        # проекта) строит фронт при сохранении Blob'а.
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{project_id}/refresh-run", status_code=202)

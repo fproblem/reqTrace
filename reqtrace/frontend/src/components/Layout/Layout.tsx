@@ -4,9 +4,12 @@ import { useAuth } from '../../auth/AuthContext';
 import { colors, radii, island, fonts } from '../../styles/tokens';
 import { ChangelogModal, useCurrentVersion } from '../ChangelogModal';
 import { Modal, ModalButton, modalTextStyle } from '../Modal';
-import { PageTree } from './PageTree';
-import { ClipboardCheckIcon, LogoutIcon } from '../icons';
+import { HeaderIconButton, PageTree } from './PageTree';
+import { ClipboardCheckIcon, LogoutIcon, SearchIcon } from '../icons';
 import { NotificationBell } from '../NotificationBell';
+import { AddPageModal } from '../AddPageModal';
+import { CommandPalette } from '../CommandPalette';
+import { HotkeysModal, PALETTE_SHORTCUT } from '../HotkeysModal';
 import { PANEL_ANIM_MS } from '../PageView/SidePanel';
 
 // Оба боковых острова дышат в одном ритме (ревью островов): длительность
@@ -144,6 +147,56 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   // случайный клик мгновенно выбрасывал на экран входа (ревью v1.6.5).
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const currentVersion = useCurrentVersion();
+  // Глобальный поиск (Cmd+K): страницы, тесты, проекты одной палитрой.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Шпаргалка горячих клавиш — карточка по «?».
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  // Модалка «Добавить страницу» (v1.8.1) — живёт здесь, а не в PageTree:
+  // Layout смонтирован всегда, и событие открытия слышно даже при дереве,
+  // свёрнутом в рельсу. Шлют его пустой экран «/», пустое дерево и меню
+  // карточки проекта в профиле.
+  const [addPageOpen, setAddPageOpen] = useState(false);
+  useEffect(() => {
+    const onOpenAdd = () => setAddPageOpen(true);
+    window.addEventListener('reqtrace:open-add-page', onOpenAdd);
+    return () => window.removeEventListener('reqtrace:open-add-page', onOpenAdd);
+  }, []);
+
+  // Хоткей палитры — e.code ИЛИ e.key: code покрывает русскую раскладку
+  // (Cmd+K отдаёт key='л', физическая клавиша одна), key — Dvorak/Colemak,
+  // где буква k живёт на другой физической клавише. Работает и из полей
+  // ввода — это стандарт палитр; e.repeat отсекает автоповтор зажатой
+  // клавиши (палитра не мигает тумблером). Поверх открытых диалогов/меню
+  // палитра НЕ открывается: Escape-слои у всех — document-слушатели, и
+  // stopPropagation соседей не останавливает (урок SidePanel) — один Esc
+  // закрывал бы и палитру, и модалку с недописанной формой под ней.
+  // «?» — по e.key (символ и есть намерение, на любой раскладке), но НЕ из
+  // полей ввода (знак вопроса в тексте — обычное дело).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isPaletteChord = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey
+        && (e.code === 'KeyK' || e.key.toLowerCase() === 'k');
+      if (isPaletteChord) {
+        e.preventDefault();
+        if (e.repeat) return;
+        setPaletteOpen(prev => {
+          // Палитра сама — dialog: свой Esc/повторный Cmd+K её закрывают.
+          if (!prev && document.querySelector('[role="dialog"], [role="menu"]')) return prev;
+          return !prev;
+        });
+        return;
+      }
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const t = e.target as HTMLElement | null;
+        if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t?.isContentEditable) return;
+        if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+        e.preventDefault();
+        setHotkeysOpen(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const [sidebar, setSidebar] = useState<SidebarState>(loadSidebarState);
   const asideRef = useRef<HTMLElement>(null);
@@ -434,6 +487,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             поэтому вход туда живёт под лицом пользователя, а не отдельной
             кнопкой. «Выйти» — кнопка-иконка в общем стиле кнопок баров. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          {/* Глобальный поиск — кнопка-лупа (HeaderIconButton — общий стиль
+              кнопок шапок); главный вход — хоткей, кнопка отвечает за
+              находимость. Стоит ЛЕВЕЕ «Тестов»: якоря панелей
+              (data-rt-header-tests) меряются от «Тестов», и добавка слева их
+              не ломает — панели просто становятся на всё тот же левый край. */}
+          {user && (
+            <HeaderIconButton
+              title={`Поиск по всему: страницы, тесты, проекты (${PALETTE_SHORTCUT})`}
+              onClick={() => setPaletteOpen(true)}
+            >
+              <SearchIcon size={16} />
+            </HeaderIconButton>
+          )}
           {/* Раздел «Тесты» — реверс-индекс «тест → требования». Полноценная
               кнопка с текстом (не квадратик): раздел новый, его нужно найти.
               Серая в покое, зелёная — когда раздел открыт (как профиль-чип). */}
@@ -717,6 +783,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
+      <HotkeysModal open={hotkeysOpen} onClose={() => setHotkeysOpen(false)} />
+
+      <AddPageModal open={addPageOpen} onClose={() => setAddPageOpen(false)} />
 
       {logoutConfirmOpen && (
         <Modal title="Выйти из ReqTrace?" width="400px" onClose={() => setLogoutConfirmOpen(false)}>

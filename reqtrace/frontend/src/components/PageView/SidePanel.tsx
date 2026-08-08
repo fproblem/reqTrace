@@ -11,6 +11,7 @@ import { useToast } from '../Toast';
 import { highlightDomOrder, compareByDomThenAnchor } from './HighlightLayer';
 import { strippedEquals } from './highlightMatching';
 import { DiffPart, quoteDiff } from './quoteDiff';
+import { lostQuoteContext } from './quoteContext';
 import { sortedTests } from './testOrder';
 import { isLikelyJiraKey } from './testKeyFormat';
 
@@ -377,6 +378,10 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   const hasNext = currentIndex < sorted.length - 1;
 
   const statusInfo = statusLabels[highlight.status] || statusLabels.active;
+  // Соседний текст утраченной цитаты (text_before/text_after снимка):
+  // помогает вспомнить, ГДЕ жило требование, — сама цитата со страницы уже
+  // удалена, и без окрестности место не восстановить по памяти.
+  const lostCtx = lostQuoteContext(highlight);
   const noTests = highlight.tests.length === 0;
   // Список рисуем по ключу (testOrder): сервер порядок связей не гарантирует,
   // и «как пришло» ставило только что добавленный тест в случайное место.
@@ -674,33 +679,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             самодостаточна. Клик-зоны прежние: шапка — следующая привязка
             того же статуса, цитата — подскролл к выделению. */}
 
-        {/* Alert-аномалия: НЕ-lost привязка, которую слой отказался рендерить —
-            содержимое и координаты рассинхронизированы (фронт статусы не
-            меняет, v1.5.9). У «Утрачено» отдельной плашки нет: пояснение —
-            нижняя строка карточки, там же, где у outdated «Актуализировать». */}
-        {notOnPage && highlight.status !== 'lost' && (
-          <div style={{
-            display: 'flex',
-            gap: '8px',
-            padding: '10px 12px',
-            marginBottom: '16px',
-            borderRadius: radii.sm,
-            border: `1px solid rgba(239,68,68,0.3)`,
-            background: 'rgba(239,68,68,0.06)',
-            color: colors.statusLost,
-            fontSize: '12px',
-            lineHeight: 1.45,
-          }}>
-            {/* 14px на строке 12px/1.45 (~17px): 1.5px сверху центрируют по первой строке */}
-            <StatusAlertIcon kind="warning" size={14} style={{ marginTop: '1.5px' }} />
-            <span>
-              Эта привязка <strong>не отображается на странице</strong>: содержимое
-              и координаты привязки рассинхронизированы. Нажмите «Обновить» в
-              шапке — сервер пересчитает привязки по актуальной версии страницы.
-            </span>
-          </div>
-        )}
-
         {/* Карточка привязки: рамка и линии между зонами — в цвете статуса;
             лёгкая тень приподнимает героя панели над служебными блоками.
             Кап высоты (ревью-3): цитата показывается ЦЕЛИКОМ, пока карточка
@@ -830,9 +808,30 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
               <QuoteIcon size={14} style={{ marginTop: '3px', color: colors.textTertiary }} />
               <div style={{ minWidth: 0, flex: 1 }}>
-                {quoteDiffParts
-                  ? <QuoteDiffView parts={quoteDiffParts} />
-                  : highlight.text_content}
+                {quoteDiffParts ? (
+                  <QuoteDiffView parts={quoteDiffParts} />
+                ) : lostCtx ? (
+                  // Утраченная цитата — в окрестности соседнего текста снимка:
+                  // соседи приглушены, цитата отвечает полужирным. Строки
+                  // контекста НЕ обрезаются по краям (пробел на стыке с
+                  // цитатой — часть текста), «…» — только когда окно захвата
+                  // упёрлось в кап и дальше текст был.
+                  <>
+                    {lostCtx.before != null && (
+                      <span style={{ color: colors.textTertiary }}>
+                        {lostCtx.beforeTruncated && '…'}
+                        {lostCtx.before}
+                      </span>
+                    )}
+                    <span style={{ fontWeight: 600 }}>{highlight.text_content}</span>
+                    {lostCtx.after != null && (
+                      <span style={{ color: colors.textTertiary }}>
+                        {lostCtx.after}
+                        {lostCtx.afterTruncated && '…'}
+                      </span>
+                    )}
+                  </>
+                ) : highlight.text_content}
               </div>
             </div>
           </div>
@@ -987,6 +986,34 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </div>
         </TreeReveal>
         </div>
+
+        {/* Аномалия: НЕ-lost привязка, которую слой отказался рендерить —
+            содержимое и координаты рассинхронизированы (фронт статусы не
+            меняет, v1.5.9). Раньше жила отдельной красной плашкой НАД
+            карточкой и выглядела оторванной от неё — теперь это нижняя
+            строка карточки, тем же приёмом, что пояснение у «Утрачено»
+            (красные акценты аномалии сознательно не следуют цвету статуса). */}
+        {notOnPage && highlight.status !== 'lost' && (
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            padding: '10px 14px',
+            borderTop: `1px solid ${colors.statusLost}33`,
+            background: `${colors.statusLost}0F`,
+            color: colors.statusLost,
+            fontSize: '12px',
+            lineHeight: 1.45,
+            flexShrink: 0,
+          }}>
+            {/* 14px на строке 12px/1.45 (~17px): 1.5px сверху центрируют по первой строке */}
+            <StatusAlertIcon kind="warning" size={14} style={{ marginTop: '1.5px', flexShrink: 0 }} />
+            <span>
+              Привязка <strong>не отображается на странице</strong>: содержимое
+              и координаты рассинхронизированы. Нажмите «Обновить» в шапке —
+              сервер пересчитает привязки по актуальной версии страницы.
+            </span>
+          </div>
+        )}
 
         {/* У «Утрачено» нижняя строка карточки — краткое пояснение вместо
             действия: статус терминальный, актуализировать нечего. Полная

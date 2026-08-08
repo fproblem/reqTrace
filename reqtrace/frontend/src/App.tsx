@@ -23,9 +23,13 @@ import { listRecentPages } from './components/recentPages';
 // обычно начинается со вчерашней страницы, пусть она будет в один клик.
 const HomeScreen: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   // История читается один раз на маунте: пока экран открыт, ей не с чего
-  // меняться (визиты страниц размонтируют «/»).
-  const [recent] = React.useState(() => listRecentPages().slice(0, 5));
+  // меняться (визиты страниц размонтируют «/»). Персональная — по id
+  // пользователя сессии: аккаунты в одном браузере не видят чужого.
+  const [recent] = React.useState(
+    () => (user ? listRecentPages(user.id) : []).slice(0, 5),
+  );
   return (
     <div style={{
       height: '100%',

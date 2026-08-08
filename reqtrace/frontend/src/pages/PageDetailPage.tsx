@@ -16,6 +16,7 @@ import { useToast } from '../components/Toast';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useTextSelection } from '../components/PageView/selection/useTextSelection';
 import { recordRecentPage } from '../components/recentPages';
+import { useAuth } from '../auth/AuthContext';
 import { colors, radii, shadows, island } from '../styles/tokens';
 
 interface PageDetailPageProps {
@@ -41,6 +42,7 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
   const { pageId } = useParams<{ pageId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const { showToast, showPromptToast, dismissToast } = useToast();
   // Точки статусов в дереве считаются по привязкам страницы. Само дерево
   // перечитывается только при навигации — после действий, меняющих статусы
@@ -95,14 +97,16 @@ export const PageDetailPage: React.FC<PageDetailPageProps> = () => {
       // Jira теперь свойство проекта страницы — приходит вместе с ней.
       setJiraBaseUrl(pageData.jira_base_url || '');
       // История визитов — пустое состояние глобального поиска (Cmd+K).
-      recordRecentPage(pageData.id, pageData.title);
+      // Персональная (ключ с id пользователя): аккаунты в одном браузере
+      // не должны видеть чужие страницы.
+      if (user) recordRecentPage(user.id, pageData.id, pageData.title);
       return hlData;
     } catch (e: any) {
       showToast('error', 'Не удалось загрузить страницу', e.message);
     } finally {
       setLoading(false);
     }
-  }, [pageId, showToast]);
+  }, [pageId, showToast, user]);
 
   // Загрузка при навигации. Диплинки ?highlight=<id> («Скопировать ссылку»)
   // и ?focus=outdated (очередь проверки) применяются ровно здесь — к

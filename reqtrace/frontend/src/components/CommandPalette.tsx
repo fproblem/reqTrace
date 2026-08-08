@@ -23,6 +23,7 @@ import { OVERLAY_Z } from './Modal';
 import { RefreshIcon } from './RefreshIcon';
 import { highlightMatch } from './Layout/PageTree';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
+import { useAuth } from '../auth/AuthContext';
 import { PaletteEntry, PaletteKind, searchPalette } from './paletteSearch';
 import { listRecentPages } from './recentPages';
 
@@ -111,6 +112,7 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { mounted, fadeStyle } = useFadeToggle(open);
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -137,7 +139,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     const token = ++openTokenRef.current;
     setQuery('');
     setSelected(0);
-    setRecent(listRecentPages());
+    setRecent(user ? listRecentPages(user.id) : []);
     if (paletteCache) {
       setEntries(paletteCache);
       setIndexLoaded(true);
@@ -158,7 +160,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
         if (openTokenRef.current === token) setLoadingTests(false);
       });
     return () => { openTokenRef.current++; };
-  }, [open]);
+  }, [open, user]);
 
   // Автофокус после появления в DOM (mounted приходит из useFadeToggle).
   useEffect(() => {

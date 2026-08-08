@@ -113,6 +113,26 @@ const StepLabel: React.FC<{ n: number; children: React.ReactNode }> = ({ n, chil
 // для внутренностей секции).
 const smallButtonStyle: React.CSSProperties = { padding: '7px 14px', fontSize: '13px' };
 
+// Пилюля-счётчик — единый вид и габарит для строк статусов и шапки шага 2:
+// minWidth выравнивает 1- и 2-значные счётчики в ровную колонку (ревью:
+// «чипы кривые»); marginRight 10px у шапки задаётся снаружи — правые края
+// всех пилюль стоят на одной вертикали (строки имеют паддинг 10px).
+const CountPill: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({
+  children, style,
+}) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    minWidth: '28px', boxSizing: 'border-box',
+    padding: '1px 7px', borderRadius: radii.pill,
+    background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
+    fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
+    flexShrink: 0,
+    ...style,
+  }}>
+    {children}
+  </span>
+);
+
 export const CoverageCsvModal: React.FC<{
   projectId: string;
   projectName: string;
@@ -208,13 +228,7 @@ export const CoverageCsvModal: React.FC<{
               {STATUS_LABEL[s]}
             </span>
             {/* Счётчик строк — нейтральная пилюля, как у фильтров «Тестов». */}
-            <span style={{
-              padding: '1px 7px', borderRadius: radii.pill,
-              background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
-              fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
-            }}>
-              {counts[s]}
-            </span>
+            <CountPill>{counts[s]}</CountPill>
           </label>
         ))}
       </div>
@@ -234,33 +248,40 @@ export const CoverageCsvModal: React.FC<{
             + 'выгрузить их со всеми полями и шагами.'}
         />
         {filter.keys.length > 0 && (
-          <span style={{
-            marginLeft: 'auto',
-            padding: '1px 7px', borderRadius: radii.pill,
-            background: 'rgba(0,0,0,0.05)', color: colors.textSecondary,
-            fontSize: '11px', fontWeight: 600, lineHeight: 1.4,
-          }}>
+          <CountPill style={{ marginLeft: 'auto', marginRight: '10px' }}>
             {filter.keys.length}
-          </span>
+          </CountPill>
         )}
       </div>
       {filter.keys.length > 0 ? (
         <div style={{ marginBottom: '18px' }}>
+          {/* Простая копируемая строка (решение пользователя: чипы-ключи
+              отклонены). Каждый «ключ + запятая» — в nowrap-обёртке: перенос
+              возможен только МЕЖДУ ключами, дефис внутри SI-12834 строку не
+              рвёт (голый текст переносился на дефисах — «выглядит плохо»).
+              Двухтоновость — служебный синтаксис тише ключей; выделение и
+              копирование дают ровно filter.jql, тонирование — только CSS. */}
           <div
             className="island-scroll"
             style={{
-              fontFamily: MONO, fontSize: '11.5px', lineHeight: 1.55,
-              color: colors.textSecondary,
+              fontFamily: MONO, fontSize: '12px', lineHeight: 1.7,
+              color: colors.textTertiary,
               background: 'rgba(0,0,0,0.03)',
               border: `1px solid ${colors.border}`,
               borderRadius: radii.sm,
-              padding: '8px 10px',
-              maxHeight: '88px', overflowY: 'auto',
-              overflowWrap: 'anywhere',
+              padding: '9px 12px',
+              maxHeight: '96px', overflowY: 'auto',
               userSelect: 'all',
             }}
           >
-            {filter.jql}
+            {'key in ('}
+            {filter.keys.map((k, i) => (
+              <span key={k} style={{ whiteSpace: 'nowrap' }}>
+                <span style={{ color: colors.textPrimary, fontWeight: 600 }}>{k}</span>
+                {i < filter.keys.length - 1 ? ', ' : ''}
+              </span>
+            ))}
+            {')'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
             <ModalButton variant="secondary" style={smallButtonStyle} onClick={() => { void handleCopyJql(); }}>

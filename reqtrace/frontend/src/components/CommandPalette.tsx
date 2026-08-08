@@ -25,7 +25,7 @@ import { highlightMatch } from './Layout/PageTree';
 import { useTreeRefresh } from '../hooks/useTreeRefresh';
 import { useAuth } from '../auth/AuthContext';
 import { PaletteEntry, PaletteKind, searchPalette } from './paletteSearch';
-import { listRecentPages } from './recentPages';
+import { listRecentEntries, RecentEntry, recordRecentTest } from './recentPages';
 
 // Кэш индекса палитры — модульный, на сессию SPA (ревью v1.8.1): каждое
 // открытие раньше заново гоняло дерево + реверс-индексы ВСЕХ проектов
@@ -117,7 +117,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [entries, setEntries] = useState<PaletteEntry[]>([]);
-  const [recent, setRecent] = useState<{ id: string; title: string }[]>([]);
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [loadingTests, setLoadingTests] = useState(false);
   const [selected, setSelected] = useState(0);
   // Индекс хоть раз приезжал (кэш или свежий): только тогда фильтруем
@@ -139,7 +139,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     const token = ++openTokenRef.current;
     setQuery('');
     setSelected(0);
-    setRecent(user ? listRecentPages(user.id) : []);
+    setRecent(user ? listRecentEntries(user.id) : []);
     if (paletteCache) {
       setEntries(paletteCache);
       setIndexLoaded(true);
@@ -167,17 +167,38 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     if (open && mounted) inputRef.current?.focus();
   }, [open, mounted]);
 
-  // Выдача: по запросу — поиск, без запроса — недавние страницы (пересечённые
-  // с живыми: удалённая страница не должна вести в «не найдено»). Фильтр —
-  // только когда индекс реально приезжал (indexLoaded): «дерево ещё едет» и
-  // «у пользователя ноль страниц» — разные состояния, и пустое множество
-  // known само по себе не повод показывать историю как есть.
+  // Выдача: по запросу — поиск, без запроса — «Недавнее»: страницы визитов
+  // и тесты, выбранные в палитре, одним хронологическим списком. История
+  // пересекается с живым индексом (удалённая страница или отвязанный тест
+  // не должны вести в «не найдено»), у тестов при этом берётся СВЕЖЕЕ
+  // название из индекса — переименованный в Jira тест не остаётся в истории
+  // под старым именем. Фильтр — только когда индекс реально приезжал
+  // (indexLoaded): «дерево ещё едет» и «у пользователя ноль страниц» —
+  // разные состояния, и пустое множество known само по себе не повод
+  // показывать историю как есть.
   const results = useMemo<PaletteEntry[]>(() => {
     if (query.trim()) return searchPalette(entries, query);
-    const known = new Set(entries.filter(e => e.kind === 'page').map(e => e.id));
+    const knownPages = new Set(entries.filter(e => e.kind === 'page').map(e => e.id));
+    const knownTests = new Map(
+      entries.filter(e => e.kind === 'test').map(e => [`${e.projectId}:${e.id}`, e]),
+    );
     return recent
-      .filter(r => !indexLoaded || known.has(r.id))
-      .map(r => ({ kind: 'page' as const, id: r.id, title: r.title, projectId: '' }));
+      .filter(r => !indexLoaded || (r.kind === 'page'
+        ? knownPages.has(r.id)
+        : knownTests.has(`${r.projectId ?? ''}:${r.id}`)))
+      .map(r => {
+        if (r.kind === 'test') {
+          const fresh = knownTests.get(`${r.projectId ?? ''}:${r.id}`);
+          return {
+            kind: 'test' as const,
+            id: r.id,
+            title: r.title,
+            subtitle: fresh?.subtitle ?? r.subtitle,
+            projectId: r.projectId ?? '',
+          };
+        }
+        return { kind: 'page' as const, id: r.id, title: r.title, projectId: '' };
+      });
   }, [entries, recent, query, indexLoaded]);
   const isRecent = !query.trim();
 
@@ -189,15 +210,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
   const go = useCallback((entry: PaletteEntry) => {
     onClose();
     if (entry.kind === 'page') {
+      // В историю страница попадёт сама — при загрузке (recordRecentPage
+      // в PageDetailPage), с честным названием с сервера.
       navigate(`/pages/${entry.id}`);
     } else if (entry.kind === 'project') {
       navigate(`/tests/${entry.projectId}`);
     } else {
+      // Выбор теста — событие истории (идея пользователя v1.8.1): ключ
+      // встанет в «Недавнее» рядом со страницами.
+      if (user) recordRecentTest(user.id, entry.id, entry.projectId, entry.subtitle);
       // Экран тестов проекта читает поиск из URL (?q=) — строка ключа
       // откроется уже отфильтрованной.
       navigate(`/tests/${entry.projectId}?q=${encodeURIComponent(entry.id)}`);
     }
-  }, [navigate, onClose]);
+  }, [navigate, onClose, user]);
 
   // Клавиатура — на документе: фокус всегда в поле, но стрелки не должны
   // теряться, даже если он ушёл (клик по пустому месту списка).
@@ -326,7 +352,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
               const Icon = KIND_ICONS[entry.kind];
               const isSelected = idx === selected;
               const groupTitle = isRecent
-                ? (idx === 0 ? 'Недавние страницы' : null)
+                ? (idx === 0 ? 'Недавнее' : null)
                 : (idx === 0 || results[idx - 1].kind !== entry.kind
                   ? GROUP_TITLES[entry.kind]
                   : null);

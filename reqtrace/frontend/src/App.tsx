@@ -13,7 +13,7 @@ import { TreeRefreshProvider } from './hooks/useTreeRefresh';
 import { colors, fonts, island } from './styles/tokens';
 import { ModalButton } from './components/Modal';
 import { DocumentIcon } from './components/icons';
-import { listRecentPages } from './components/recentPages';
+import { listRecentEntries } from './components/recentPages';
 
 // Пустое состояние «/» — в языке экрана виртуальной страницы (заголовок +
 // строка сути + явное действие; ревью: тусклая строка «выберите страницу»
@@ -27,8 +27,12 @@ const HomeScreen: React.FC = () => {
   // История читается один раз на маунте: пока экран открыт, ей не с чего
   // меняться (визиты страниц размонтируют «/»). Персональная — по id
   // пользователя сессии: аккаунты в одном браузере не видят чужого.
+  // Только страницы: тесты из истории живут в палитре Cmd+K — экран «/»
+  // зовёт выбрать страницу.
   const [recent] = React.useState(
-    () => (user ? listRecentPages(user.id) : []).slice(0, 5),
+    () => (user ? listRecentEntries(user.id) : [])
+      .filter(e => e.kind === 'page')
+      .slice(0, 5),
   );
   return (
     <div style={{
